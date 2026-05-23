@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bolão Copa 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--gold:#FFD700;--gd:#B8860B;--dk:#0A0F1E;--dk2:#111827;--dk3:#1F2937;--card:#1a2235;--bdr:#2D3748;--txt:#E2E8F0;--muted:#94A3B8;--err:#EF4444;--ok:#10B981}
+body{background:var(--dk);color:var(--txt);font-family:'Inter',sans-serif;min-height:100vh}
+.hdr{background:linear-gradient(135deg,var(--dk2),#0d1a2e);border-bottom:2px solid var(--gold);padding:0 1rem;position:sticky;top:0;z-index:100}
+.hdr-in{max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{font-family:'Bebas Neue',cursive;font-size:1.6rem;color:var(--gold);letter-spacing:2px}
+.logo span{color:#fff}
+.nav{background:var(--dk2);border-bottom:1px solid var(--bdr);overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none}.nav::-webkit-scrollbar{display:none}
+.nav-in{max-width:900px;margin:0 auto;padding:0 .5rem;display:inline-flex;gap:2px;min-width:100%}
+.nb{padding:10px 14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:500;border-bottom:2px solid transparent}
+.nb:hover{color:var(--txt)}.nb.act{color:var(--gold);border-bottom-color:var(--gold)}
+.main{max-width:900px;margin:0 auto;padding:1.5rem 1rem;padding-bottom:80px}
+.card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.ch{font-family:'Bebas Neue',cursive;font-size:1.3rem;color:var(--gold);margin-bottom:1rem}
+.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.875rem;font-weight:600;transition:all .2s;display:inline-block}
+.btn-p{background:var(--gold);color:var(--dk)}.btn-p:hover{background:var(--gd)}
+.btn-d{background:var(--err);color:#fff}
+.btn-o{background:transparent;color:var(--txt);border:1px solid var(--bdr)}.btn-o:hover{border-color:var(--gold);color:var(--gold)}
+.btn-s{background:var(--ok);color:#fff}
+.btn-sm{padding:4px 10px;font-size:.78rem}
+.btn-full{width:100%;padding:12px;font-size:1rem}
+.fg{margin-bottom:1rem}
+.fl{display:block;font-size:.82rem;color:var(--muted);margin-bottom:5px;font-weight:500}
+.fi{width:100%;padding:10px 12px;background:var(--dk3);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-size:.9rem;outline:none}
+.fi:focus{border-color:var(--gold)}
+.err-box{background:rgba(239,68,68,.15);border:1px solid var(--err);color:#FCA5A5;padding:10px 12px;border-radius:8px;font-size:.85rem;margin-bottom:1rem}
+.ok-box{background:rgba(16,185,129,.15);border:1px solid var(--ok);color:#6EE7B7;padding:10px 12px;border-radius:8px;font-size:.85rem;margin-bottom:1rem}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+.auth-box{width:100%;max-width:400px}
+.auth-logo{text-align:center;font-family:'Bebas Neue',cursive;font-size:2.8rem;color:var(--gold);margin-bottom:.3rem}
+.auth-sub{text-align:center;color:var(--muted);margin-bottom:1.5rem;font-size:.85rem}
+.auth-toggle{text-align:center;margin-top:1rem;font-size:.82rem;color:var(--muted)}
+.auth-toggle button{background:none;border:none;color:var(--gold);cursor:pointer}
+.rkt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}.rkt{width:100%;border-collapse:collapse;min-width:400px}
+.rkt th{background:var(--dk3);padding:8px 10px;text-align:left;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase}
+.rkt td{padding:10px;border-bottom:1px solid var(--bdr);font-size:.875rem}
+.r1{color:var(--gold);font-weight:700}.r2{color:#C0C0C0;font-weight:700}.r3{color:#CD7F32;font-weight:700}
+.pbadge{background:#006847;color:#fff;padding:2px 8px;border-radius:9999px;font-size:.78rem;font-weight:700}
+.badge{background:var(--gold);color:var(--dk);padding:2px 6px;border-radius:9999px;font-size:.65rem;font-weight:700;margin-left:4px}
+.mc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:.875rem;display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:8px;transition:border-color .2s}
+.mc:hover{border-color:var(--gd)}.mc.fin{border-left:3px solid var(--ok)}
+.tm{display:flex;align-items:center;gap:6px;font-size:.82rem;font-weight:500}
+.tmr{justify-content:flex-end}
+.si{display:flex;align-items:center;gap:6px;justify-content:center}
+.sinp{width:36px;height:36px;text-align:center;background:var(--dk3);border:1px solid var(--bdr);border-radius:7px;color:var(--txt);font-size:.95rem;font-weight:700;outline:none}
+.score-btn{width:28px;height:36px;background:var(--dk3);border:1px solid var(--bdr);color:var(--txt);font-size:1rem;font-weight:700;cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.score-btn:hover{border-color:var(--gold);color:var(--gold)}
+.score-val{width:28px;text-align:center;font-family:'Bebas Neue',cursive;font-size:1.2rem;color:var(--txt);font-weight:700;flex-shrink:0}
+.sinp:focus{border-color:var(--gold)}
+.rs{font-family:'Bebas Neue',cursive;font-size:1.3rem;color:var(--gold);text-align:center}
+.pp{font-size:.72rem;padding:2px 6px;border-radius:9999px;font-weight:600;text-align:center;margin-top:3px}
+.p10{background:rgba(16,185,129,.2);color:#6EE7B7}
+.p7{background:rgba(59,130,246,.2);color:#93C5FD}
+.p5{background:rgba(245,158,11,.2);color:#FCD34D}
+.p2{background:rgba(156,163,175,.2);color:#D1D5DB}
+.p0{background:rgba(239,68,68,.1);color:#FCA5A5}
+.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.875rem}
+.sc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:.875rem}
+.sc h4{font-family:'Bebas Neue',cursive;color:var(--gold);margin-bottom:.6rem;font-size:1rem}
+.pr{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.pl{font-size:.72rem;color:var(--muted);width:22px;font-weight:600}
+.ps{flex:1;background:var(--dk3);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:5px 7px;font-size:.82rem;outline:none}
+.ps:focus{border-color:var(--gold)}
+.sbar{position:fixed;bottom:0;left:0;right:0;background:var(--dk2);border-top:1px solid var(--bdr);padding:10px 1rem;z-index:99}
+.sbar-in{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.sv{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:.875rem;text-align:center}
+.svv{font-family:'Bebas Neue',cursive;font-size:1.8rem;color:var(--gold)}
+.svl{font-size:.72rem;color:var(--muted);margin-top:3px}
+.spin-wrap{display:flex;justify-content:center;align-items:center;height:180px}
+.sp{width:36px;height:36px;border:3px solid var(--bdr);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;top:70px;right:16px;background:var(--dk2);border:1px solid var(--bdr);border-left:4px solid var(--ok);padding:10px 14px;border-radius:8px;font-size:.82rem;z-index:999;animation:si .3s}
+.toast.err{border-left-color:var(--err)}
+@keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+.gb{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.tabs{display:flex;gap:3px;margin-bottom:1.25rem;background:var(--dk3);border-radius:8px;padding:3px}
+.tb{flex:1;padding:7px;border:none;background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;font-size:.78rem;font-weight:500}
+.tb.act{background:var(--card);color:var(--gold)}
+.amr{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center;padding:10px;background:var(--dk3);border-radius:8px;margin-bottom:6px}
+.hidden{display:none}
+select option{background:var(--dk3)}
+
+.bolao-card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;margin-bottom:.875rem;transition:border-color .2s}
+.bolao-card:hover{border-color:var(--gd)}
+.bolao-card.active{border-color:var(--gold);background:rgba(255,215,0,.04)}
+.invite-code{font-family:'Bebas Neue',cursive;font-size:2rem;color:var(--gold);letter-spacing:6px;text-align:center;background:var(--dk3);border-radius:8px;padding:.5rem 1rem;cursor:pointer;border:2px dashed var(--gd)}
+.invite-code:hover{border-color:var(--gold)}
+.code-input{width:100%;padding:14px;background:var(--dk3);border:2px solid var(--bdr);border-radius:8px;color:var(--gold);font-family:'Bebas Neue',cursive;font-size:1.8rem;letter-spacing:6px;text-align:center;outline:none;text-transform:uppercase}
+.code-input:focus{border-color:var(--gold)}
+.group-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
+.group-pill{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
+.group-pill.active{background:var(--gold);color:var(--dk);border-color:var(--gold)}
+.group-pill:hover{border-color:var(--gold);color:var(--gold)}
+.replicate-bar{display:flex;align-items:center;gap:10px;background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem}
+.replicate-bar label{cursor:pointer;color:var(--txt);display:flex;align-items:center;gap:8px}
+.replicate-bar input[type=checkbox]{width:16px;height:16px;accent-color:var(--gold);cursor:pointer}
+.member-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:.85rem}
+.member-row:last-child{border-bottom:none}
+.empty-state{text-align:center;padding:2rem;color:var(--muted);font-size:.875rem}
+.bolao-badge{background:rgba(255,215,0,.15);color:var(--gold);padding:2px 8px;border-radius:9999px;font-size:.7rem;font-weight:600;border:1px solid rgba(255,215,0,.3)}
+
+.deadline-badge{background:rgba(239,68,68,.15);color:#FCA5A5;border:1px solid rgba(239,68,68,.3);padding:4px 10px;border-radius:6px;font-size:.75rem;font-weight:600}
+.deadline-soon{color:#FCD34D;font-size:.7rem;margin-top:3px;text-align:center}
+.mc.locked{opacity:.7;border-left:3px solid #EF4444}
+button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:768px){.hdr-in{gap:6px}.logo{font-size:1.2rem}.ui{font-size:.75rem;gap:5px}.btn-sm{padding:3px 7px;font-size:.72rem}.main{padding:1rem .75rem;padding-bottom:80px}.mc{grid-template-columns:1fr}.tmr{justify-content:flex-start}.si{justify-content:flex-start}.amr{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.rkt{font-size:.78rem}.rkt th,.rkt td{padding:7px 6px}.card{padding:1rem}.nb{padding:8px 10px;font-size:.75rem}}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  document.getElementById('app').innerHTML = '<div style="color:#EF4444;padding:2rem;font-family:monospace;background:#0A0F1E;min-height:100vh"><h2>Erro JavaScript</h2><p>' + msg + '</p><p>Linha: ' + line + '</p><p>' + (err ? err.stack : '') + '</p></div>';
+  return true;
+};
+const { createClient } = supabase;
+const SB = createClient(
+  'https://lffpsgzytcylaudxljjr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZnBzZ3p5dGN5bGF1ZHhsampyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMjIyMzQsImV4cCI6MjA5NDg5ODIzNH0.yjg83Qz6Rc21f4tyCHfSjMYi0JKL4mykOVVAcO0FYFA'
+);
+
+// ── Copa 2026 Data ─────────────────────────────────────────────────────────
+const GROUPS = {
+  A:["Estados Unidos","Panamá","Bolívia","Nova Zelândia"],
+  B:["Argentina","Chile","Peru","Canadá"],
+  C:["México","Jamaica","Venezuela","Equador"],
+  D:["Brasil","Costa Rica","Paraguai","Austrália"],
+  E:["Alemanha","Japão","Camarões","Arábia Saudita"],
+  F:["Portugal","Polônia","Burkina Faso","Coreia do Sul"],
+  G:["França","Marrocos","Bélgica","Croácia"],
+  H:["Espanha","Sérvia","Turquia","Senegal"],
+  I:["Holanda","Dinamarca","Ucrânia","Líbia"],
+  J:["Uruguai","Colômbia","Iraque","Cazaquistão"],
+  K:["Inglaterra","Tunísia","Costa do Marfim","Eslovênia"],
+  L:["Itália","África do Sul","Cuba","Albânia"],
+};
+const FLAGS = {"Estados Unidos":"🇺🇸","Panamá":"🇵🇦","Bolívia":"🇧🇴","Nova Zelândia":"🇳🇿","Argentina":"🇦🇷","Chile":"🇨🇱","Peru":"🇵🇪","Canadá":"🇨🇦","México":"🇲🇽","Jamaica":"🇯🇲","Venezuela":"🇻🇪","Equador":"🇪🇨","Brasil":"🇧🇷","Costa Rica":"🇨🇷","Paraguai":"🇵🇾","Austrália":"🇦🇺","Alemanha":"🇩🇪","Japão":"🇯🇵","Camarões":"🇨🇲","Arábia Saudita":"🇸🇦","Portugal":"🇵🇹","Polônia":"🇵🇱","Burkina Faso":"🇧🇫","Coreia do Sul":"🇰🇷","França":"🇫🇷","Marrocos":"🇲🇦","Bélgica":"🇧🇪","Croácia":"🇭🇷","Espanha":"🇪🇸","Sérvia":"🇷🇸","Turquia":"🇹🇷","Senegal":"🇸🇳","Holanda":"🇳🇱","Dinamarca":"🇩🇰","Ucrânia":"🇺🇦","Líbia":"🇱🇾","Uruguai":"🇺🇾","Colômbia":"🇨🇴","Iraque":"🇮🇶","Cazaquistão":"🇰🇿","Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Tunísia":"🇹🇳","Costa do Marfim":"🇨🇮","Eslovênia":"🇸🇮","Itália":"🇮🇹","África do Sul":"🇿🇦","Cuba":"🇨🇺","Albânia":"🇦🇱"};
+const ALL_TEAMS = Object.values(GROUPS).flat();
+const PHASES = [
+  {key:"round16",label:"Oitavas de Final",count:16,pts:10},
+  {key:"quarter",label:"Quartas de Final",count:8,pts:10},
+  {key:"semi",label:"Semifinal",count:4,pts:10},
+  {key:"final",label:"Finalistas",count:2,pts:10},
+  {key:"champion",label:"🏆 Campeão",count:1,pts:20},
+  {key:"third",label:"🥉 Terceiro Lugar",count:1,pts:10},
+];
+// runner_up is auto-calculated from final picks
+
+// Datas dos jogos Copa 2026 (aproximadas, fuso horário de Brasília)
+const MATCH_DATES = {
+  // Grupo A
+  1:'2026-06-11',2:'2026-06-11',3:'2026-06-15',4:'2026-06-15',5:'2026-06-19',6:'2026-06-19',
+  // Grupo B
+  7:'2026-06-12',8:'2026-06-12',9:'2026-06-16',10:'2026-06-16',11:'2026-06-20',12:'2026-06-20',
+  // Grupo C
+  13:'2026-06-12',14:'2026-06-12',15:'2026-06-16',16:'2026-06-16',17:'2026-06-20',18:'2026-06-20',
+  // Grupo D
+  19:'2026-06-13',20:'2026-06-13',21:'2026-06-17',22:'2026-06-17',23:'2026-06-21',24:'2026-06-21',
+  // Grupo E
+  25:'2026-06-13',26:'2026-06-13',27:'2026-06-17',28:'2026-06-17',29:'2026-06-21',30:'2026-06-21',
+  // Grupo F
+  31:'2026-06-14',32:'2026-06-14',33:'2026-06-18',34:'2026-06-18',35:'2026-06-22',36:'2026-06-22',
+  // Grupo G
+  37:'2026-06-14',38:'2026-06-14',39:'2026-06-18',40:'2026-06-18',41:'2026-06-22',42:'2026-06-22',
+  // Grupo H
+  43:'2026-06-15',44:'2026-06-15',45:'2026-06-19',46:'2026-06-19',47:'2026-06-23',48:'2026-06-23',
+  // Grupo I
+  49:'2026-06-15',50:'2026-06-15',51:'2026-06-19',52:'2026-06-19',53:'2026-06-23',54:'2026-06-23',
+  // Grupo J
+  55:'2026-06-16',56:'2026-06-16',57:'2026-06-20',58:'2026-06-20',59:'2026-06-24',60:'2026-06-24',
+  // Grupo K
+  61:'2026-06-16',62:'2026-06-16',63:'2026-06-20',64:'2026-06-20',65:'2026-06-24',66:'2026-06-24',
+  // Grupo L
+  67:'2026-06-17',68:'2026-06-17',69:'2026-06-21',70:'2026-06-21',71:'2026-06-25',72:'2026-06-25',
+};
+
+// Datas das eliminatórias
+const KNOCKOUT_DATES = {
+  round16: '2026-06-28', quarter: '2026-07-04',
+  semi: '2026-07-09', final: '2026-07-19',
+  champion: '2026-07-19', runner_up: '2026-07-19', third: '2026-07-18',
+};
+
+function canBet(matchNum) {
+  const dateStr = MATCH_DATES[matchNum];
+  if(!dateStr) return true;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const matchDay = new Date(dateStr + 'T00:00:00');
+  return today < matchDay; // só pode apostar ANTES do dia do jogo
+}
+
+function canBetPhase(phase) {
+  const dateStr = KNOCKOUT_DATES[phase];
+  if(!dateStr) return true;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const d = new Date(dateStr + 'T00:00:00');
+  return today < d;
+}
+
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dateStr + 'T00:00:00');
+  return Math.ceil((d - today) / 86400000);
+}
+
+function genMatches(){
+  let n=1; const ms=[];
+  Object.entries(GROUPS).forEach(([g,ts])=>{
+    for(let i=0;i<ts.length;i++) for(let j=i+1;j<ts.length;j++) ms.push({num:n++,group:g,t1:ts[i],t2:ts[j]});
+  }); return ms;
+}
+const MATCHES = genMatches();
+
+function calcPts(p1,p2,r1,r2){
+  if(p1===r1&&p2===r2) return 10;
+  const pw=p1>p2?1:p1<p2?2:0,rw=r1>r2?1:r1<r2?2:0,ok=pw===rw;
+  if(ok&&(p1===r1||p2===r2)) return 7;
+  if(ok) return 5;
+  if(p1===r1||p2===r2) return 2;
+  return 0;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+let STATE = { user:null, profile:null, profiles:[], page:'dashboard', loading:true, toast:null };
+let PAGE_VERSION = 0; // increments on every page change to cancel stale queries
+let CURRENT_BOLAO = null; // bolão atualmente selecionado
+let MY_BOLAOS = []; // bolões do usuário
+let REPLICATE_ALL = true; // checkbox replicar para todos
+
+function setState(patch){ 
+  Object.assign(STATE,patch); 
+  if(patch.page) {
+    PAGE_VERSION++; // cancel any pending queries from previous page
+    matchDirty=false; grpDirty=false; koDirty=false;
+    const sb=document.getElementById('savebar'); 
+    if(sb) sb.style.display='none';
+  }
+  render(); 
+}
+
+function showToast(msg, type=''){
+  STATE.toast={msg,type};
+  render();
+  setTimeout(()=>{ STATE.toast=null; render(); }, 3500);
+}
+
+// ── DB helpers ─────────────────────────────────────────────────────────────
+async function dbQ(table, filters={}, cols='*'){
+  const version = PAGE_VERSION;
+  const timeout = new Promise((_,reject) => setTimeout(()=>reject(new Error('timeout')), 8000));
+  let q = SB.from(table).select(cols);
+  Object.entries(filters).forEach(([k,v])=>{ q=q.eq(k,v); });
+  const {data,error} = await Promise.race([q, timeout]);
+  if(PAGE_VERSION !== version) return []; // page changed, discard result
+  if(error) throw error;
+  return data||[];
+}
+
+async function dbQBolao(table, extraFilters={}, cols='*'){
+  if(!CURRENT_BOLAO) return [];
+  return dbQ(table, {bolao_id:CURRENT_BOLAO.id, ...extraFilters}, cols);
+}
+
+async function upsertWithReplicate(table, rows, conflictCols=''){
+  if(!CURRENT_BOLAO) return;
+  const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
+  for(const bolao of targetBolaos){
+    const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
+    const {error} = await SB.from(table).upsert(tagged);
+    if(error) console.error(table, error);
+  }
+}
+async function dbUpsert(table, rows){
+  const {error} = await SB.from(table).upsert(Array.isArray(rows)?rows:[rows]);
+  if(error) throw error;
+}
+async function dbDelete(table, filters={}){
+  let q = SB.from(table).delete();
+  Object.entries(filters).forEach(([k,v])=>{ q=q.eq(k,v); });
+  const {error} = await q;
+  if(error) throw error;
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function init(){
+  const {data:{session}} = await SB.auth.getSession();
+  if(session?.user) await loadProfile(session.user);
+  else {
+    // Check URL for invite code
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    if(urlCode) localStorage.setItem('pending_invite',urlCode.toUpperCase());
+    setState({loading:false});
+  }
+  SB.auth.onAuthStateChange(async(_,sess)=>{
+    if(sess?.user) await loadProfile(sess.user);
+    else setState({user:null,profile:null,loading:false});
+  });
+}
+
+async function loadProfile(u){
+  STATE.user=u;
+  const [pp,all] = await Promise.all([dbQ('profiles',{id:u.id}), dbQ('profiles',{},'id,display_name,is_admin')]);
+  STATE.profile = pp[0]||null;
+  STATE.profiles = all||[];
+  await loadMyBolaos(u.id);
+  // Check pending invite from URL
+  const pendingCode = localStorage.getItem('pending_invite');
+  if(pendingCode) {
+    localStorage.removeItem('pending_invite');
+    try {
+      const groups = await dbQ('bolao_groups',{invite_code:pendingCode});
+      if(groups&&groups.length>0){
+        const group=groups[0];
+        const existing=await dbQ('bolao_members',{bolao_id:group.id,user_id:u.id});
+        if(!existing||existing.length===0){
+          await SB.from('bolao_members').insert({bolao_id:group.id,user_id:u.id,replicate_preds:true});
+          await loadMyBolaos(u.id);
+          CURRENT_BOLAO=MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
+          showToast('✅ Entrou automaticamente no bolão "'+group.name+'"!');
+        }
+      }
+    } catch(e){ console.warn('Pending invite error:',e); }
+  }
+  if(MY_BOLAOS.length>0 && !CURRENT_BOLAO) CURRENT_BOLAO=MY_BOLAOS[0];
+  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
+}
+
+async function loadMyBolaos(uid){
+  try {
+    const members = await dbQ('bolao_members',{user_id:uid},'bolao_id,replicate_preds');
+    if(!members||members.length===0){ MY_BOLAOS=[]; CURRENT_BOLAO=null; return; }
+    const ids = members.map(m=>m.bolao_id);
+    const groups = await dbQ('bolao_groups',{},'id,name,invite_code,created_by,description');
+    MY_BOLAOS = groups.filter(g=>ids.includes(g.id)).map(g=>({
+      ...g, replicate: members.find(m=>m.bolao_id===g.id)?.replicate_preds??true
+    }));
+    if(!CURRENT_BOLAO && MY_BOLAOS.length>0) CURRENT_BOLAO = MY_BOLAOS[0];
+  } catch(e){ MY_BOLAOS=[]; CURRENT_BOLAO=null; }
+}
+
+async function signIn(email,pw){
+  const {error} = await SB.auth.signInWithPassword({email,password:pw});
+  if(error) throw error;
+}
+async function signUp(email,pw,username,displayName){
+  const {data,error} = await SB.auth.signUp({email,password:pw});
+  if(error) throw error;
+  if(data.user){
+    await dbUpsert('profiles',{id:data.user.id,username:username.toLowerCase().replace(/\s/g,'_'),display_name:displayName||username});
+  }
+  return data;
+}
+async function logout(){
+  await SB.auth.signOut();
+  setState({user:null,profile:null,page:'dashboard'});
+}
+
+// ── Render engine ──────────────────────────────────────────────────────────
+function el(tag, attrs={}, ...children){
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==='class') e.className=v;
+    else if(k.startsWith('on')) e[k]=v;
+    else if(k==='style') Object.assign(e.style,v);
+    else e.setAttribute(k,v);
+  });
+  children.flat().forEach(c=>{ if(c==null||c===false) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
+  return e;
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML='';
+  if(STATE.loading){ app.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'}))); return; }
+  if(!STATE.user||!STATE.profile){ app.appendChild(renderAuth()); return; }
+  app.appendChild(renderApp());
+}
+
+// ── Auth Screen ────────────────────────────────────────────────────────────
+function renderAuth(){
+  let mode='login', err='', ok='', busy=false;
+  const wrap = el('div',{class:'auth-wrap'});
+  const box = el('div',{class:'auth-box'});
+  wrap.appendChild(box);
+
+  function rebuild(){
+    box.innerHTML='';
+    box.appendChild(el('div',{class:'auth-logo'},'⚽ BOLÃO'));
+    box.appendChild(el('div',{class:'auth-sub'},'Copa do Mundo 2026 — EUA / Canadá / México 🏆'));
+    const card = el('div',{class:'card'});
+    if(err) card.appendChild(el('div',{class:'err-box'},err));
+    if(ok) card.appendChild(el('div',{class:'ok-box'},ok));
+
+    const emailI = el('input',{class:'fi',type:'email',placeholder:'seu@email.com'});
+    card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Email'),emailI));
+
+    let usernameI, nameI;
+    if(mode==='register'){
+      usernameI = el('input',{class:'fi',placeholder:'apelido_no_bolao'});
+      nameI = el('input',{class:'fi',placeholder:'Como quer aparecer no ranking'});
+      card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome de usuário'),usernameI));
+      card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome de exibição'),nameI));
+    }
+
+    const pwI = el('input',{class:'fi',type:'password',placeholder:'••••••••'});
+    card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Senha'),pwI));
+
+    const btn = el('button',{class:'btn btn-p btn-full', onclick: async()=>{
+      err=''; ok=''; busy=true; rebuild();
+      try{
+        if(mode==='login'){
+          await signIn(emailI.value, pwI.value);
+        } else {
+          const d = await signUp(emailI.value, pwI.value, usernameI.value, nameI.value);
+          if(!d.session) { ok='Conta criada! Faça login.'; mode='login'; }
+        }
+      }catch(e){ err=e.message; }
+      busy=false; rebuild();
+    }}, busy?'Aguarde...':(mode==='login'?'Entrar':'Criar Conta'));
+    card.appendChild(btn);
+
+    const toggle = el('div',{class:'auth-toggle'});
+    const tb = el('button',{onclick:()=>{mode=mode==='login'?'register':'login';err='';ok='';rebuild();}},
+      mode==='login'?'Cadastrar':'Entrar');
+    toggle.appendChild(document.createTextNode(mode==='login'?'Não tem conta? ':'Já tem conta? '));
+    toggle.appendChild(tb);
+    card.appendChild(toggle);
+    box.appendChild(card);
+  }
+  rebuild();
+  return wrap;
+}
+
+// ── Main App Shell ─────────────────────────────────────────────────────────
+function renderApp(){
+  const wrap = el('div');
+  // Toast
+  if(STATE.toast){
+    wrap.appendChild(el('div',{class:`toast${STATE.toast.type==='err'?' err':''}`},STATE.toast.msg));
+  }
+  // Header
+  const hdr = el('div',{class:'hdr'});
+  const hdrIn = el('div',{class:'hdr-in'});
+  hdrIn.appendChild(el('div',{class:'logo'},'⚽ BOLÃO ',el('span',{},'COPA 2026')));
+  const ui = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem'}});
+  const nameWrap = el('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:'1.2'}});
+  nameWrap.appendChild(el('span',{},STATE.profile.display_name));
+  if(CURRENT_BOLAO) nameWrap.appendChild(el('span',{style:{fontSize:'.62rem',color:'var(--gold)',fontWeight:'600'}},'📍 '+CURRENT_BOLAO.name));
+  ui.appendChild(nameWrap);
+  if(STATE.profile.is_admin) ui.appendChild(el('span',{class:'badge'},'ADMIN'));
+  ui.appendChild(el('button',{class:'btn btn-o btn-sm',onclick:logout},'Sair'));
+  hdrIn.appendChild(ui);
+  hdr.appendChild(hdrIn);
+  wrap.appendChild(hdr);
+
+  // Nav
+  const nav = el('div',{class:'nav'});
+  const navIn = el('div',{class:'nav-in'});
+  const navItems = [
+    {key:'bolaos',label:'🎯 Meus Bolões'},
+    {key:'dashboard',label:'🏆 Ranking'},
+    {key:'matches',label:'⚽ 1ª Fase'},
+    {key:'standings',label:'📊 Grupos'},
+    {key:'knockout',label:'🔥 Eliminat.'},
+    {key:'mine',label:'📋 Meus Pts'},
+    ...(STATE.profile.is_admin?[{key:'admin',label:'🔧 Admin'}]:[]),
+  ];
+  navItems.forEach(n=>{
+    const isAct = STATE.page===n.key;
+    const btn = el('button',{class:`nb${isAct?' act':''}`,onclick:()=>setState({page:n.key})},n.label);
+    navIn.appendChild(btn);
+    if(isAct) {
+      // Scroll active item into center after render
+      setTimeout(()=>{
+        const nav = navIn.parentElement;
+        if(nav) {
+          const btnLeft = btn.offsetLeft;
+          const btnWidth = btn.offsetWidth;
+          const navWidth = nav.offsetWidth;
+          nav.scrollLeft = btnLeft - (navWidth/2) + (btnWidth/2);
+        }
+      }, 50);
+    }
+  });
+  nav.appendChild(navIn);
+  wrap.appendChild(nav);
+
+  // Main content
+  const main = el('div',{class:'main'});
+  const page = STATE.page;
+  if(page==='bolaos') renderBolaos(main);
+  else if(page==='dashboard') renderDashboard(main);
+  else if(page==='matches') renderMatches(main);
+  else if(page==='standings') renderStandings(main);
+  else if(page==='knockout') renderKnockout(main);
+  else if(page==='mine') renderMine(main);
+  else if(page==='admin'&&STATE.profile.is_admin) renderAdmin(main);
+  wrap.appendChild(main);
+  return wrap;
+}
+
+
+function renderGroupSelector(main, onSelect) {
+  if(MY_BOLAOS.length === 0) {
+    const warn = el('div',{style:{background:'rgba(239,68,68,.1)',border:'1px solid #EF4444',borderRadius:'8px',padding:'.875rem',marginBottom:'1rem',fontSize:'.82rem',color:'#FCA5A5'}},
+      '⚠️ Você não está em nenhum bolão ainda. Vá em 🎯 Meus Bolões para criar ou entrar em um.');
+    main.appendChild(warn);
+    return false;
+  }
+  if(MY_BOLAOS.length === 1 && CURRENT_BOLAO) return true; // só 1 bolão, sem seletor
+
+  const bar = el('div',{class:'group-selector'});
+  bar.appendChild(el('span',{style:{fontSize:'.78rem',color:'var(--muted)',fontWeight:'600'}},'BOLÃO:'));
+  MY_BOLAOS.forEach(b => {
+    const isAct = CURRENT_BOLAO?.id===b.id;
+    const pill = el('button',{
+      class:'group-pill'+(isAct?' active':''),
+      onclick:()=>{ CURRENT_BOLAO=b; onSelect(); }
+    }, b.name);
+    if(isAct){ pill.style.background='var(--gold)'; pill.style.color='#0A0F1E'; pill.style.borderColor='var(--gold)'; pill.style.fontWeight='700'; }
+    bar.appendChild(pill);
+  });
+  main.appendChild(bar);
+  return true;
+}
+
+function renderReplicateBar(main, onToggle) {
+  if(MY_BOLAOS.length <= 1) return;
+  const member = MY_BOLAOS.find(b=>b.id===CURRENT_BOLAO?.id);
+  const checked = member?.replicate ?? true;
+  const bar = el('div',{class:'replicate-bar'});
+  const cb = el('input',{type:'checkbox'}); cb.checked = checked;
+  cb.onchange = async () => {
+    REPLICATE_ALL = cb.checked;
+    // Save preference
+    await SB.from('bolao_members').upsert({bolao_id:CURRENT_BOLAO.id, user_id:STATE.profile.id, replicate_preds:cb.checked});
+    if(MY_BOLAOS.find(b=>b.id===CURRENT_BOLAO.id)) MY_BOLAOS.find(b=>b.id===CURRENT_BOLAO.id).replicate=cb.checked;
+    if(onToggle) onToggle(cb.checked);
+  };
+  const lbl = el('label',{},cb, '✨ Replicar meus palpites para todos os meus bolões');
+  bar.appendChild(lbl);
+  if(!checked) bar.appendChild(el('span',{style:{color:'var(--gold)',fontSize:'.75rem',marginLeft:'auto'}},'Palpitando só em: '+CURRENT_BOLAO?.name));
+  main.appendChild(bar);
+}
+
+
+// ── Bolões Page ────────────────────────────────────────────────────────────
+function renderBolaos(main) {
+  main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'🎯 Meus Bolões'));
+
+  // ── Bolões existentes ──
+  if(MY_BOLAOS.length > 0) {
+    MY_BOLAOS.forEach(b => {
+      const isCreator = b.created_by === STATE.profile.id;
+      const shareLink = `${window.location.origin}${window.location.pathname}?code=${b.invite_code}`;
+      const card = el('div',{class:`bolao-card${CURRENT_BOLAO?.id===b.id?' active':''}`});
+
+      // Header: nome + badge ativo
+      const hdr = el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.875rem'}});
+      const nameWrap = el('div');
+      nameWrap.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:'var(--gold)'}},b.name));
+      if(b.description) nameWrap.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginTop:'2px'}},b.description));
+      const badges = el('div',{style:{display:'flex',gap:'6px',marginTop:'4px',flexWrap:'wrap'}});
+      if(isCreator) badges.appendChild(el('span',{class:'bolao-badge'},'👑 Criador'));
+      if(CURRENT_BOLAO?.id===b.id) badges.appendChild(el('span',{class:'bolao-badge',style:{background:'rgba(16,185,129,.2)',color:'#6EE7B7',border:'1px solid #10B981'}},'✓ Ativo'));
+      nameWrap.appendChild(badges);
+      hdr.appendChild(nameWrap);
+      card.appendChild(hdr);
+
+      // ── Link de convite ── (destaque principal)
+      const inviteBox = el('div',{style:{background:'var(--dk3)',border:'1px solid rgba(255,215,0,.25)',borderRadius:'10px',padding:'1rem',marginBottom:'.875rem'}});
+      inviteBox.appendChild(el('div',{style:{fontSize:'.7rem',color:'var(--muted)',marginBottom:'.5rem',fontWeight:'600',letterSpacing:'.05em'}},'🔗 LINK DE CONVITE — compartilhe no WhatsApp'));
+      
+      // Link display
+      const linkDisplay = el('div',{style:{background:'var(--dk)',borderRadius:'6px',padding:'8px 10px',fontSize:'.75rem',color:'var(--muted)',wordBreak:'break-all',marginBottom:'.75rem',fontFamily:'monospace'}},shareLink);
+      inviteBox.appendChild(linkDisplay);
+
+      // Action buttons
+      const btnRow = el('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}});
+      
+      const copyBtn = el('button',{class:'btn btn-p btn-sm',onclick:()=>{
+        navigator.clipboard.writeText(shareLink).then(()=>showToast('✅ Link copiado! Cole no WhatsApp 📱'));
+      }},'📋 Copiar Link');
+
+      const shareBtn = el('button',{class:'btn btn-o btn-sm',onclick:()=>{
+        if(navigator.share){
+          navigator.share({title:`Bolão ${b.name} — Copa 2026`,text:`Entre no nosso bolão da Copa 2026! Use o código ${b.invite_code} ou acesse:`,url:shareLink});
+        } else {
+          navigator.clipboard.writeText(shareLink).then(()=>showToast('✅ Link copiado!'));
+        }
+      }},'📱 Compartilhar');
+
+      btnRow.appendChild(copyBtn);
+      btnRow.appendChild(shareBtn);
+      inviteBox.appendChild(btnRow);
+
+      // Código separado abaixo
+      const codeRow = el('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'.75rem'}});
+      codeRow.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)'}},'Ou só o código:'));
+      const codeEl = el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.4rem',color:'var(--gold)',letterSpacing:'4px',cursor:'pointer'},onclick:()=>{
+        navigator.clipboard.writeText(b.invite_code).then(()=>showToast('✅ Código '+b.invite_code+' copiado!'));
+      }},b.invite_code+' 📋');
+      codeRow.appendChild(codeEl);
+      inviteBox.appendChild(codeRow);
+      card.appendChild(inviteBox);
+
+      // Participantes + botão ativar
+      const footer = el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}});
+      const membersEl = el('div',{style:{fontSize:'.78rem',color:'var(--muted)'}},'👥 carregando...');
+      loadBolaoMembers(b.id).then(members => { membersEl.textContent=`👥 ${members.length} participante${members.length!==1?'s':''}`; });
+      footer.appendChild(membersEl);
+
+      const footerBtns = el('div',{style:{display:'flex',gap:'6px'}});
+      if(CURRENT_BOLAO?.id!==b.id){
+        const activateBtn = el('button',{class:'btn btn-s btn-sm',onclick:()=>{ CURRENT_BOLAO=b; setState({page:'dashboard'}); }},'✓ Ativar e ir ao Ranking');
+        footerBtns.appendChild(activateBtn);
+      }
+      if(!isCreator){
+        const leaveBtn = el('button',{class:'btn btn-d btn-sm',onclick:async()=>{
+          if(!confirm('Sair do bolão "'+b.name+'"?')) return;
+          await SB.from('bolao_members').delete().eq('bolao_id',b.id).eq('user_id',STATE.profile.id);
+          await loadMyBolaos(STATE.profile.id);
+          if(CURRENT_BOLAO?.id===b.id) CURRENT_BOLAO=MY_BOLAOS[0]||null;
+          renderBolaos(main); showToast('Você saiu do bolão.');
+        }},'Sair');
+        footerBtns.appendChild(leaveBtn);
+      }
+      if(isCreator){
+        const delBtn = el('button',{class:'btn btn-d btn-sm',onclick:async()=>{
+          if(!confirm('⚠️ Excluir o bolão "'+b.name+'"? Isso remove todos os palpites dos participantes. Esta ação não pode ser desfeita!')) return;
+          if(!confirm('Tem certeza? Todos os dados do bolão serão perdidos.')) return;
+          try {
+            // Delete all predictions for this bolao
+            await SB.from('match_predictions').delete().eq('bolao_id',b.id);
+            await SB.from('group_predictions').delete().eq('bolao_id',b.id);
+            await SB.from('knockout_predictions').delete().eq('bolao_id',b.id);
+            await SB.from('scorer_predictions').delete().eq('bolao_id',b.id);
+            await SB.from('bolao_members').delete().eq('bolao_id',b.id);
+            await SB.from('bolao_groups').delete().eq('id',b.id);
+            await loadMyBolaos(STATE.profile.id);
+            if(CURRENT_BOLAO?.id===b.id) CURRENT_BOLAO=MY_BOLAOS[0]||null;
+            renderBolaos(main);
+            showToast('✅ Bolão "'+b.name+'" excluído.');
+          } catch(e){ showToast('Erro: '+e.message,'err'); }
+        }},'🗑 Excluir Bolão');
+        footerBtns.appendChild(delBtn);
+      }
+      footer.appendChild(footerBtns);
+      card.appendChild(footer);
+      main.appendChild(card);
+    });
+  } else {
+    const empty = el('div',{style:{textAlign:'center',padding:'1.5rem',color:'var(--muted)',fontSize:'.875rem',background:'var(--card)',borderRadius:'12px',border:'1px solid var(--bdr)',marginBottom:'1rem'}});
+    empty.appendChild(el('div',{style:{fontSize:'2rem',marginBottom:'.5rem'}},'🎯'));
+    empty.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.25rem',color:'var(--txt)'}},'Nenhum bolão ainda'));
+    empty.appendChild(document.createTextNode('Crie um bolão abaixo ou entre com um código de convite'));
+    main.appendChild(empty);
+  }
+
+  // ── Criar novo bolão ──
+  const createCard = el('div',{class:'card'});
+  createCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.875rem',fontSize:'1.1rem'}},'➕ Criar Novo Bolão'));
+  
+  const nameI = el('input',{class:'fi',placeholder:'Nome do bolão (ex: Galera da Rua, Bolão Trabalho...)',style:{marginBottom:'.75rem'}});
+  const descI = el('input',{class:'fi',placeholder:'Descrição opcional (ex: Bolão do pessoal do escritório)',style:{marginBottom:'.875rem'}});
+  
+  const createBtn = el('button',{class:'btn btn-p',style:{width:'100%'},onclick:async()=>{
+    const nome = nameI.value.trim();
+    if(!nome){ showToast('Digite o nome do bolão','err'); return; }
+    createBtn.disabled=true; createBtn.textContent='Criando...';
+    try {
+      const code = Array.from({length:6},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+      const {data:bg, error:be} = await SB.from('bolao_groups').insert({
+        name:nome, description:descI.value.trim()||null,
+        invite_code:code, created_by:STATE.profile.id
+      }).select().single();
+      if(be) throw be;
+      await SB.from('bolao_members').insert({bolao_id:bg.id, user_id:STATE.profile.id, replicate_preds:true});
+      await loadMyBolaos(STATE.profile.id);
+      CURRENT_BOLAO = MY_BOLAOS.find(b=>b.id===bg.id)||MY_BOLAOS[0];
+      nameI.value=''; descI.value='';
+      renderBolaos(main);
+      showToast('✅ Bolão "'+nome+'" criado!');
+    } catch(e){ showToast(e.message,'err'); createBtn.disabled=false; createBtn.textContent='Criar Bolão'; }
+  }},'🎯 Criar Bolão');
+  
+  createCard.appendChild(nameI);
+  createCard.appendChild(descI);
+  createCard.appendChild(createBtn);
+  main.appendChild(createCard);
+
+  // ── Entrar com código ──
+  const joinCard = el('div',{class:'card',style:{marginBottom:'2rem'}});
+  joinCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.5rem',fontSize:'1.1rem'}},'🔑 Entrar com Código de Convite'));
+  joinCard.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'.875rem'}},'Recebeu um código de 6 letras? Digite aqui:'));
+  
+  const codeI = el('input',{class:'code-input',placeholder:'ABC123',maxlength:'6'});
+  codeI.oninput=()=>{ codeI.value=codeI.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
+  
+  const joinBtn = el('button',{class:'btn btn-p',style:{width:'100%',marginTop:'.75rem'},onclick:async()=>{
+    const code = codeI.value.trim().toUpperCase();
+    if(code.length!==6){ showToast('O código tem 6 caracteres','err'); return; }
+    joinBtn.disabled=true; joinBtn.textContent='Buscando...';
+    try {
+      const groups = await dbQ('bolao_groups',{invite_code:code});
+      if(!groups||groups.length===0) throw new Error('Código não encontrado. Verifique e tente novamente.');
+      const group = groups[0];
+      const existing = await dbQ('bolao_members',{bolao_id:group.id,user_id:STATE.profile.id});
+      if(existing&&existing.length>0){ showToast('Você já está neste bolão!'); joinBtn.disabled=false; joinBtn.textContent='Entrar no Bolão'; return; }
+      await SB.from('bolao_members').insert({bolao_id:group.id, user_id:STATE.profile.id, replicate_preds:true});
+      await loadMyBolaos(STATE.profile.id);
+      CURRENT_BOLAO = MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
+      codeI.value='';
+      renderBolaos(main);
+      showToast('✅ Entrou no bolão "'+group.name+'"! Bem-vindo!');
+    } catch(e){ showToast(e.message,'err'); }
+    joinBtn.disabled=false; joinBtn.textContent='Entrar no Bolão';
+  }},'Entrar no Bolão');
+  
+  joinCard.appendChild(codeI);
+  joinCard.appendChild(joinBtn);
+  main.appendChild(joinCard);
+}
+
+async function loadBolaoMembers(bolaoId) {
+  try {
+    const members = await dbQ('bolao_members',{bolao_id:bolaoId},'user_id');
+    return members||[];
+  } catch { return []; }
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+function renderDashboard(main){
+  const v = PAGE_VERSION;
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  const bolaoId = CURRENT_BOLAO?.id;
+  const mFilter = bolaoId?{bolao_id:bolaoId}:{};
+  Promise.all([
+    dbQ('match_predictions',mFilter,'user_id,points'),
+    dbQ('group_predictions',mFilter,'user_id,points'),
+    dbQ('knockout_predictions',mFilter,'user_id,points'),
+    dbQ('scorer_predictions',mFilter,'user_id,points'),
+  ]).then(([mp,gp,kp,sp])=>{
+    if(PAGE_VERSION !== v) return; // stale, abort
+    main.innerHTML='';
+    const totals={};
+    STATE.profiles.forEach(p=>{ totals[p.id]={m:0,g:0,k:0,s:0,prof:p}; });
+    (mp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].m+=(r.points||0); });
+    (gp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].g+=(r.points||0); });
+    (kp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].k+=(r.points||0); });
+    (sp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].s+=(r.points||0); });
+    const rows=Object.values(totals).map(t=>({...t,total:t.m+t.g+t.k+t.s})).sort((a,b)=>b.total-a.total);
+
+    const stats=el('div',{class:'stats'});
+    [{v:STATE.profiles.length,l:'Participantes'},{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
+      .forEach(s=>stats.appendChild(el('div',{class:'sv'},el('div',{class:'svv'},''+s.v),el('div',{class:'svl'},s.l))));
+    main.appendChild(stats);
+
+    const card=el('div',{class:'card'});
+    card.appendChild(el('div',{class:'ch'},'🏆 Ranking Geral'));
+    const t=el('table',{class:'rkt'});
+    t.appendChild(el('thead',{},el('tr',{},
+      ...['#','Participante','Jogos','Grupos','Fases','Artilheiro','Total'].map(h=>el('th',{},h))
+    )));
+    const em=['🥇','🥈','🥉'],rc=['r1','r2','r3'];
+    const tbody=el('tbody');
+    rows.forEach((r,i)=>{
+      const tr=el('tr');
+      tr.appendChild(el('td',{class:rc[i]||''},em[i]||`${i+1}º`));
+      const nameTd=el('td');
+      const nameSpan=el('span',{style:{fontWeight:r.prof.id===STATE.profile.id?'700':'400',color:r.prof.id===STATE.profile.id?'var(--gold)':'inherit'}},r.prof.display_name);
+      nameTd.appendChild(nameSpan);
+      if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
+      tr.appendChild(nameTd);
+      [r.m,r.g,r.k,r.s].forEach(v=>tr.appendChild(el('td',{},''+v)));
+      const totalTd=el('td'); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
+      tbody.appendChild(tr);
+    });
+    t.appendChild(tbody);
+    const tw=el('div',{class:'rkt-wrap'}); tw.appendChild(t); card.appendChild(tw);
+    main.appendChild(card);
+  });
+}
+
+// ── Group Matches ──────────────────────────────────────────────────────────
+let matchPreds={}, realScores={}, matchDirty=false, activeGrp='A';
+function renderMatches(main){
+  const v = PAGE_VERSION;
+  main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'⚽ Palpites dos Jogos — 1ª Fase'));
+  if(!CURRENT_BOLAO){
+    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center',marginTop:'1rem'}});
+    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
+    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
+    w.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.85rem',marginBottom:'1rem'}},'Você precisa estar em um bolão para palpitar'));
+    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
+    main.appendChild(w);
+    return;
+  }
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  Promise.all([
+    dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points'),
+    dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished'),
+  ]).then(([mp,rm])=>{
+    if(PAGE_VERSION !== v) return;
+    matchPreds={};
+    (mp||[]).forEach(p=>{ matchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points}; });
+    realScores={};
+    (rm||[]).forEach(m=>{ realScores[m.match_number]=m; });
+    matchDirty=false;
+    buildMatchesUI(main);
+  }).catch(e=>{ if(e.message!=='timeout'&&PAGE_VERSION===v) console.error('matches:',e); });
+}
+function makeMatchCtrl(initVal, onChange) {
+  let val = initVal;
+  const wrap = el('div',{style:{display:'flex',alignItems:'center',gap:'2px'}});
+  const mn = el('button',{class:'score-btn'},'-');
+  const dsp = el('span',{class:'score-val'},''+val);
+  const pl = el('button',{class:'score-btn'},'+');
+  mn.onclick=()=>{ if(val>0){val--;dsp.textContent=val;onChange(val);matchDirty=true;updateSaveBar();} };
+  pl.onclick=()=>{ if(val<9){val++;dsp.textContent=val;onChange(val);matchDirty=true;updateSaveBar();} };
+  wrap.appendChild(mn); wrap.appendChild(dsp); wrap.appendChild(pl);
+  return wrap;
+}
+
+function buildMatchesUI(main){
+  main.innerHTML='';
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMatches(main));
+  renderReplicateBar(main, ()=>buildMatchesUI(main));
+  
+  // Default score bar (values persist across group switches)
+  if(typeof buildMatchesUI.defS1 === 'undefined') { buildMatchesUI.defS1=1; buildMatchesUI.defS2=0; }
+  let defS1=buildMatchesUI.defS1, defS2=buildMatchesUI.defS2;
+  const defBar=el('div',{style:{background:'rgba(255,215,0,.06)',border:'1px solid rgba(255,215,0,.2)',borderRadius:'8px',padding:'.6rem 1rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}});
+  defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
+  defBar.appendChild(makeMatchCtrl(defS1, v=>{ defS1=v; buildMatchesUI.defS1=v; }));
+  defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+  defBar.appendChild(makeMatchCtrl(defS2, v=>{ defS2=v; buildMatchesUI.defS2=v; }));
+  
+  const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:()=>{
+    let applied=0;
+    MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
+      if(!canBet(m.num)) return;
+      // Apply if no prediction exists (s1 undefined means never palpited)
+      const hasPred = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
+      if(!hasPred){
+        matchPreds[m.num]={s1:defS1,s2:defS2};
+        applied++;
+      }
+    });
+    if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+defS1+'×'+defS2+' aplicado em '+applied+' jogos!'); }
+    else showToast('Todos os jogos já têm palpite!');
+  }},'Aplicar a jogos sem palpite');
+  defBar.appendChild(applyBtn);
+  main.appendChild(defBar);
+
+  // Group filter buttons
+  const gb=el('div',{class:'gb'});
+  Object.keys(GROUPS).forEach(g=>{
+    gb.appendChild(el('button',{class:'gb-btn'+(g===activeGrp?' active':''),onclick:()=>{activeGrp=g;buildMatchesUI(main);}},g==='A'?'Grupo A':g==='B'?'Grupo B':g==='C'?'Grupo C':g==='D'?'Grupo D':g==='E'?'Grupo E':g==='F'?'Grupo F':g==='G'?'Grupo G':g==='H'?'Grupo H':g==='I'?'Grupo I':g==='J'?'Grupo J':g==='K'?'Grupo K':'Grupo L'));
+  });
+  main.appendChild(gb);
+
+  const grpTeams = GROUPS[activeGrp];
+  const grpInfo = el('div',{style:{color:'var(--muted)',fontSize:'.78rem',margin:'.5rem 0'}});
+  grpInfo.appendChild(document.createTextNode('Grupo '+activeGrp+' — '));
+  grpTeams.forEach((t,i)=>{ if(i>0) grpInfo.appendChild(document.createTextNode(' · ')); grpInfo.appendChild(el('span',{},FLAGS[t]||'',t)); });
+  main.appendChild(grpInfo);
+
+  MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
+    const p=matchPreds[m.num]||{}, r=realScores[m.num];
+    const hasResult = r?.is_finished && r.real_score1!==undefined;
+    const canBetNow = canBet(m.num);
+    const locked = !canBetNow;
+    const pts = (hasResult && p.s1!==undefined)
+      ? calcPts(p.s1, p.s2||0, r.real_score1, r.real_score2) : 0;
+    const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+    const dateStr2 = MATCH_DATES[m.num];
+    const dateLabel = dateStr2 ? new Date(dateStr2+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
+
+    const mc = el('div',{class:'mc'+(hasResult?' fin':'')+(locked&&!hasResult?' locked':'')});
+
+    // Date row
+    if(dateLabel) mc.appendChild(el('div',{style:{fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},dateLabel));
+
+    // Teams row
+    const teamsRow = el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.4rem'}});
+    teamsRow.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t1]||'🏳'));
+    teamsRow.appendChild(el('span',{style:{fontSize:'.72rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.t1));
+    teamsRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:'0'}},' × '));
+    teamsRow.appendChild(el('span',{style:{fontSize:'.72rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}},m.t2));
+    teamsRow.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t2]||'🏳'));
+    mc.appendChild(teamsRow);
+
+    // Score row
+    const v1=p.s1!==undefined?p.s1:0, v2=p.s2!==undefined?p.s2:0;
+    if(canBetNow) {
+      const scoreRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',marginBottom:'.3rem'}});
+      scoreRow.appendChild(makeMatchCtrl(v1, v=>{ matchPreds[m.num]={...(matchPreds[m.num]||{}),s1:v,s2:matchPreds[m.num]?.s2??0}; }));
+      scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 3px'}},'×'));
+      scoreRow.appendChild(makeMatchCtrl(v2, v=>{ matchPreds[m.num]={...(matchPreds[m.num]||{}),s2:v,s1:matchPreds[m.num]?.s1??0}; }));
+      mc.appendChild(scoreRow);
+      if(hasResult) {
+        const curPts = p.s1!==undefined ? calcPts(p.s1,p.s2||0,r.real_score1,r.real_score2) : 0;
+        const curCls = curPts===10?'p10':curPts===7?'p7':curPts===5?'p5':curPts===2?'p2':'p0';
+        const realRow = el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.2rem'}});
+        realRow.appendChild(document.createTextNode('Resultado real: '));
+        realRow.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontFamily:"'Bebas Neue',cursive",fontSize:'.9rem'}},r.real_score1+' — '+r.real_score2));
+        realRow.appendChild(el('span',{class:'pp '+curCls,style:{marginLeft:'4px',fontSize:'.65rem'}},curPts+'pts'));
+        mc.appendChild(realRow);
+      }
+    } else {
+      const lockRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',marginBottom:'.3rem'}});
+      if(hasResult) {
+        lockRow.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:'var(--gold)'}},r.real_score1+' — '+r.real_score2));
+      } else {
+        lockRow.appendChild(el('span',{style:{fontSize:'.8rem',color:'var(--muted)'}},'🔒 Prazo encerrado'));
+      }
+      mc.appendChild(lockRow);
+    }
+
+    // Pred row - only show when locked (past deadline)
+    if(locked) {
+      const sep = el('div',{style:{borderTop:'1px solid rgba(45,55,72,.5)',marginTop:'.3rem',paddingTop:'.3rem',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',flexWrap:'wrap'}});
+      sep.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'Meu palpite:'));
+      if(p.s1!==undefined) {
+        sep.appendChild(el('span',{style:{fontSize:'.75rem',color:'#94A3B8',fontWeight:'600'}},p.s1+' × '+p.s2));
+        if(hasResult) sep.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem'}},pts+'pts'));
+      } else {
+        sep.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)'}},'Sem palpite'));
+        if(hasResult) sep.appendChild(el('span',{class:'pp p0',style:{fontSize:'.65rem'}},'0pts'));
+      }
+      mc.appendChild(sep);
+    }
+    main.appendChild(mc);
+  });
+  updateSaveBar();
+}
+
+function updateSaveBar(){
+  let sb=document.getElementById('savebar');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
+  sb.innerHTML='';
+  if(!matchDirty){ sb.style.display='none'; return; }
+  sb.style.display='flex';
+  const inn=el('div',{class:'sbar-in'});
+  inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Alterações não salvas'));
+  inn.appendChild(el('button',{class:'btn btn-p',onclick:saveMatches},'💾 Salvar Palpites'));
+  sb.appendChild(inn);
+}
+async function saveMatches(){
+  const rows=[];
+  MATCHES.forEach(m=>{
+    const p=matchPreds[m.num];
+    if(p&&p.s1!==undefined&&p.s2!==undefined){
+      const r=realScores[m.num];
+      const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
+      rows.push({user_id:STATE.profile.id,match_number:m.num,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
+    }
+  });
+  try{ await upsertWithReplicate('match_predictions',rows); matchDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateSaveBar(); }
+  catch(e){ showToast(e.message,'err'); }
+}
+
+// ── Group Standings ────────────────────────────────────────────────────────
+let grpPreds={}, grpReal={}, grpDirty=false;
+function renderStandings(main){
+  const v = PAGE_VERSION;
+  main.appendChild(el('div',{class:'ch'},'📊 Classificação dos Grupos'));
+  if(!CURRENT_BOLAO){
+    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center'}});
+    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
+    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
+    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
+    main.appendChild(w); return;
+  }
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
+  renderReplicateBar(main, ()=>renderStandings(main));
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  Promise.all([
+    CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'group_id,position,team_name,points') : Promise.resolve([]),
+    dbQ('real_group_standings',{},'group_id,position,team_name'),
+  ]).then(([gp,rs])=>{
+    if(PAGE_VERSION !== v) return;
+    main.innerHTML='';
+    main.appendChild(el('div',{class:'ch'},'📊 Classificação dos Grupos'));
+    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
+    renderReplicateBar(main, ()=>buildStandingsUI(main));
+    grpPreds={};
+    (gp||[]).forEach(p=>{ if(!grpPreds[p.group_id])grpPreds[p.group_id]={}; grpPreds[p.group_id][p.position]={team:p.team_name,pts:p.points}; });
+    grpReal={};
+    (rs||[]).forEach(r=>{ if(!grpReal[r.group_id])grpReal[r.group_id]={}; grpReal[r.group_id][r.position]=r.team_name; });
+    grpDirty=false;
+    buildStandingsUI(main);
+  });
+}
+function buildStandingsUI(main){
+  main.innerHTML='';
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1ª posição exata = 10pts · Classificada mas posição errada = 5pts'));
+  const grid=el('div',{class:'sg'});
+  Object.entries(GROUPS).forEach(([g,teams])=>{
+    const sc=el('div',{class:'sc'});
+    sc.appendChild(el('h4',{},'GRUPO '+g));
+    [1,2,3,4].forEach(pos=>{
+      const curr=grpPreds[g]?.[pos]?.team||'';
+      const rTeam=grpReal[g]?.[pos];
+      const pts=grpPreds[g]?.[pos]?.pts;
+      const pr=el('div',{class:'pr'});
+      pr.appendChild(el('span',{class:'pl'},pos+'º'));
+      const sel=el('select',{class:'ps'});
+      sel.appendChild(el('option',{value:''},'— Selecione —'));
+      teams.forEach(t=>{ const o=el('option',{value:t},(FLAGS[t]||'')+' '+t); if(t===curr) o.selected=true; sel.appendChild(o); });
+      sel.onchange=()=>{ if(!grpPreds[g])grpPreds[g]={}; grpPreds[g][pos]={team:sel.value,pts:0}; grpDirty=true; updateGrpSaveBar(); };
+      pr.appendChild(sel);
+      if(rTeam&&pts!==undefined){
+        pr.appendChild(el('span',{class:`pp ${pts>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},pts+'p'));
+      }
+      sc.appendChild(pr);
+    });
+    grid.appendChild(sc);
+  });
+  main.appendChild(grid);
+  updateGrpSaveBar();
+}
+function updateGrpSaveBar(){
+  let sb=document.getElementById('savebar');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
+  sb.innerHTML='';
+  if(!grpDirty){ sb.style.display='none'; return; }
+  sb.style.display='flex';
+  const inn=el('div',{class:'sbar-in'});
+  inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Alterações não salvas'));
+  inn.appendChild(el('button',{class:'btn btn-p',onclick:saveStandings},'💾 Salvar'));
+  sb.appendChild(inn);
+}
+async function saveStandings(){
+  const rows=[];
+  Object.entries(GROUPS).forEach(([g])=>{
+    [1,2,3,4].forEach(pos=>{
+      const p=grpPreds[g]?.[pos];
+      if(p?.team){
+        let pts=0;
+        if(grpReal[g]?.[pos]===p.team) pts=10;
+        else if(Object.values(grpReal[g]||{}).includes(p.team)) pts=5;
+        rows.push({user_id:STATE.profile.id,group_id:g,position:pos,team_name:p.team,points:pts});
+      }
+    });
+  });
+  try{ await upsertWithReplicate('group_predictions',rows); grpDirty=false; showToast('✅ Classificação salva!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateGrpSaveBar(); }
+  catch(e){ showToast(e.message,'err'); }
+}
+
+// ── Knockout ───────────────────────────────────────────────────────────────
+let koPreds={}, koReal={}, koScorer='', koDirty=false;
+// Get teams available for a phase based on previous phase selections
+function getAvailableTeams(phase, currentPreds, realStandings) {
+  const prevPhase = {quarter:'round16', semi:'quarter', final:'semi', champion:'final', third:'semi'};
+
+  if(phase === 'round16') {
+    const classified = [];
+    if(realStandings && Object.keys(realStandings).length >= 12) {
+      Object.entries(realStandings).forEach(([g, pos]) => {
+        if(pos[1]) classified.push(pos[1]);
+        if(pos[2]) classified.push(pos[2]);
+      });
+    }
+    return classified.length === 24 ? classified : ALL_TEAMS;
+  }
+
+  const prev = prevPhase[phase];
+  if(prev && currentPreds[prev] && currentPreds[prev].length > 0) {
+    return currentPreds[prev].map(x=>x.team);
+  }
+  return ALL_TEAMS;
+}
+
+function renderKnockout(main){
+  const v = PAGE_VERSION;
+  main.appendChild(el('div',{class:'ch'},'🔥 Fases Eliminatórias'));
+  if(!CURRENT_BOLAO){
+    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center'}});
+    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
+    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
+    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
+    main.appendChild(w); return;
+  }
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKnockout(main));
+  renderReplicateBar(main, ()=>renderKnockout(main));
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  Promise.all([
+    CURRENT_BOLAO ? dbQ('knockout_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'phase,team_name,points') : Promise.resolve([]),
+    dbQ('real_knockouts',{},'phase,team_ids'),
+    dbQ('scorer_predictions',{user_id:STATE.profile.id},'player_name,points'),
+  ]).then(([kp,rk,sp])=>{
+    if(PAGE_VERSION !== v) return;
+    main.innerHTML='';
+    main.appendChild(el('div',{class:'ch'},'🔥 Fases Eliminatórias'));
+    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKnockout(main));
+    renderReplicateBar(main, ()=>buildKoUI(main));
+    koPreds={};
+    (kp||[]).forEach(p=>{ if(!koPreds[p.phase])koPreds[p.phase]=[]; koPreds[p.phase].push({team:p.team_name,pts:p.points}); });
+    koReal={};
+    (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
+    koScorer=(sp||[])[0]?.player_name||'';
+    koDirty=false;
+    buildKoUI(main);
+  });
+}
+function buildKoUI(main){
+  main.innerHTML='';
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'Selecione as seleções classificadas. Acertar = 10pts (Campeão = 20pts)'));
+  const koBanner=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'.75rem',marginBottom:'1rem',fontSize:'.82rem'}});
+  koBanner.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'600'}},'ℹ️ Prazo: '));
+  koBanner.appendChild(document.createTextNode('Palpites das eliminatórias se encerram no dia da fase. Botões bloqueados = prazo encerrado.'));
+  main.appendChild(koBanner);
+
+  PHASES.forEach(ph=>{
+    const sel=koPreds[ph.key]||[];
+    const rp=koReal[ph.key];
+    const card=el('div',{class:'card'});
+    card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},
+      ph.label+' ('+sel.length+'/'+ph.count+')'));
+    const availTeams2 = getAvailableTeams(ph.key, koPreds, grpReal);
+    const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+    availTeams2.forEach(team=>{
+      const isSel=sel.find(x=>x.team===team);
+      const isReal=rp?.team_ids?.includes(team);
+      let cls='btn-o';
+      if(isSel && isReal) cls='btn-s';  // green = selected & correct
+      else if(isSel && !isReal && isReal!==undefined) cls='btn-d'; // red = selected & wrong
+      else if(isSel) cls='btn-p'; // gold = selected, no result yet
+      const b=el('button',{class:`btn btn-sm ${cls}`,onclick:()=>{
+        if(!koPreds[ph.key])koPreds[ph.key]=[];
+        const idx=koPreds[ph.key].findIndex(x=>x.team===team);
+        if(idx>=0) koPreds[ph.key].splice(idx,1);
+        else if(koPreds[ph.key].length<ph.count) {
+          const predPts = rp?.team_ids?.includes(team) ? (ph.pts||10) : 0;
+          koPreds[ph.key].push({team, pts:predPts});
+        }
+        koDirty=true; 
+        // Cascade: clear invalid selections in subsequent phases
+        const nextPhases = {round16:['quarter','semi','final','champion','runner_up','third'], quarter:['semi','final','champion','runner_up','third'], semi:['final','champion','runner_up','third'], final:['champion','runner_up']};
+        if(nextPhases[ph.key]) {
+          nextPhases[ph.key].forEach(np => {
+            const avail = getAvailableTeams(np, koPreds, grpReal);
+            if(koPreds[np]) koPreds[np] = koPreds[np].filter(x=>avail.includes(x.team));
+          });
+        }
+        buildKoUI(main);
+      }},(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
+      btns.appendChild(b);
+    });
+    card.appendChild(btns);
+    main.appendChild(card);
+  });
+
+  // Scorer
+  const scard=el('div',{class:'card',style:{marginBottom:'4rem'}});
+  scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Palpite de Artilheiro'));
+  const si=el('input',{class:'fi',placeholder:'Ex: Mbappé, Vinicius Jr...',value:koScorer});
+  si.oninput=()=>{ koScorer=si.value; koDirty=true; };
+  scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
+  if(koReal['top_scorer']) {
+    const realScorer = koReal['top_scorer'].team_ids?.[0]||'-';
+    const scorerRow = el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
+    scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
+    if(koScorer) {
+      const scorerPts = koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?10:0;
+      const sCls = scorerPts>0?'pp p10':'pp p0';
+      scorerRow.appendChild(el('span',{class:sCls,style:{marginLeft:'8px'}},scorerPts+'pts'));
+    }
+    scard.appendChild(scorerRow);
+  }
+  main.appendChild(scard);
+
+  // Auto runner_up info card
+  const finalPicks2 = (koPreds['final']||[]).map(x=>x.team);
+  const champPick2 = (koPreds['champion']||[])[0]?.team;
+  const vicePick2 = finalPicks2.find(t=>t!==champPick2);
+  const realVice2 = koReal['runner_up']?.team_ids?.[0];
+  if(vicePick2 || realVice2) {
+    const vCard = el('div',{class:'card'});
+    vCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.5rem'}},'🥈 Vice-Campeão (auto)'));
+    const vRow = el('div',{style:{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
+    if(vicePick2) {
+      const isCorrect = realVice2 && vicePick2===realVice2;
+      const vBtn = el('div',{style:{padding:'6px 12px',borderRadius:'20px',fontSize:'.8rem',background:isCorrect?'rgba(16,185,129,.2)':realVice2?'rgba(239,68,68,.15)':'rgba(255,215,0,.1)',border:'1px solid '+(isCorrect?'#10B981':realVice2?'#EF4444':'rgba(255,215,0,.3)')}});
+      vBtn.appendChild(document.createTextNode((FLAGS[vicePick2]||'')+' '+vicePick2));
+      if(isCorrect) vBtn.appendChild(el('span',{style:{marginLeft:'6px',color:'#6EE7B7',fontWeight:'700'}},'·10p ✓'));
+      vRow.appendChild(vBtn);
+    }
+    if(realVice2 && !vicePick2) {
+      vRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.8rem'}},'Selecione os 2 finalistas para definir o vice automaticamente'));
+    }
+    if(realVice2) {
+      vRow.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--muted)'}},'Real: '+(FLAGS[realVice2]||'')+' '+realVice2));
+    }
+    vCard.appendChild(vRow);
+    main.appendChild(vCard);
+  }
+
+  // Save bar
+  let sb=document.getElementById('savebar');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
+  sb.innerHTML=''; sb.style.display='flex';
+  const inn=el('div',{class:'sbar-in'});
+  inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},koDirty?'Alterações não salvas':''));
+  inn.appendChild(el('button',{class:'btn btn-p',onclick:saveKo},'💾 Salvar'));
+  sb.appendChild(inn);
+}
+async function saveKo(){
+  try{
+    // Auto-calculate runner_up from final picks
+    const finalPicks = (koPreds['final']||[]).map(x=>x.team);
+    const champPick = (koPreds['champion']||[])[0]?.team;
+    const viceTeam = finalPicks.find(t=>t!==champPick);
+    if(viceTeam) {
+      const realVice = koReal['runner_up']?.team_ids?.[0];
+      const vicePts = realVice && viceTeam===realVice ? 10 : 0;
+      koPreds['runner_up'] = [{team:viceTeam, pts:vicePts}];
+    }
+    const rows=[];
+    Object.entries(koPreds).forEach(([phase,teams])=>{
+      const rp=koReal[phase];
+      teams.forEach(({team})=>{
+        let pts=0;
+        if(rp?.team_ids?.includes(team)) pts=phase==='champion'?20:10;
+        rows.push({user_id:STATE.profile.id,phase,team_name:team,points:pts});
+      });
+    });
+    const targetBolaos2 = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
+    for(const bolao of targetBolaos2){
+      await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
+      if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
+      if(koScorer.trim()){
+        const rp=koReal['top_scorer'];
+        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?10:0;
+        await SB.from('scorer_predictions').upsert({user_id:STATE.profile.id,player_name:koScorer,points:pts,bolao_id:bolao.id});
+      }
+    }
+    koDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    const sb=document.getElementById('savebar'); if(sb) sb.innerHTML='';
+  }catch(e){ showToast(e.message,'err'); }
+}
+
+// ── My Summary ─────────────────────────────────────────────────────────────
+function renderMine(main){
+  const v = PAGE_VERSION;
+  main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'📋 Meus Palpites'));
+  if(!CURRENT_BOLAO){
+    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center',marginTop:'1rem'}});
+    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
+    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
+    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
+    main.appendChild(w); return;
+  }
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMine(main));
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  const bId = CURRENT_BOLAO?.id;
+  Promise.all([
+    bId?dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:bId},'points'):Promise.resolve([]),
+    bId?dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:bId},'points'):Promise.resolve([]),
+    bId?dbQ('knockout_predictions',{user_id:STATE.profile.id,bolao_id:bId},'points'):Promise.resolve([]),
+    bId?dbQ('scorer_predictions',{user_id:STATE.profile.id,bolao_id:bId},'player_name,points'):Promise.resolve([]),
+  ]).then(([mp,gp,kp,sp])=>{
+    if(PAGE_VERSION !== v) return;
+    main.innerHTML='';
+    main.appendChild(el('div',{class:'ch'},'📋 Meus Palpites — '+STATE.profile.display_name));
+    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMine(main));
+    const mpts=(mp||[]).reduce((s,p)=>s+(p.points||0),0);
+    const gpts=(gp||[]).reduce((s,p)=>s+(p.points||0),0);
+    const kpts=(kp||[]).reduce((s,p)=>s+(p.points||0),0);
+    const spts=(sp||[])[0]?.points||0;
+    const total=mpts+gpts+kpts+spts;
+    const stats=el('div',{class:'stats'});
+    [{v:total,l:'Total de Pontos'},{v:mpts,l:'Pts Jogos'},{v:gpts,l:'Pts Grupos'},{v:kpts,l:'Pts Fases'},{v:spts,l:'Pts Artilheiro'},{v:(mp||[]).length,l:'Jogos Palpitados'}]
+      .forEach(s=>stats.appendChild(el('div',{class:'sv'},el('div',{class:'svv'},''+s.v),el('div',{class:'svl'},s.l))));
+    main.appendChild(stats);
+    if((sp||[])[0]?.player_name){
+      const sc=el('div',{class:'card'});
+      sc.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.5rem'}},'⚽ Artilheiro Palpitado'));
+      sc.appendChild(document.createTextNode(sp[0].player_name));
+      if(spts>0) sc.appendChild(el('span',{class:'pbadge',style:{marginLeft:'8px'}},spts+'pts'));
+      main.appendChild(sc);
+    }
+    // Empty state if no predictions yet
+    if((mp||[]).length===0 && (gp||[]).length===0) {
+      const empty = el('div',{style:{background:'rgba(255,215,0,.05)',border:'1px dashed rgba(255,215,0,.3)',borderRadius:'10px',padding:'1.5rem',textAlign:'center',marginTop:'1rem'}});
+      empty.appendChild(el('div',{style:{fontSize:'2rem',marginBottom:'.5rem'}},'📝'));
+      empty.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Nenhum palpite ainda'));
+      empty.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.85rem',marginBottom:'1rem'}},'Vá para ⚽ 1ª Fase e comece a palpitar!'));
+      empty.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'matches'})},'Ir para Palpites'));
+      main.appendChild(empty);
+    }
+  }).catch(e=>{ 
+    if(PAGE_VERSION===v){ main.innerHTML=''; main.appendChild(el('div',{class:'ch'},'📋 Meus Palpites')); main.appendChild(el('div',{style:{color:'var(--muted)',padding:'1rem',textAlign:'center'}},'Erro ao carregar. Tente novamente.')); }
+  });
+}
+
+
+// ── Como registrar resultados ─────────────────────────────────────────────
+function fetchResultsFromAI(main) {
+  const today = new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'});
+  const old = document.getElementById('ai-results-info');
+  if(old) { old.remove(); return; }
+  const infoDiv = el('div',{id:'ai-results-info',style:{background:'rgba(59,130,246,.08)',border:'1px solid rgba(59,130,246,.3)',borderRadius:'8px',padding:'1rem',marginBottom:'1rem',fontSize:'.85rem'}});
+  infoDiv.appendChild(el('div',{style:{color:'#93C5FD',fontWeight:'600',marginBottom:'.5rem'}},'📅 Como registrar resultados ('+today+')'));
+  ['1. Acesse o Google e busque "Copa 2026 resultados de hoje"',
+   '2. Encontre os placares dos jogos do dia',
+   '3. Insira cada placar nos campos abaixo e clique Salvar',
+   '4. As pontuações dos palpiteiros são atualizadas automaticamente!'
+  ].forEach(s=>{ infoDiv.appendChild(el('div',{style:{color:'var(--muted)',marginBottom:'4px',paddingLeft:'8px'}},s)); });
+  infoDiv.appendChild(el('button',{class:'btn btn-o btn-sm',style:{marginTop:'8px'},onclick:()=>infoDiv.remove()},'Fechar'));
+  main.insertBefore(infoDiv, main.children[2]);
+}
+
+
+// ── Admin ──────────────────────────────────────────────────────────────────
+let adminTab='matches', adminGrp='A', adminMatches={}, adminStandings={}, adminKo={};
+function renderAdmin(main){
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  Promise.all([
+    dbQ('group_matches',{},'match_number,team1_name,team2_name,group_id,real_score1,real_score2,is_finished'),
+    dbQ('real_group_standings',{},'group_id,position,team_name'),
+    dbQ('real_knockouts',{},'phase,team_ids'),
+  ]).then(([m,s,k])=>{
+    adminMatches={}; (m||[]).forEach(x=>adminMatches[x.match_number]=x);
+    adminStandings={}; (s||[]).forEach(x=>{ if(!adminStandings[x.group_id])adminStandings[x.group_id]={}; adminStandings[x.group_id][x.position]=x.team_name; });
+    adminKo={}; (k||[]).forEach(x=>adminKo[x.phase]=x);
+    buildAdminUI(main);
+  });
+}
+function buildAdminUI(main){
+  main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
+  const tabs=el('div',{class:'tabs'});
+  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['knockout','🔥 Eliminat.'],['scorer','🏅 Artilheiro']].forEach(([k,l])=>{
+    tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
+  });
+  main.appendChild(tabs);
+
+  if(adminTab==='matches'){
+    // Buscar resultados button
+    const fetchBar = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem',alignItems:'center',flexWrap:'wrap'}});
+    const fetchBtn = el('button',{class:'btn btn-s',style:{display:'flex',alignItems:'center',gap:'6px'},onclick:()=>fetchResultsFromAI(main)},
+      '📅 Como registrar resultados?');
+    const fetchInfo = el('span',{style:{fontSize:'.75rem',color:'var(--muted)'}},'Passo a passo para inserir os resultados do dia');
+    fetchBar.appendChild(fetchBtn);
+    fetchBar.appendChild(fetchInfo);
+    main.appendChild(fetchBar);
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Ou insira o placar manualmente. Pontuações recalculadas automaticamente.'));
+    const gb=el('div',{class:'gb'});
+    Object.keys(GROUPS).forEach(g=>gb.appendChild(el('button',{class:`btn btn-sm ${adminGrp===g?'btn-p':'btn-o'}`,onclick:()=>{ adminGrp=g; buildAdminUI(main); }},'Grupo '+g)));
+    main.appendChild(gb);
+    MATCHES.filter(m=>m.group===adminGrp).forEach(m=>{
+      const real=adminMatches[m.num]||{};
+      const row=el('div',{class:'amr'});
+      row.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem'}},el('span',{},FLAGS[m.t1]||''),m.t1));
+      let av1=real.real_score1!==undefined?real.real_score1:0;
+      let av2=real.real_score2!==undefined?real.real_score2:0;
+      const i1=el('input',{class:'sinp',type:'number',min:'0',max:'9',value:av1});
+      const i2=el('input',{class:'sinp',type:'number',min:'0',max:'9',value:av2});
+      i1.oninput=()=>{ av1=parseInt(i1.value)||0; };
+      i2.oninput=()=>{ av2=parseInt(i2.value)||0; };
+      const si=el('div',{style:{display:'flex',gap:'4px',alignItems:'center'}},i1,el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'),i2);
+      row.appendChild(si);
+      row.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem',justifyContent:'flex-end'}},m.t2,el('span',{},FLAGS[m.t2]||'')));
+      const saveBtn=el('button',{class:`btn btn-sm ${real.is_finished?'btn-s':'btn-p'}`,onclick:async()=>{
+        const s1=parseInt(i1.value),s2=parseInt(i2.value);
+        if(isNaN(s1)||isNaN(s2)) return;
+        saveBtn.textContent='...';
+        try{
+          await dbUpsert('group_matches',{match_number:m.num,real_score1:s1,real_score2:s2,is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group});
+          const preds=await dbQ('match_predictions',{match_number:m.num});
+          if(preds.length>0){
+            await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,s1,s2)})));
+          }
+          showToast(`✅ Jogo #${m.num} salvo!`);
+          adminMatches[m.num]={...adminMatches[m.num],real_score1:s1,real_score2:s2,is_finished:true};
+          saveBtn.textContent='✓ Atualizar'; saveBtn.className='btn btn-sm btn-s';
+        }catch(e){ showToast(e.message,'err'); saveBtn.textContent='Salvar'; }
+      }},real.is_finished?'✓ Atualizar':'Salvar');
+      row.appendChild(saveBtn);
+      main.appendChild(row);
+    });
+  }
+
+  if(adminTab==='standings'){
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Defina a classificação real de cada grupo.'));
+    const grid=el('div',{class:'sg'});
+    Object.entries(GROUPS).forEach(([g,teams])=>{
+      const sc=el('div',{class:'sc'});
+      sc.appendChild(el('h4',{},'GRUPO '+g));
+      [1,2,3,4].forEach(pos=>{
+        const pr=el('div',{class:'pr'});
+        pr.appendChild(el('span',{class:'pl'},pos+'º'));
+        const sel=el('select',{class:'ps'});
+        sel.appendChild(el('option',{value:''},'— Selecione —'));
+        teams.forEach(t=>{ const o=el('option',{value:t},(FLAGS[t]||'')+' '+t); if(adminStandings[g]?.[pos]===t) o.selected=true; sel.appendChild(o); });
+        sel.onchange=async()=>{
+          try{
+            await dbUpsert('real_group_standings',{group_id:g,position:pos,team_name:sel.value});
+            if(!adminStandings[g])adminStandings[g]={}; adminStandings[g][pos]=sel.value;
+            const preds=await dbQ('group_predictions',{group_id:g,position:pos});
+            if(preds.length>0){
+              const allR=await dbQ('real_group_standings',{group_id:g});
+              const rm={}; allR.forEach(r=>rm[r.position]=r.team_name);
+              await dbUpsert('group_predictions',preds.map(p=>{ let pts=0; if(rm[p.position]===p.team_name)pts=10; else if(Object.values(rm).includes(p.team_name))pts=5; return {...p,points:pts}; }));
+            }
+            showToast(`✅ Grupo ${g} atualizado!`);
+          }catch(e){ showToast(e.message,'err'); }
+        };
+        pr.appendChild(sel); sc.appendChild(pr);
+      });
+      grid.appendChild(sc);
+    });
+    main.appendChild(grid);
+  }
+
+  if(adminTab==='knockout'){
+    PHASES.forEach(ph=>{
+      const rp=adminKo[ph.key];
+      const card=el('div',{class:'card'});
+      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},ph.label+' ('+(rp?.team_ids||[]).length+'/'+ph.count+')'));
+      const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+      // Cascade filter
+      const prevMap = {quarter:'round16',semi:'quarter',final:'semi',champion:'final',runner_up:'final',third:'semi'};
+      let adminAvailTeams = ALL_TEAMS;
+      if(ph.key==='round16' && Object.keys(adminStandings).length>0) {
+        adminAvailTeams=[];
+        Object.values(adminStandings).forEach(pos=>{ if(pos[1])adminAvailTeams.push(pos[1]); if(pos[2])adminAvailTeams.push(pos[2]); });
+        if(adminAvailTeams.length<2) adminAvailTeams=ALL_TEAMS;
+      } else if(prevMap[ph.key] && adminKo[prevMap[ph.key]]?.team_ids?.length>0) {
+        adminAvailTeams = adminKo[prevMap[ph.key]].team_ids;
+      }
+      adminAvailTeams.forEach(team=>{
+        const isR=(rp?.team_ids||[]).includes(team);
+        const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
+          const curr=(adminKo[ph.key]?.team_ids||[]);
+          const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
+          try{
+            await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
+            const preds=await dbQ('knockout_predictions',{phase:ph.key});
+            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?(ph.key==='champion'?20:10):0})));
+            if(!adminKo[ph.key])adminKo[ph.key]={phase:ph.key,team_ids:[]};
+            adminKo[ph.key].team_ids=next;
+            showToast('✅ Atualizado!'); buildAdminUI(main);
+          }catch(e){ showToast(e.message,'err'); }
+        }},`${FLAGS[team]||''} ${team}`);
+        btns.appendChild(b);
+      });
+      card.appendChild(btns); main.appendChild(card);
+    });
+  }
+
+  if(adminTab==='scorer'){
+    const card=el('div',{class:'card'});
+    card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Definir Artilheiro Real'));
+    const inp=el('input',{class:'fi',placeholder:'Nome do artilheiro',value:adminKo['top_scorer']?.team_ids?.[0]||''});
+    const savB=el('button',{class:'btn btn-s',style:{marginTop:'8px'},onclick:async()=>{
+      try{
+        const name=inp.value.trim(); if(!name) return;
+        await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[name]});
+        const preds=await dbQ('scorer_predictions');
+        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?10:0})));
+        showToast('✅ Artilheiro salvo!');
+      }catch(e){ showToast(e.message,'err'); }
+    }},'Salvar');
+    card.appendChild(inp); card.appendChild(savB); main.appendChild(card);
+  }
+}
+
+
+// ── Test Page ──────────────────────────────────────────────────────────────
+const TEST_USERS_DATA = [
+  {email:'teste.drada@bolao.test',pw:'Teste@1234',name:'Drada',username:'drada'},
+  {email:'teste.buraco@bolao.test',pw:'Teste@1234',name:'Buraco',username:'buraco'},
+  {email:'teste.barata@bolao.test',pw:'Teste@1234',name:'Barata',username:'barata'},
+  {email:'teste.cleber@bolao.test',pw:'Teste@1234',name:'Cleber',username:'cleber'},
+  {email:'teste.ronzo@bolao.test',pw:'Teste@1234',name:'Ronzo',username:'ronzo'},
+];
+
+// Resultados reais simulados fixos para validação
+const REAL_SCORES_TEST = {};
+MATCHES.forEach(m => {
+  const s = [0,1,2,3]; 
+  REAL_SCORES_TEST[m.num] = {s1:s[Math.floor(m.num*7%4)], s2:s[Math.floor(m.num*3%4)]};
+});
+const REAL_STANDINGS_TEST = {};
+Object.entries(GROUPS).forEach(([g,teams],gi) => {
+  REAL_STANDINGS_TEST[g] = {1:teams[gi%4],2:teams[(gi+1)%4],3:teams[(gi+2)%4],4:teams[(gi+3)%4]};
+});
+const allT = ALL_TEAMS;
+const REAL_KO_TEST = {
+  round16: allT.slice(0,16), quarter: allT.slice(0,8),
+  semi: allT.slice(0,4), final: allT.slice(0,2),
+  champion:[allT[0]], runner_up:[allT[1]], third:[allT[2]]
+};
+const REAL_SCORER_TEST = 'Mbappé';
+
+let testLog = [];
+let testRunning = false;
+let testUserIds = [];
+let testDone = false;
+
+function renderTestPage(main) {
+  try {
+    main.innerHTML='';
+    main.appendChild(el('div',{class:'ch'},'🧪 Página de Teste — Somente Admin'));
+
+  // Warning banner
+  const warn = el('div',{style:{background:'rgba(239,68,68,.1)',border:'1px solid #EF4444',borderRadius:'8px',padding:'.875rem',marginBottom:'1rem',fontSize:'.82rem',lineHeight:'1.6'}});
+  warn.appendChild(el('strong',{style:{color:'#FCA5A5'}},'⚠️ Atenção: '));
+  warn.appendChild(document.createTextNode('Esta página cria 5 usuários de teste, insere palpites aleatórios e resultados simulados para validar as pontuações. Ao final, use "Limpar Tudo" para remover os dados de teste.'));
+  main.appendChild(warn);
+
+  // Buttons
+  const btnRow = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem',flexWrap:'wrap'}});
+  const btnRun = el('button',{class:'btn btn-p',style:{flex:'1'},onclick:()=>runTest(main)}, testRunning?'⏳ Executando...':'▶ Executar Teste Completo');
+  const btnClean = el('button',{class:'btn btn-d',style:{flex:'1'},onclick:()=>cleanupTest(main)}, '🗑 Limpar Tudo');
+  const btnRefresh = el('button',{class:'btn btn-o',style:{flex:'1'},onclick:()=>renderTestPage(main)}, '↻ Atualizar');
+  if(testRunning) btnRun.disabled = true;
+  btnRow.appendChild(btnRun);
+  btnRow.appendChild(btnClean);
+  btnRow.appendChild(btnRefresh);
+  main.appendChild(btnRow);
+
+  // Log
+  const logCard = el('div',{class:'card',style:{marginBottom:'1rem'}});
+  logCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.5rem',fontSize:'1rem'}},'📋 Log de Execução'));
+  const logBox = el('div',{id:'testlog',style:{background:'var(--dk3)',borderRadius:'8px',padding:'.875rem',height:'240px',overflowY:'auto',fontFamily:'monospace',fontSize:'.72rem',lineHeight:'1.7'}});
+  if(testLog.length===0) logBox.appendChild(el('span',{style:{color:'var(--muted)'}},'Aguardando execução...'));
+  else logBox.innerHTML = testLog.join('<br>');
+  logCard.appendChild(logBox);
+  main.appendChild(logCard);
+
+  // Validation results table
+  if(testDone && window._testResults) {
+    const allOk = window._testResults.every(r=>r.ok);
+    const resCard = el('div',{class:'card'});
+    resCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:allOk?'var(--ok)':'var(--err)',marginBottom:'.75rem',fontSize:'1.1rem'}},
+      allOk?'✅ TODOS OS TESTES PASSARAM!':'❌ ATENÇÃO: FALHAS ENCONTRADAS'));
+
+    const tbl = el('table',{class:'rkt'});
+    const thead = el('thead');
+    thead.appendChild(el('tr',{},
+      ...['Usuário','Jogos','Grupos','Fases','Art.','Total','Status'].map(h=>el('th',{},h))
+    ));
+    tbl.appendChild(thead);
+    const tbody = el('tbody');
+    window._testResults.forEach(r => {
+      const tr = el('tr');
+      const cols = [
+        {v:r.name, ok:true},
+        {v:`${r.expM}/${r.actM}`, ok:r.expM===r.actM},
+        {v:`${r.expG}/${r.actG}`, ok:r.expG===r.actG},
+        {v:`${r.expK}/${r.actK}`, ok:r.expK===r.actK},
+        {v:`${r.expS}/${r.actS}`, ok:r.expS===r.actS},
+        {v:`${r.expT}/${r.actT}`, ok:r.expT===r.actT},
+        {v:r.ok?'✅ OK':'❌ FALHOU', ok:r.ok},
+      ];
+      cols.forEach(col => {
+        const td = el('td',{style:{color:col.ok?'inherit':'var(--err)',fontWeight:col.ok?'':'700'}},col.v+'');
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+
+    const wrap = el('div',{style:{overflowX:'auto'}});
+    wrap.appendChild(tbl);
+    resCard.appendChild(wrap);
+    resCard.appendChild(el('p',{style:{marginTop:'.75rem',fontSize:'.75rem',color:'var(--muted)'}},'Esp = Esperado (calculado localmente) · Obt = Obtido (banco de dados)'));
+    main.appendChild(resCard);
+  }
+  } catch(e) {
+    const errDiv = el('div',{style:{color:'var(--err)',padding:'1rem',background:'rgba(239,68,68,.1)',borderRadius:'8px',marginTop:'1rem'}});
+    errDiv.appendChild(document.createTextNode('Erro ao carregar: '+e.message));
+    main.appendChild(errDiv);
+    console.error('renderTestPage:',e);
+  }
+}
+
+function tlog(msg, type='') {
+  const colors = {ok:'#10B981',err:'#EF4444',warn:'#FFD700',info:'#93C5FD',bold:'#E2E8F0'};
+  const color = colors[type]||'#E2E8F0';
+  testLog.push(`<span style="color:${color}">${msg}</span>`);
+  const box = document.getElementById('testlog');
+  if(box){ box.innerHTML = testLog.join('<br>'); box.scrollTop = box.scrollHeight; }
+}
+
+async function runTest(main) {
+  if(testRunning) return;
+  testRunning = true; testDone = false; testLog = []; testUserIds = []; window._testResults = null;
+  renderTestPage(main);
+
+  tlog('═══════════════════════════════════════', 'info');
+  tlog('🧪 INICIANDO TESTE COMPLETO', 'bold');
+  tlog('═══════════════════════════════════════', 'info');
+
+  // Guardar sessão admin
+  const {data:{session:adminSess}} = await SB.auth.getSession();
+  
+  // Criar bolão de teste se não existir
+  tlog('\n🎯 Criando bolão de teste...', 'bold');
+  let testBolao = null;
+  try {
+    const existing = await dbQ('bolao_groups',{invite_code:'TESTE1'});
+    if(existing && existing.length>0) {
+      testBolao = existing[0];
+      tlog('  ℹ️ Bolão de teste já existe: '+testBolao.name, 'info');
+    } else {
+      const {data:bg, error:be} = await SB.from('bolao_groups').insert({
+        name:'Bolão Teste Automático', invite_code:'TESTE1', created_by:STATE.profile.id
+      }).select().single();
+      if(be) throw be;
+      await SB.from('bolao_members').insert({bolao_id:bg.id, user_id:STATE.profile.id, replicate_preds:true});
+      testBolao = bg;
+      tlog('  ✅ Bolão de teste criado', 'ok');
+    }
+    // Set as current bolão
+    await loadMyBolaos(STATE.profile.id);
+    CURRENT_BOLAO = MY_BOLAOS.find(b=>b.id===testBolao.id)||MY_BOLAOS[0];
+  } catch(e) {
+    tlog('  ❌ Erro ao criar bolão: '+e.message, 'err');
+  }
+
+  // STEP 1: Criar usuários
+  tlog('\n📋 PASSO 1: Criando usuários de teste...', 'bold');
+  const signedUsers = [];
+  for(const u of TEST_USERS_DATA) {
+    try {
+      // Tenta signup
+      await SB.auth.signUp({email:u.email, password:u.pw});
+      // Sign in
+      const {data, error} = await SB.auth.signInWithPassword({email:u.email, password:u.pw});
+      if(error) throw error;
+      const uid = data.user.id;
+      const token = data.session.access_token;
+      // Create profile
+      await SB.from('profiles').upsert({id:uid, username:u.username, display_name:u.name});
+      // Join test bolão
+      if(testBolao) {
+        await SB.from('bolao_members').upsert({bolao_id:testBolao.id, user_id:uid, replicate_preds:true});
+      }
+      signedUsers.push({...u, id:uid, token});
+      testUserIds.push(uid);
+      tlog(`  ✅ ${u.name} pronto`, 'ok');
+    } catch(e) {
+      tlog(`  ❌ ${u.name}: ${e.message}`, 'err');
+    }
+  }
+  tlog(`  → ${signedUsers.length}/5 usuários prontos`, 'info');
+
+  // Restaurar sessão admin
+  if(adminSess) await SB.auth.setSession(adminSess);
+
+  // STEP 2: Palpites de jogos
+  tlog('\n⚽ PASSO 2: Palpites dos jogos...', 'bold');
+  const userPreds = {};
+  for(const u of signedUsers) {
+    userPreds[u.id] = {matches:{}, groups:{}, knockout:{}, scorer:''};
+    const rows = [];
+    MATCHES.forEach(m => {
+      const s1=Math.floor((u.name.length*m.num*3)%5), s2=Math.floor((u.name.length*m.num*7)%5);
+      rows.push({user_id:u.id, match_number:m.num, predicted_score1:s1, predicted_score2:s2, points:0, bolao_id:testBolao?.id});
+      userPreds[u.id].matches[m.num]={s1,s2};
+    });
+    const {error} = await SB.from('match_predictions').upsert(rows);
+    if(error) tlog(`  ❌ ${u.name}: ${error.message}`, 'err');
+    else tlog(`  ✅ ${u.name}: 72 jogos`, 'ok');
+  }
+
+  // STEP 3: Palpites de grupos
+  tlog('\n📊 PASSO 3: Palpites de grupos...', 'bold');
+  for(const u of signedUsers) {
+    const rows = [];
+    Object.entries(GROUPS).forEach(([g,teams],gi) => {
+      const offset = signedUsers.indexOf(u);
+      [1,2,3,4].forEach((pos,i) => {
+        const team = teams[(i+offset)%4];
+        rows.push({user_id:u.id, group_id:g, position:pos, team_name:team, points:0, bolao_id:testBolao?.id});
+        if(!userPreds[u.id].groups[g]) userPreds[u.id].groups[g]={};
+        userPreds[u.id].groups[g][pos]=team;
+      });
+    });
+    const {error} = await SB.from('group_predictions').upsert(rows);
+    if(error) tlog(`  ❌ ${u.name}: ${error.message}`, 'err');
+    else tlog(`  ✅ ${u.name}: 48 posições de grupo`, 'ok');
+  }
+
+  // STEP 4: Palpites eliminatórias
+  tlog('\n🔥 PASSO 4: Palpites das fases...', 'bold');
+  const scorerOptions = ['Mbappé','Vinicius Jr','Haaland','Lewandowski','Salah'];
+  for(const [ui, u] of signedUsers.entries()) {
+    const rows = [];
+    const phases2 = ['round16','quarter','semi','final','champion','runner_up','third'];
+    const counts2 = {round16:16,quarter:8,semi:4,final:2,champion:1,runner_up:1,third:1};
+    phases2.forEach(phase => {
+      const count = counts2[phase];
+      const picked = ALL_TEAMS.slice(ui*2, ui*2+count).concat(ALL_TEAMS).slice(0,count);
+      userPreds[u.id].knockout[phase]=picked;
+      picked.forEach(team => rows.push({user_id:u.id, phase, team_name:team, points:0, bolao_id:testBolao?.id}));
+    });
+    const scorer = scorerOptions[ui];
+    userPreds[u.id].scorer = scorer;
+    await SB.from('knockout_predictions').delete().eq('user_id',u.id);
+    await SB.from('knockout_predictions').insert(rows);
+    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
+    tlog(`  ✅ ${u.name}: fases + artilheiro "${scorer}"`, 'ok');
+  }
+
+  // STEP 5: Resultados reais (admin)
+  tlog('\n🔧 PASSO 5: Inserindo resultados reais...', 'bold');
+  const matchRows = MATCHES.map(m=>({
+    match_number:m.num, team1_name:m.t1, team2_name:m.t2, group_id:m.group,
+    real_score1:REAL_SCORES_TEST[m.num].s1, real_score2:REAL_SCORES_TEST[m.num].s2, is_finished:true
+  }));
+  await SB.from('group_matches').upsert(matchRows);
+  tlog(`  ✅ 72 resultados de jogos`, 'ok');
+
+  const standRows = [];
+  Object.entries(REAL_STANDINGS_TEST).forEach(([g,pos]) => {
+    Object.entries(pos).forEach(([p,team]) => standRows.push({group_id:g, position:parseInt(p), team_name:team}));
+  });
+  await SB.from('real_group_standings').upsert(standRows);
+  tlog(`  ✅ Classificação dos 12 grupos`, 'ok');
+
+  for(const phase of Object.keys(REAL_KO_TEST)) {
+    await SB.from('real_knockouts').upsert({phase, team_ids:REAL_KO_TEST[phase]});
+  }
+  await SB.from('real_knockouts').upsert({phase:'top_scorer', team_ids:[REAL_SCORER_TEST]});
+  tlog(`  ✅ Eliminatórias + artilheiro real: ${REAL_SCORER_TEST}`, 'ok');
+
+  // STEP 6: Recalcular pontuações
+  tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
+  for(const u of signedUsers) {
+    // Matches
+    const mUp = MATCHES.map(m=>{
+      const p=userPreds[u.id].matches[m.num], r=REAL_SCORES_TEST[m.num];
+      return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2)};
+    });
+    await SB.from('match_predictions').upsert(mUp);
+
+    // Groups
+    const gUp = [];
+    Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
+      Object.entries(positions).forEach(([pos,team])=>{
+        let pts=0;
+        if(REAL_STANDINGS_TEST[g][pos]===team) pts=10;
+        else if(Object.values(REAL_STANDINGS_TEST[g]).includes(team)) pts=5;
+        gUp.push({user_id:u.id, group_id:g, position:parseInt(pos), team_name:team, points:pts});
+      });
+    });
+    await SB.from('group_predictions').upsert(gUp);
+
+    // Knockout
+    const kRows = [];
+    Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
+      teams.forEach(team=>{
+        const isReal = REAL_KO_TEST[phase]?.includes(team);
+        kRows.push({user_id:u.id, phase, team_name:team, points:isReal?(phase==='champion'?20:10):0});
+      });
+    });
+    await SB.from('knockout_predictions').delete().eq('user_id',u.id);
+    if(kRows.length>0) await SB.from('knockout_predictions').insert(kRows);
+
+    // Scorer
+    const spts = userPreds[u.id].scorer===REAL_SCORER_TEST?10:0;
+    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
+
+    tlog(`  ✅ ${u.name} recalculado`, 'ok');
+  }
+
+  // STEP 7: Validação
+  tlog('\n✅ PASSO 7: Validando pontuações...', 'bold');
+  const results = [];
+  let allPassed = true;
+
+  for(const u of signedUsers) {
+    let expM=0, expG=0, expK=0, expS=0;
+    MATCHES.forEach(m=>{ const p=userPreds[u.id].matches[m.num],r=REAL_SCORES_TEST[m.num]; expM+=calcPts(p.s1,p.s2,r.s1,r.s2); });
+    Object.entries(userPreds[u.id].groups).forEach(([g,pos])=>{
+      Object.entries(pos).forEach(([p,team])=>{
+        if(REAL_STANDINGS_TEST[g][p]===team) expG+=10;
+        else if(Object.values(REAL_STANDINGS_TEST[g]).includes(team)) expG+=5;
+      });
+    });
+    Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
+      teams.forEach(team=>{ if(REAL_KO_TEST[phase]?.includes(team)) expK+=(phase==='champion'?20:10); });
+    });
+    expS = userPreds[u.id].scorer===REAL_SCORER_TEST?10:0;
+    const expT = expM+expG+expK+expS;
+
+    const [mp,gp,kp,sp] = await Promise.all([
+      SB.from('match_predictions').select('points').eq('user_id',u.id),
+      SB.from('group_predictions').select('points').eq('user_id',u.id),
+      SB.from('knockout_predictions').select('points').eq('user_id',u.id),
+      SB.from('scorer_predictions').select('points').eq('user_id',u.id),
+    ]);
+    const actM=(mp.data||[]).reduce((s,r)=>s+(r.points||0),0);
+    const actG=(gp.data||[]).reduce((s,r)=>s+(r.points||0),0);
+    const actK=(kp.data||[]).reduce((s,r)=>s+(r.points||0),0);
+    const actS=(sp.data||[]).length>0?(sp.data[0].points||0):0;
+    const actT=actM+actG+actK+actS;
+    const ok=expT===actT&&expM===actM&&expG===actG&&expK===actK&&expS===actS;
+    if(!ok) allPassed=false;
+    results.push({name:u.name, expM,actM, expG,actG, expK,actK, expS,actS, expT,actT, ok});
+    tlog(`  ${ok?'✅':'❌'} ${u.name}: Total Esp=${expT} Obt=${actT} | J:${expM}/${actM} G:${expG}/${actG} F:${expK}/${actK} A:${expS}/${actS}`, ok?'ok':'err');
+  }
+
+  tlog('\n═══════════════════════════════════════', 'info');
+  tlog(allPassed?'🎉 TODOS OS TESTES PASSARAM!':'⚠️ ATENÇÃO: FALHAS ENCONTRADAS', allPassed?'ok':'err');
+  tlog('═══════════════════════════════════════', 'info');
+  tlog(`Campeão real: ${REAL_KO_TEST.champion[0]} | Artilheiro: ${REAL_SCORER_TEST}`, 'info');
+  tlog('\nAgora vá para 🏆 Ranking para ver as pontuações!', 'warn');
+  tlog('Use 🗑 Limpar Tudo quando quiser remover os dados de teste.', 'warn');
+
+  window._testResults = results;
+  testRunning = false;
+  testDone = true;
+  
+  // Reload profiles
+  const {data:allProfs} = await SB.from('profiles').select('id,display_name,is_admin');
+  STATE.profiles = allProfs||[];
+  
+  renderTestPage(main);
+}
+
+async function cleanupTest(main) {
+  if(!confirm('Remover TODOS os dados de teste? (usuários, palpites e resultados)')) return;
+  testLog = [];
+  renderTestPage(main);
+  tlog('🗑 Iniciando limpeza...', 'warn');
+
+  // Get test user IDs
+  const {data:testProfs} = await SB.from('profiles').select('id,username').in('username', TEST_USERS_DATA.map(u=>u.username));
+  const ids = (testProfs||[]).map(p=>p.id);
+
+  if(ids.length > 0) {
+    for(const id of ids) {
+      await SB.from('match_predictions').delete().eq('user_id',id);
+      await SB.from('group_predictions').delete().eq('user_id',id);
+      await SB.from('knockout_predictions').delete().eq('user_id',id);
+      await SB.from('scorer_predictions').delete().eq('user_id',id);
+      await SB.from('profiles').delete().eq('id',id);
+    }
+    tlog(`  ✅ ${ids.length} usuários de teste removidos`, 'ok');
+  } else {
+    tlog('  ℹ️ Nenhum usuário de teste encontrado', 'info');
+  }
+
+  // Clean match results, standings, knockouts
+  await SB.from('group_matches').delete().neq('match_number',0);
+  await SB.from('real_group_standings').delete().neq('group_id','Z');
+  await SB.from('real_knockouts').delete().neq('phase','Z');
+  tlog('  ✅ Resultados reais removidos', 'ok');
+
+  // Remove test bolão
+  const testBolaoQ = await dbQ('bolao_groups',{invite_code:'TESTE1'});
+  if(testBolaoQ&&testBolaoQ.length>0) {
+    const tbId = testBolaoQ[0].id;
+    await SB.from('bolao_members').delete().eq('bolao_id',tbId);
+    await SB.from('bolao_groups').delete().eq('id',tbId);
+    tlog('  ✅ Bolão de teste removido', 'ok');
+  }
+  testUserIds=[]; testDone=false; testLog.push('<span style="color:#10B981">✅ Limpeza concluída! Base zerada.</span>');
+  window._testResults=null;
+
+  // Reload profiles
+  const {data:allProfs} = await SB.from('profiles').select('id,display_name,is_admin');
+  STATE.profiles = allProfs||[];
+
+  renderTestPage(main);
+  showToast('✅ Base limpa! Só você permanece.');
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
