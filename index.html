@@ -83,6 +83,9 @@ body{background:var(--dk);color:var(--txt);font-family:'Inter',sans-serif;min-he
 .toast.err{border-left-color:var(--err)}
 @keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .gb{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.gb-btn{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
+.gb-btn.active{background:var(--gold);color:var(--dk);border-color:var(--gold);font-weight:700}
+.gb-btn:hover{border-color:var(--gold);color:var(--gold)}
 .tabs{display:flex;gap:3px;margin-bottom:1.25rem;background:var(--dk3);border-radius:8px;padding:3px}
 .tb{flex:1;padding:7px;border:none;background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;font-size:.78rem;font-weight:500}
 .tb.act{background:var(--card);color:var(--gold)}
@@ -873,7 +876,7 @@ function buildMatchesUI(main){
         applied++;
       }
     });
-    if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+applied+' jogos!'); }
+    if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+applied+' jogos!'); updateSaveBar(); }
     else showToast('Todos os jogos já têm palpite!');
   }},'Aplicar a jogos sem palpite');
   defBar.appendChild(applyBtn);
