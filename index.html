@@ -124,10 +124,47 @@ button:disabled{opacity:.4;cursor:not-allowed}
 <div id="app"></div>
 
 <script>
-window.onerror = function(msg, src, line, col, err) {
-  document.getElementById('app').innerHTML = '<div style="color:#EF4444;padding:2rem;font-family:monospace;background:#0A0F1E;min-height:100vh"><h2>Erro JavaScript</h2><p>' + msg + '</p><p>Linha: ' + line + '</p><p>' + (err ? err.stack : '') + '</p></div>';
-  return true;
-};
+// ── Debug visual ──────────────────────────────────────────────────────────
+const _dbgLogs = [];
+function _dbg() {
+  const args = Array.prototype.slice.call(arguments);
+  const msg = args.map(function(a){ return typeof a === 'object' ? JSON.stringify(a) : String(a); }).join(' ');
+  _dbgLogs.push(msg);
+  const panel = document.getElementById('_dbg_panel');
+  if(panel) {
+    const ln = document.createElement('div');
+    ln.style.cssText = 'font-size:10px;padding:2px 0;border-bottom:1px solid #1F2937;word-break:break-all;color:#10B981;';
+    ln.textContent = msg;
+    panel.appendChild(ln);
+    panel.scrollTop = panel.scrollHeight;
+  }
+}
+function _showDebugPanel() {
+  const existing = document.getElementById('_dbg_panel');
+  if(existing) { existing.remove(); return; }
+  const wrap = document.createElement('div');
+  wrap.id = '_dbg_panel';
+  wrap.style.cssText = 'position:fixed;bottom:80px;left:0;right:0;height:240px;background:#0a0f1e;font-family:monospace;overflow-y:auto;z-index:9999;padding:8px;border-top:2px solid #10B981;';
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'color:#FFD700;font-weight:700;font-size:11px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;';
+  const title = document.createElement('span');
+  title.textContent = 'DEBUG LOG (' + _dbgLogs.length + ' entradas)';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'X Fechar';
+  closeBtn.style.cssText = 'background:#EF4444;color:#fff;border:none;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:10px;';
+  closeBtn.onclick = function(){ wrap.remove(); };
+  hdr.appendChild(title);
+  hdr.appendChild(closeBtn);
+  wrap.appendChild(hdr);
+  _dbgLogs.forEach(function(msg) {
+    const ln = document.createElement('div');
+    ln.style.cssText = 'font-size:10px;padding:2px 0;border-bottom:1px solid #1F2937;word-break:break-all;color:#10B981;';
+    ln.textContent = msg;
+    wrap.appendChild(ln);
+  });
+  document.body.appendChild(wrap);
+  wrap.scrollTop = wrap.scrollHeight;
+}
 const { createClient } = supabase;
 const SB = createClient(
   'https://lffpsgzytcylaudxljjr.supabase.co',
@@ -152,15 +189,16 @@ const GROUPS = {
 const FLAGS = {"Estados Unidos":"🇺🇸","Panamá":"🇵🇦","Bolívia":"🇧🇴","Nova Zelândia":"🇳🇿","Argentina":"🇦🇷","Chile":"🇨🇱","Peru":"🇵🇪","Canadá":"🇨🇦","México":"🇲🇽","Jamaica":"🇯🇲","Venezuela":"🇻🇪","Equador":"🇪🇨","Brasil":"🇧🇷","Costa Rica":"🇨🇷","Paraguai":"🇵🇾","Austrália":"🇦🇺","Alemanha":"🇩🇪","Japão":"🇯🇵","Camarões":"🇨🇲","Arábia Saudita":"🇸🇦","Portugal":"🇵🇹","Polônia":"🇵🇱","Burkina Faso":"🇧🇫","Coreia do Sul":"🇰🇷","França":"🇫🇷","Marrocos":"🇲🇦","Bélgica":"🇧🇪","Croácia":"🇭🇷","Espanha":"🇪🇸","Sérvia":"🇷🇸","Turquia":"🇹🇷","Senegal":"🇸🇳","Holanda":"🇳🇱","Dinamarca":"🇩🇰","Ucrânia":"🇺🇦","Líbia":"🇱🇾","Uruguai":"🇺🇾","Colômbia":"🇨🇴","Iraque":"🇮🇶","Cazaquistão":"🇰🇿","Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Tunísia":"🇹🇳","Costa do Marfim":"🇨🇮","Eslovênia":"🇸🇮","Itália":"🇮🇹","África do Sul":"🇿🇦","Cuba":"🇨🇺","Albânia":"🇦🇱"};
 const ALL_TEAMS = Object.values(GROUPS).flat();
 const PHASES = [
-  {key:"round32",label:"Rodada de 32",count:16,pts:10},
-  {key:"round16",label:"Oitavas de Final",count:8,pts:10},
-  {key:"quarter",label:"Quartas de Final",count:4,pts:10},
-  {key:"semi",label:"Semifinal",count:2,pts:10},
-  {key:"final",label:"Finalistas",count:2,pts:10},
-  {key:"champion",label:"🏆 Campeão",count:1,pts:20},
-  {key:"third",label:"🥉 Terceiro Lugar",count:1,pts:10},
+  {key:"round32",  label:"Rodada de 32",     count:16, pts:10},
+  {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
+  {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
+  {key:"semi",     label:"Semifinal",         count:2,  pts:10},
+  {key:"final",    label:"Finalistas",        count:2,  pts:10},
+  {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
-// runner_up is auto-calculated from final picks
+// champion = quem foi selecionado dentre os 2 finalistas (1 escolha, 20pts)
+// runner_up = o outro finalista, automático, 10pts já contados na fase "final"
+// third = 1 dos 2 perdedores da semi, 10pts
 
 // Chaveamento fixo da Rodada de 32 (FIFA oficial)
 // slot: [lado1, lado2] onde cada lado é {type:'1'|'2'|'3', group:'A'...'L', thirdGroups:['A','B',...]}
@@ -892,18 +930,27 @@ function buildMatchesUI(main){
   const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:()=>{
     let applied=0;
     const ds1=window._def.s1, ds2=window._def.s2;
+    _dbg('[PLACAR PADRÃO] Aplicando',ds1,'×',ds2,'no grupo',activeGrp);
+    _dbg('[PLACAR PADRÃO] matchPreds antes:', JSON.stringify(matchPreds));
     MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
-      if(!canBet(m.num)) return;
+      const cb=canBet(m.num);
       const hasPred = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
+      _dbg(`[PLACAR PADRÃO] Jogo #${m.num}: canBet=${cb}, hasPred=${hasPred}`);
+      if(!cb) return;
       if(!hasPred){
         matchPreds[m.num]={s1:ds1,s2:ds2};
         applied++;
+        _dbg(`[PLACAR PADRÃO] ✅ Aplicado jogo #${m.num}`);
       }
     });
+    _dbg('[PLACAR PADRÃO] Total aplicados:',applied);
+    _dbg('[PLACAR PADRÃO] matchPreds depois:', JSON.stringify(matchPreds));
     if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+applied+' jogos!'); updateSaveBar(); }
     else showToast('Todos os jogos já têm palpite!');
   }},'Aplicar a jogos sem palpite');
   defBar.appendChild(applyBtn);
+  const dbgBtn=el('button',{class:'btn btn-o btn-sm',style:{fontSize:'.65rem',padding:'3px 7px',marginLeft:'4px'},onclick:_showDebugPanel},'🔍');
+  defBar.appendChild(dbgBtn);
   main.appendChild(defBar);
 
   // Group filter buttons
@@ -924,6 +971,8 @@ function buildMatchesUI(main){
     const hasResult = r?.is_finished && r.real_score1!==undefined;
     const canBetNow = canBet(m.num);
     const locked = !canBetNow;
+    const hasPred2 = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
+    _dbg(`[BUILD] Jogo #${m.num}: canBetNow=${canBetNow}, hasPred2=${hasPred2}, s1=${matchPreds[m.num]?.s1}, s2=${matchPreds[m.num]?.s2}`);
     const pts = (hasResult && p.s1!==undefined)
       ? calcPts(p.s1, p.s2||0, r.real_score1, r.real_score2) : 0;
     const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
@@ -945,7 +994,6 @@ function buildMatchesUI(main){
     mc.appendChild(teamsRow);
 
     // Score row
-    const hasPred2 = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
     const v1=hasPred2?p.s1:null, v2=hasPred2?p.s2:null;
     if(canBetNow) {
       const scoreRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',marginBottom:'.3rem'}});
@@ -1062,12 +1110,19 @@ function renderStandings(main){
 }
 function buildStandingsUI(main){
   main.innerHTML='';
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'Posição exata = 10pts · Classificado mas posição errada = 5pts · 3º/4º não pontuam'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1º/2º exato=10pts · 1º/2º errado=5pts · 3º classificado=5pts · 4º não pontua'));
   const grid=el('div',{class:'sg'});
+
+  const selectedThirds = grpPreds['_thirds'] || [];
+  const realThirdsReal = grpReal['_thirds_real'] || [];
+  const thirdsCount = selectedThirds.length;
+
   Object.entries(GROUPS).forEach(([g,teams])=>{
     const sc=el('div',{class:'sc'});
     sc.appendChild(el('h4',{},'GRUPO '+g));
     sc.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--gold)',fontWeight:'600',letterSpacing:'.04em',marginBottom:'.4rem',marginTop:'-.2rem'}},'CLASSIFICADOS PARA OITAVAS'));
+
+    // 1º e 2º — igual ao antes
     [1,2].forEach(pos=>{
       const curr=grpPreds[g]?.[pos]?.team||'';
       const rTeam=grpReal[g]?.[pos];
@@ -1084,54 +1139,52 @@ function buildStandingsUI(main){
       }
       sc.appendChild(pr);
     });
+
+    // Separador + 3º melhor
+    sc.appendChild(el('div',{style:{borderTop:'1px solid var(--bdr)',margin:'.5rem 0 .3rem'}}));
+    sc.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',fontWeight:'600',letterSpacing:'.04em',marginBottom:'.3rem'}},'MELHOR 3º (máx 8 no total)'));
+
+    const selTeamInGrp = teams.find(t=>selectedThirds.includes(t)) || '';
+    const rTeam3 = realThirdsReal.length > 0 ? (realThirdsReal.find(t=>teams.includes(t))||null) : null;
+    const pts3 = selTeamInGrp && rTeam3 && selTeamInGrp===rTeam3 ? 5 : undefined;
+    const isLocked = thirdsCount >= 8 && !selTeamInGrp; // bloqueado se já tem 8 e este grupo não tem nenhum
+
+    const pr3=el('div',{class:'pr'});
+    pr3.appendChild(el('span',{class:'pl',style:{color:'var(--muted)'}},'3º'));
+    const sel3=el('select',{class:'ps',disabled:isLocked});
+    if(isLocked) sel3.style.opacity='0.4';
+    sel3.appendChild(el('option',{value:''},'— Selecione —'));
+    teams.forEach(t=>{
+      const o=el('option',{value:t},(FLAGS[t]||'')+' '+t);
+      if(t===selTeamInGrp) o.selected=true;
+      sel3.appendChild(o);
+    });
+    sel3.onchange=()=>{
+      if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
+      // Remover qualquer time deste grupo que já estava selecionado
+      teams.forEach(t=>{ const i=grpPreds['_thirds'].indexOf(t); if(i>=0) grpPreds['_thirds'].splice(i,1); });
+      // Adicionar o novo se selecionado
+      if(sel3.value) {
+        if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8 times atingido!','err'); sel3.value=''; return; }
+        grpPreds['_thirds'].push(sel3.value);
+      }
+      grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
+    };
+    pr3.appendChild(sel3);
+    // Mostrar pontuação do 3º
+    if(selTeamInGrp && rTeam3!==null && rTeam3!==undefined){
+      const p3=selTeamInGrp===rTeam3?5:0;
+      pr3.appendChild(el('span',{class:`pp ${p3>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},p3+'p'));
+    }
+    sc.appendChild(pr3);
     grid.appendChild(sc);
   });
+
+  // Contador global de 3ºs
+  const cntDiv=el('div',{style:{textAlign:'center',fontSize:'.8rem',fontWeight:'600',marginTop:'.5rem',marginBottom:'1rem',color:thirdsCount===8?'var(--ok)':'var(--muted)'}},
+    '🥉 '+thirdsCount+'/8 melhores 3ºs selecionados'+(thirdsCount===8?' ✓':''));
+  main.appendChild(cntDiv);
   main.appendChild(grid);
-
-  // Seção 8 melhores 3ºs colocados
-  const thirdsCard=el('div',{class:'card',style:{marginTop:'1rem'}});
-  thirdsCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},'8 MELHORES 3ºS COLOCADOS'));
-  thirdsCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'1rem'}},'Selecione os 8 times que passarão como melhores 3ºs · Acertar = 5pts cada'));
-
-  // Pegar todos os times que estão em 3º nos palpites de grupo (um por grupo)
-  // O usuário pode selecionar qualquer time da lista de todos os grupos para 3º
-  // mas filtramos pelos que estão em 3º no grpPreds ou ALL_TEAMS
-  // Pool por grupo: todos os 4 times de cada grupo (usuário escolhe os possíveis 3ºs)
-  // Separador visual por grupo para facilitar a escolha
-  const thirdsPoolByGroup = Object.entries(GROUPS).map(([g,teams])=>({g,teams}));
-
-  const selectedThirds = grpPreds['_thirds'] || [];
-  const realThirdsReal = grpReal['_thirds_real'] || [];
-
-  const selCount=(grpPreds['_thirds']||[]).length;
-  thirdsCard.appendChild(el('div',{style:{fontSize:'.78rem',color:selCount===8?'var(--ok)':'var(--gold)',marginBottom:'.75rem',fontWeight:'600'}},selCount+'/8 selecionados'+(selCount===8?' ✓':'')));
-  // Renderizar times agrupados por grupo
-  const thirdsWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'.5rem'}});
-  thirdsPoolByGroup.forEach(({g,teams})=>{
-    const grpRow=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}});
-    grpRow.appendChild(el('span',{style:{fontSize:'.68rem',color:'var(--gold)',fontWeight:'700',minWidth:'28px'}},'G '+g+':'));
-    teams.forEach(team=>{
-      const isSel = selectedThirds.includes(team);
-      const isReal = realThirdsReal.includes(team);
-      let cls='btn-o';
-      if(isSel && isReal) cls='btn-s';
-      else if(isSel && realThirdsReal.length>0) cls='btn-d';
-      else if(isSel) cls='btn-p';
-      const b=el('button',{class:`btn btn-sm ${cls}`,onclick:()=>{
-        if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
-        const tidx=grpPreds['_thirds'].indexOf(team);
-        if(tidx>=0) grpPreds['_thirds'].splice(tidx,1);
-        else if(grpPreds['_thirds'].length<8) grpPreds['_thirds'].push(team);
-        else { showToast('Máximo 8 times! Remova um antes.','err'); return; }
-        grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
-      }},(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·5p':''));
-      grpRow.appendChild(b);
-    });
-    thirdsWrap.appendChild(grpRow);
-  });
-  thirdsCard.appendChild(thirdsWrap);
-  main.appendChild(thirdsCard);
-
   updateGrpSaveBar();
 }
 function updateGrpSaveBar(){
@@ -1173,10 +1226,9 @@ async function saveStandings(){
 let koPreds={}, koReal={}, koScorer='', koDirty=false, koRealThirds=[], koUserThirds=[];
 // Get teams available for a phase based on previous phase selections
 function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
-  const prevPhase = {round16:'round32', quarter:'round16', semi:'quarter', final:'semi', champion:'final', third:'semi'};
+  const prevPhase = {round16:'round32', quarter:'round16', semi:'quarter', final:'semi', third:'semi'};
 
   if(phase === 'round32') {
-    // 32 classificados: top 2 de cada grupo + 8 melhores terceiros
     const classified = [];
     if(realStandings && Object.keys(realStandings).length >= 12) {
       Object.entries(realStandings).forEach(([g, pos]) => {
@@ -1184,7 +1236,6 @@ function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
         if(pos[2]) classified.push(pos[2]);
       });
     }
-    // adicionar os 8 melhores terceiros (do real ou dos palpites de grupo)
     const thirds = realThirds || [];
     thirds.forEach(t => { if(!classified.includes(t)) classified.push(t); });
     return classified.length >= 24 ? classified : ALL_TEAMS;
@@ -1193,7 +1244,7 @@ function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
   if(phase === 'round16') {
     const prev = currentPreds['round32'];
     if(prev && prev.length > 0) return prev.map(x=>x.team);
-    // fallback: top2 dos grupos se round32 não preenchido
+    // Sem seleção na Rodada 32 → tentar usar top2 dos grupos reais
     const classified = [];
     if(realStandings && Object.keys(realStandings).length >= 12) {
       Object.entries(realStandings).forEach(([g, pos]) => {
@@ -1204,11 +1255,13 @@ function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
     return classified.length >= 24 ? classified : ALL_TEAMS;
   }
 
+  // Quartas, Semi, Final: filtrar estritamente pela fase anterior
   const prev = prevPhase[phase];
   if(prev && currentPreds[prev] && currentPreds[prev].length > 0) {
     return currentPreds[prev].map(x=>x.team);
   }
-  return ALL_TEAMS;
+  // Se fase anterior vazia, retornar array vazio (não mostrar ALL_TEAMS)
+  return [];
 }
 
 function renderKnockout(main){
@@ -1254,114 +1307,233 @@ function renderKnockout(main){
 }
 function buildKoUI(main){
   main.innerHTML='';
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'Selecione as seleções classificadas. Acertar = 10pts (Campeão = 20pts)'));
-  const koBanner=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'.75rem',marginBottom:'1rem',fontSize:'.82rem'}});
-  koBanner.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'600'}},'ℹ️ Prazo: '));
-  koBanner.appendChild(document.createTextNode('Palpites das eliminatórias se encerram no dia da fase. Botões bloqueados = prazo encerrado.'));
-  main.appendChild(koBanner);
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Selecione quem passa em cada fase. Acertar = 10pts · Campeão = 20pts'));
 
-  // Terceiros palpitados pelo usuário (usados como pool para round32)
   const userThirdsPool = koUserThirds.length > 0 ? koUserThirds : koRealThirds;
 
-  PHASES.forEach(ph=>{
-    const sel=koPreds[ph.key]||[];
-    const rp=koReal[ph.key];
-    const card=el('div',{class:'card'});
+  // ── Fases principais (round32 → semi → final) ──
+  const mainPhases = PHASES.filter(ph=>ph.key!=='third');
+  mainPhases.forEach(ph=>{
+    const sel = koPreds[ph.key]||[];
+    const rp  = koReal[ph.key];
+    const avail = getAvailableTeams(ph.key, koPreds, grpReal, userThirdsPool);
+    const isFull = sel.length >= ph.count;
 
-    // Descrição especial para round32
+    const card = el('div',{class:'card'});
+
+    // Título com contador
+    const titleRow = el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'.5rem'}});
+    titleRow.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem'}},ph.label));
+    titleRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull?'var(--ok)':'var(--muted)',fontWeight:'600'}},sel.length+'/'+ph.count+(isFull?' ✓':'')));
+    card.appendChild(titleRow);
+
+    // Subtítulo especial para round32
     if(ph.key==='round32'){
-      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},
-        ph.label+' — Quem passa para as Oitavas? ('+sel.length+'/'+ph.count+')'));
-      card.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.6rem'}},'São 32 times classificados. Escolha os 16 que você acha que avançam para as Oitavas de Final'));
-    } else {
-      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},
-        ph.label+' ('+sel.length+'/'+ph.count+')'));
+      card.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'São 32 classificados. Escolha 16 que passam para as Oitavas.'));
     }
 
-    const availTeams2 = getAvailableTeams(ph.key, koPreds, grpReal, userThirdsPool);
-    const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
-    availTeams2.forEach(team=>{
-      const isSel=sel.find(x=>x.team===team);
-      const isReal=rp?.team_ids?.includes(team);
+    // Se fase anterior não preenchida, mostrar mensagem
+    if(avail.length===0 && ph.key!=='round32'){
+      const prevLabels={round16:'Rodada de 32',quarter:'Oitavas de Final',semi:'Quartas de Final',final:'Semifinal'};
+      card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.8rem',fontStyle:'italic'}},
+        '⬆️ Selecione os times da '+( prevLabels[ph.key]||'fase anterior')+' primeiro'));
+      main.appendChild(card);
+      return;
+    }
+
+    const btns = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+
+    // Fase "final": seleciona 2 finalistas → 1 deles será campeão
+    if(ph.key==='final'){
+      avail.forEach(team=>{
+        const isSel = sel.find(x=>x.team===team);
+        const isReal = rp?.team_ids?.includes(team);
+        const isChamp = koReal['champion']?.team_ids?.includes(team);
+        const isVice  = koReal['runner_up']?.team_ids?.includes(team);
+        // Cor: verde se acertou finalista, vermelho se errou (resultado real definido)
+        let cls='btn-o';
+        if(isSel && isReal) cls='btn-s';
+        else if(isSel && rp && !isReal) cls='btn-d';
+        else if(isSel) cls='btn-p';
+        // Bloqueio: não pode selecionar mais de 2
+        const blocked = !isSel && isFull;
+        const b = el('button',{
+          class:`btn btn-sm ${cls}`,
+          disabled: blocked,
+          style: blocked?{opacity:'0.35',cursor:'not-allowed'}:{},
+          onclick:()=>{
+            if(!koPreds['final']) koPreds['final']=[];
+            const idx=koPreds['final'].findIndex(x=>x.team===team);
+            if(idx>=0){ koPreds['final'].splice(idx,1); }
+            else if(koPreds['final'].length<2){
+              koPreds['final'].push({team, pts:isReal?10:0});
+            }
+            // Cascade: limpar campeão e vice se não são mais finalistas
+            const fins=(koPreds['final']||[]).map(x=>x.team);
+            if(koPreds['champion']) koPreds['champion']=koPreds['champion'].filter(x=>fins.includes(x.team));
+            koDirty=true; buildKoUI(main);
+          }
+        },(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·10p':''));
+        btns.appendChild(b);
+      });
+      card.appendChild(btns);
+
+      // Dentro do card de finalistas: subseção campeão
+      const finalPicks = (koPreds['final']||[]).map(x=>x.team);
+      if(finalPicks.length>0){
+        card.appendChild(el('div',{style:{borderTop:'1px solid var(--bdr)',margin:'.75rem 0 .5rem'}}));
+        card.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--gold)',fontWeight:'700',marginBottom:'.4rem'}},'🏆 QUEM É O CAMPEÃO? (20pts)'));
+        const champSel = (koPreds['champion']||[])[0]?.team;
+        const realChamp = koReal['champion']?.team_ids?.[0];
+        const champBtns = el('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+        finalPicks.forEach(team=>{
+          const isCh = champSel===team;
+          const isRealCh = realChamp && team===realChamp;
+          let cls='btn-o';
+          if(isCh && isRealCh) cls='btn-s';
+          else if(isCh && realChamp && !isRealCh) cls='btn-d';
+          else if(isCh) cls='btn-p';
+          const blocked2 = !isCh && !!champSel;
+          const b2=el('button',{
+            class:`btn btn-sm ${cls}`,
+            disabled:blocked2,
+            style:blocked2?{opacity:'0.35',cursor:'not-allowed'}:{},
+            onclick:()=>{
+              koPreds['champion']= isCh ? [] : [{team, pts:isRealCh?20:0}];
+              koDirty=true; buildKoUI(main);
+            }
+          },(FLAGS[team]||'')+' '+team+(isCh&&isRealCh?' ·20p':''));
+          champBtns.appendChild(b2);
+        });
+        card.appendChild(champBtns);
+
+        // Vice automático (demonstrativo)
+        const champPick = (koPreds['champion']||[])[0]?.team;
+        const vicePick = finalPicks.find(t=>t!==champPick);
+        if(vicePick){
+          const realVice = koReal['runner_up']?.team_ids?.[0];
+          const viceOk = realVice && vicePick===realVice;
+          const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)'}});
+          const vBadge=el('span',{style:{
+            display:'inline-flex',alignItems:'center',gap:'4px',
+            background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',
+            border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),
+            borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'
+          }},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
+          viceDiv.appendChild(el('span',{style:{marginRight:'6px'}},'🥈 Vice (auto):'));
+          viceDiv.appendChild(vBadge);
+          if(realVice && !viceOk && champPick){
+            viceDiv.appendChild(el('span',{style:{marginLeft:'6px',color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
+          }
+          card.appendChild(viceDiv);
+        }
+      }
+      main.appendChild(card);
+      return; // pula o appendChild genérico abaixo
+    }
+
+    // Fases normais (round32, round16, quarter, semi)
+    avail.forEach(team=>{
+      const isSel = sel.find(x=>x.team===team);
+      const isReal = rp?.team_ids?.includes(team);
       let cls='btn-o';
       if(isSel && isReal) cls='btn-s';
-      else if(isSel && !isReal && rp) cls='btn-d';
+      else if(isSel && rp && !isReal) cls='btn-d';
       else if(isSel) cls='btn-p';
-      const b=el('button',{class:`btn btn-sm ${cls}`,onclick:()=>{
-        if(!koPreds[ph.key])koPreds[ph.key]=[];
-        const idx=koPreds[ph.key].findIndex(x=>x.team===team);
-        if(idx>=0) koPreds[ph.key].splice(idx,1);
-        else if(koPreds[ph.key].length<ph.count) {
-          const predPts = rp?.team_ids?.includes(team) ? (ph.pts||10) : 0;
-          koPreds[ph.key].push({team, pts:predPts});
-        }
-        koDirty=true;
-        // Cascade: limpar seleções inválidas nas fases seguintes
-        const nextPhases = {
-          round32:['round16','quarter','semi','final','champion','runner_up','third'],
-          round16:['quarter','semi','final','champion','runner_up','third'],
-          quarter:['semi','final','champion','runner_up','third'],
-          semi:['final','champion','runner_up','third'],
-          final:['champion','runner_up']
-        };
-        if(nextPhases[ph.key]) {
-          nextPhases[ph.key].forEach(np => {
-            const avail = getAvailableTeams(np, koPreds, grpReal, userThirdsPool);
-            if(koPreds[np]) koPreds[np] = koPreds[np].filter(x=>avail.includes(x.team));
+      const blocked = !isSel && isFull;
+      const b=el('button',{
+        class:`btn btn-sm ${cls}`,
+        disabled:blocked,
+        style:blocked?{opacity:'0.35',cursor:'not-allowed'}:{},
+        onclick:()=>{
+          if(!koPreds[ph.key]) koPreds[ph.key]=[];
+          const idx=koPreds[ph.key].findIndex(x=>x.team===team);
+          if(idx>=0){ koPreds[ph.key].splice(idx,1); }
+          else if(koPreds[ph.key].length<ph.count){
+            koPreds[ph.key].push({team, pts:isReal?ph.pts:0});
+          }
+          koDirty=true;
+          // Cascade: limpar fases seguintes
+          const nextMap={
+            round32:['round16','quarter','semi','final','champion','runner_up','third'],
+            round16:['quarter','semi','final','champion','runner_up','third'],
+            quarter:['semi','final','champion','runner_up','third'],
+            semi:['final','champion','runner_up','third'],
+          };
+          (nextMap[ph.key]||[]).forEach(np=>{
+            const av2=getAvailableTeams(np,koPreds,grpReal,userThirdsPool);
+            if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>av2.includes(x.team));
           });
+          buildKoUI(main);
         }
-        buildKoUI(main);
-      }},(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
+      },(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
       btns.appendChild(b);
     });
     card.appendChild(btns);
     main.appendChild(card);
   });
 
-  // Scorer
+  // ── Disputa de 3º/4º ──
+  const thirdPh = PHASES.find(ph=>ph.key==='third');
+  if(thirdPh){
+    // Pool: 2 perdedores da semi
+    const semiSel = (koPreds['semi']||[]).map(x=>x.team);
+    const finalSel = (koPreds['final']||[]).map(x=>x.team);
+    const thirdPool = semiSel.filter(t=>!finalSel.includes(t)); // quem foi na semi mas não na final
+    const rp3 = koReal['third'];
+    const thirdSel = koPreds['third']||[];
+    const isFull3 = thirdSel.length>=1;
+
+    if(thirdPool.length>0 || thirdSel.length>0){
+      const card3=el('div',{class:'card'});
+      const tRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'.5rem'}});
+      tRow.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem'}},'🥉 Disputa de 3º/4º Lugar'));
+      tRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull3?'var(--ok)':'var(--muted)',fontWeight:'600'}},thirdSel.length+'/1'+(isFull3?' ✓':'')));
+      card3.appendChild(tRow);
+      card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha 1 time entre os 2 perdedores da Semifinal. Acertar = 10pts.'));
+      const btns3=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+      const pool3 = thirdPool.length>0 ? thirdPool : thirdSel.map(x=>x.team);
+      pool3.forEach(team=>{
+        const isSel3=thirdSel.find(x=>x.team===team);
+        const isReal3=rp3?.team_ids?.includes(team);
+        let cls='btn-o';
+        if(isSel3&&isReal3) cls='btn-s';
+        else if(isSel3&&rp3&&!isReal3) cls='btn-d';
+        else if(isSel3) cls='btn-p';
+        const blocked3=!isSel3&&isFull3;
+        const b3=el('button',{
+          class:`btn btn-sm ${cls}`,
+          disabled:blocked3,
+          style:blocked3?{opacity:'0.35',cursor:'not-allowed'}:{},
+          onclick:()=>{
+            koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
+            koDirty=true; buildKoUI(main);
+          }
+        },(FLAGS[team]||'')+' '+team+(isSel3&&isReal3?' ·10p':''));
+        btns3.appendChild(b3);
+      });
+      card3.appendChild(btns3);
+      main.appendChild(card3);
+    }
+  }
+
+  // ── Artilheiro ──
   const scard=el('div',{class:'card',style:{marginBottom:'4rem'}});
-  scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Palpite de Artilheiro'));
+  scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Artilheiro'));
   const si=el('input',{class:'fi',placeholder:'Ex: Mbappé, Vinicius Jr...',value:koScorer});
   si.oninput=()=>{ koScorer=si.value; koDirty=true; };
   scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
-  if(koReal['top_scorer']) {
-    const realScorer = koReal['top_scorer'].team_ids?.[0]||'-';
-    const scorerRow = el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
+  if(koReal['top_scorer']){
+    const realScorer=koReal['top_scorer'].team_ids?.[0]||'-';
+    const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
     scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
-    if(koScorer) {
-      const scorerPts = koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?10:0;
-      const sCls = scorerPts>0?'pp p10':'pp p0';
-      scorerRow.appendChild(el('span',{class:sCls,style:{marginLeft:'8px'}},scorerPts+'pts'));
+    if(koScorer){
+      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?10:0;
+      scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
     }
     scard.appendChild(scorerRow);
   }
   main.appendChild(scard);
-
-  // Auto runner_up info card
-  const finalPicks2 = (koPreds['final']||[]).map(x=>x.team);
-  const champPick2 = (koPreds['champion']||[])[0]?.team;
-  const vicePick2 = finalPicks2.find(t=>t!==champPick2);
-  const realVice2 = koReal['runner_up']?.team_ids?.[0];
-  if(vicePick2 || realVice2) {
-    const vCard = el('div',{class:'card'});
-    vCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.5rem'}},'🥈 Vice-Campeão (auto)'));
-    const vRow = el('div',{style:{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
-    if(vicePick2) {
-      const isCorrect = realVice2 && vicePick2===realVice2;
-      const vBtn = el('div',{style:{padding:'6px 12px',borderRadius:'20px',fontSize:'.8rem',background:isCorrect?'rgba(16,185,129,.2)':realVice2?'rgba(239,68,68,.15)':'rgba(255,215,0,.1)',border:'1px solid '+(isCorrect?'#10B981':realVice2?'#EF4444':'rgba(255,215,0,.3)')}});
-      vBtn.appendChild(document.createTextNode((FLAGS[vicePick2]||'')+' '+vicePick2));
-      if(isCorrect) vBtn.appendChild(el('span',{style:{marginLeft:'6px',color:'#6EE7B7',fontWeight:'700'}},'·10p ✓'));
-      vRow.appendChild(vBtn);
-    }
-    if(realVice2 && !vicePick2) {
-      vRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.8rem'}},'Selecione os 2 finalistas para definir o vice automaticamente'));
-    }
-    if(realVice2) {
-      vRow.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--muted)'}},'Real: '+(FLAGS[realVice2]||'')+' '+realVice2));
-    }
-    vCard.appendChild(vRow);
-    main.appendChild(vCard);
-  }
 
   // Save bar
   let sb=document.getElementById('savebar');
@@ -1372,16 +1544,16 @@ function buildKoUI(main){
   inn.appendChild(el('button',{class:'btn btn-p',onclick:saveKo},'💾 Salvar'));
   sb.appendChild(inn);
 }
+
 async function saveKo(){
   try{
-    // Auto-calculate runner_up from final picks
+    // Auto-calcular vice (finalista que não é campeão)
     const finalPicks = (koPreds['final']||[]).map(x=>x.team);
-    const champPick = (koPreds['champion']||[])[0]?.team;
-    const viceTeam = finalPicks.find(t=>t!==champPick);
-    if(viceTeam) {
+    const champPick  = (koPreds['champion']||[])[0]?.team;
+    const viceTeam   = finalPicks.find(t=>t!==champPick);
+    if(viceTeam){
       const realVice = koReal['runner_up']?.team_ids?.[0];
-      const vicePts = realVice && viceTeam===realVice ? 10 : 0;
-      koPreds['runner_up'] = [{team:viceTeam, pts:vicePts}];
+      koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?10:0}];
     }
     const rows=[];
     Object.entries(koPreds).forEach(([phase,teams])=>{
@@ -1392,7 +1564,7 @@ async function saveKo(){
         rows.push({user_id:STATE.profile.id,phase,team_name:team,points:pts});
       });
     });
-    const targetBolaos2 = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
+    const targetBolaos2=REPLICATE_ALL?MY_BOLAOS:[CURRENT_BOLAO];
     for(const bolao of targetBolaos2){
       await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
       if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
@@ -1464,7 +1636,7 @@ function renderMine(main){
 
 
 // ── Ko Matches (Jogos Eliminatórios) ───────────────────────────────────────
-let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32';
+let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32', koMatchRealSt={};
 const KO_PHASE_LABELS = {round32:'Rodada de 32',round16:'Oitavas de Final',quarter:'Quartas de Final',semi:'Semifinal',final:'Final',third:'3º Lugar'};
 
 function resolveSlot(slot, realStandings) {
@@ -1507,18 +1679,20 @@ function renderKoMatches(main){
     const realSt={};
     (rs||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
     koMatchDirty=false;
-    buildKoMatchesUI(main, realSt);
+    koMatchRealSt=realSt||{};
+    buildKoMatchesUI(main, koMatchRealSt);
   });
 }
 
 function buildKoMatchesUI(main, realSt){
-  if(!realSt) realSt={};
+  if(!realSt) realSt=koMatchRealSt||{};
+  koMatchRealSt=realSt;
   main.innerHTML='';
 
   // Tabs de fase
   const tabs=el('div',{class:'tabs',style:{marginBottom:'1rem'}});
   Object.entries(KO_PHASE_LABELS).forEach(([k,l])=>{
-    tabs.appendChild(el('button',{class:`tb${koMatchPhase===k?' act':''}`,onclick:()=>{koMatchPhase=k;buildKoMatchesUI(main,realSt);}},l));
+    tabs.appendChild(el('button',{class:`tb${koMatchPhase===k?' act':''}`,onclick:()=>{koMatchPhase=k;buildKoMatchesUI(main,koMatchRealSt);}},l));
   });
   main.appendChild(tabs);
 
@@ -1536,10 +1710,10 @@ function buildKoMatchesUI(main, realSt){
       empty.appendChild(el('div',{style:{fontSize:'.8rem',marginBottom:'1rem'}},'Os palpites de placar estarão disponíveis quando o Admin confirmar os confrontos após a fase de grupos.'));
       const bkt=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',textAlign:'left'}});
       ROUND32_BRACKET.forEach(m=>{
-        const t1=resolveSlot(m.slot1,realSt);
-        const t2=resolveSlot(m.slot2,realSt);
+        const t1=String(resolveSlot(m.slot1,realSt)||'?');
+        const t2=String(resolveSlot(m.slot2,realSt)||'?');
         const row=el('div',{style:{background:'var(--card)',border:'1px solid var(--bdr)',borderRadius:'8px',padding:'.6rem .875rem',display:'flex',alignItems:'center',gap:'8px',fontSize:'.82rem'}});
-        row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'24px',fontSize:'.7rem'}},m.id));
+        row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'28px',fontSize:'.7rem'}},'#'+String(m.id)));
         row.appendChild(el('span',{style:{flex:'1',fontWeight:'600'}},t1));
         row.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
         row.appendChild(el('span',{style:{flex:'1',fontWeight:'600',textAlign:'right'}},t2));
@@ -1773,7 +1947,32 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='ko_matches'){
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Cadastre os jogos eliminatórios. Eles são salvos na tabela group_matches com group_id="KO_[fase]".'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Cadastre os confrontos eliminatórios. Os times disponíveis são os 32 classificados.'));
+
+    // Montar pool dos 32 classificados
+    const koPool=[];
+    // Top 2 de cada grupo
+    Object.entries(adminStandings).forEach(([g,pos])=>{
+      if(pos[1]) koPool.push(pos[1]);
+      if(pos[2]) koPool.push(pos[2]);
+    });
+    // 8 melhores 3ºs
+    (adminKo['best_thirds']?.team_ids||[]).forEach(t=>{ if(!koPool.includes(t)) koPool.push(t); });
+    // Fallback: se grupos não definidos ainda, usar fases anteriores ou ALL_TEAMS
+    if(koPool.length===0){
+      // Tentar usar times da fase anterior no bracket
+      const prevPhaseKey = {round16:'KO_round32',quarter:'KO_round16',semi:'KO_quarter',final:'KO_semi',third:'KO_semi'};
+      const prev=prevPhaseKey[adminKoPhase];
+      if(prev){
+        Object.values(adminMatches).filter(m=>m.group_id===prev).forEach(m=>{
+          if(m.team1_name&&!koPool.includes(m.team1_name)) koPool.push(m.team1_name);
+          if(m.team2_name&&!koPool.includes(m.team2_name)) koPool.push(m.team2_name);
+        });
+      }
+      if(koPool.length===0) ALL_TEAMS.forEach(t=>koPool.push(t));
+    }
+    koPool.sort((a,b)=>a.localeCompare(b));
+
     // Seletor de fase
     const phTabs=el('div',{class:'tabs',style:{marginBottom:'1rem'}});
     const adminKoPhases=['round32','round16','quarter','semi','final','third'];
@@ -1785,25 +1984,43 @@ function buildAdminUI(main){
     const phKey='KO_'+adminKoPhase;
     const phMatches=Object.values(adminMatches).filter(m=>m.group_id===phKey);
 
-    // Formulário para adicionar novo jogo
+    // Formulário para adicionar novo jogo — dropdowns
     const addCard=el('div',{class:'card',style:{marginBottom:'1rem'}});
-    addCard.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.75rem',color:'var(--gold)'}},'+ Adicionar Jogo'));
-    const t1i=el('input',{class:'fi',placeholder:'Time 1',style:{marginBottom:'6px'}});
-    const t2i=el('input',{class:'fi',placeholder:'Time 2',style:{marginBottom:'8px'}});
+    addCard.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.75rem',color:'var(--gold)'}},'+ Adicionar Confronto'));
+
+    const makeTeamSel=(placeholder)=>{
+      const s=el('select',{class:'ps',style:{marginBottom:'8px',width:'100%'}});
+      s.appendChild(el('option',{value:''},'— '+placeholder+' —'));
+      koPool.forEach(t=>{ s.appendChild(el('option',{value:t},(FLAGS[t]||'')+' '+t)); });
+      return s;
+    };
+    const t1s=makeTeamSel('Time 1');
+    const t2s=makeTeamSel('Time 2');
+
     const addBtn=el('button',{class:'btn btn-p btn-sm',onclick:async()=>{
-      const t1=t1i.value.trim(),t2=t2i.value.trim();
-      if(!t1||!t2){showToast('Preencha os dois times','err');return;}
-      // Próximo número de match disponível (>1000 para não conflitar com fase de grupos)
+      const t1=t1s.value,t2=t2s.value;
+      if(!t1||!t2){showToast('Selecione os dois times','err');return;}
+      if(t1===t2){showToast('Os dois times não podem ser iguais','err');return;}
       const koNums=Object.keys(adminMatches).map(Number).filter(n=>n>=1000);
       const nextNum=koNums.length>0?Math.max(...koNums)+1:1001;
       try{
         await dbUpsert('group_matches',{match_number:nextNum,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false,real_score1:null,real_score2:null});
         adminMatches[nextNum]={match_number:nextNum,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false};
-        t1i.value=''; t2i.value='';
-        showToast('✅ Jogo adicionado!'); buildAdminUI(main);
+        t1s.value=''; t2s.value='';
+        showToast('✅ Confronto adicionado!'); buildAdminUI(main);
       }catch(e){showToast(e.message,'err');}
     }},'Adicionar');
-    addCard.appendChild(t1i); addCard.appendChild(t2i); addCard.appendChild(addBtn);
+    addCard.appendChild(t1s); addCard.appendChild(t2s); addCard.appendChild(addBtn);
+
+    if(koPool.length===ALL_TEAMS.length){
+      const warn=el('div',{style:{fontSize:'.75rem',color:'#F59E0B',marginTop:'.5rem'}});
+      warn.textContent='⚠️ Grupos ainda não definidos — mostrando todos os times.';
+      addCard.appendChild(warn);
+    } else {
+      const inf=el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginTop:'.5rem'}});
+      inf.textContent=koPool.length+' times disponíveis (classificados)';
+      addCard.appendChild(inf);
+    }
     main.appendChild(addCard);
 
     // Lista de jogos desta fase
