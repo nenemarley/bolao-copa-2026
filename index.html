@@ -316,9 +316,19 @@ function setState(patch){
 }
 
 function showToast(msg, type=''){
-  STATE.toast={msg,type};
-  render();
-  setTimeout(()=>{ STATE.toast=null; render(); }, 3500);
+  // Mostrar/atualizar o toast sem re-renderizar a página inteira
+  let toast = document.getElementById('_toast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = '_toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.className = 'toast' + (type==='err' ? ' err' : '');
+  toast.style.display = 'block';
+  if(toast._timer) clearTimeout(toast._timer);
+  toast._timer = setTimeout(()=>{ toast.style.display='none'; }, 3500);
 }
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
@@ -511,10 +521,7 @@ function renderAuth(){
 // ── Main App Shell ─────────────────────────────────────────────────────────
 function renderApp(){
   const wrap = el('div');
-  // Toast
-  if(STATE.toast){
-    wrap.appendChild(el('div',{class:`toast${STATE.toast.type==='err'?' err':''}`},STATE.toast.msg));
-  }
+  // Toast é gerenciado diretamente por showToast() — não precisa de re-render
   // Header
   const hdr = el('div',{class:'hdr'});
   const hdrIn = el('div',{class:'hdr-in'});
@@ -1291,6 +1298,8 @@ function renderKnockout(main){
     renderReplicateBar(main, ()=>buildKoUI(main));
     koPreds={};
     (kp||[]).forEach(p=>{ if(!koPreds[p.phase])koPreds[p.phase]=[]; koPreds[p.phase].push({team:p.team_name,pts:p.points}); });
+    // Truncar ao count de cada fase (evitar dados legados com mais items que o limite)
+    PHASES.forEach(ph=>{ if(koPreds[ph.key]&&koPreds[ph.key].length>ph.count) koPreds[ph.key]=koPreds[ph.key].slice(0,ph.count); });
     koReal={};
     (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
     koScorer=(sp||[])[0]?.player_name||'';
@@ -1828,7 +1837,7 @@ function buildAdminUI(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
-  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro']].forEach(([k,l])=>{
+  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['test','🧪 Teste']].forEach(([k,l])=>{
     tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
   });
   main.appendChild(tabs);
@@ -2111,6 +2120,10 @@ function buildAdminUI(main){
     }},'Salvar');
     card.appendChild(inp); card.appendChild(savB); main.appendChild(card);
   }
+
+  if(adminTab==='test'){
+    renderTestPage(main);
+  }
 }
 
 
@@ -2134,12 +2147,58 @@ Object.entries(GROUPS).forEach(([g,teams],gi) => {
   REAL_STANDINGS_TEST[g] = {1:teams[gi%4],2:teams[(gi+1)%4],3:teams[(gi+2)%4],4:teams[(gi+3)%4]};
 });
 const allT = ALL_TEAMS;
+// Resultados reais simulados: round32=quem passa para oitavas(16), round16=oitavas(8), etc.
 const REAL_KO_TEST = {
-  round16: allT.slice(0,16), quarter: allT.slice(0,8),
-  semi: allT.slice(0,4), final: allT.slice(0,2),
-  champion:[allT[0]], runner_up:[allT[1]], third:[allT[2]]
+  best_thirds: allT.slice(24,32),         // 8 melhores 3ºs
+  round32:     allT.slice(0,16),          // 16 que passam para oitavas
+  round16:     allT.slice(0,8),           // 8 que passam para quartas
+  quarter:     allT.slice(0,4),           // 4 semifinalistas
+  semi:        allT.slice(0,2),           // 2 finalistas
+  final:       allT.slice(0,2),           // os 2 finalistas
+  champion:    [allT[0]],                 // campeão
+  runner_up:   [allT[1]],                 // vice
+  third:       [allT[2]],                 // 3º lugar
 };
 const REAL_SCORER_TEST = 'Mbappé';
+// Jogos eliminatórios de teste (Rodada de 32 — 16 jogos)
+const KO_MATCHES_TEST = [];
+for(let i=0;i<16;i++){
+  KO_MATCHES_TEST.push({
+    match_number: 1001+i,
+    team1_name: allT[i*2],
+    team2_name: allT[i*2+1],
+    group_id: 'KO_round32',
+    real_score1: i%2===0?2:1,
+    real_score2: i%2===0?0:2,
+    is_finished: true
+  });
+}
+// Oitavas (8 jogos)
+for(let i=0;i<8;i++){
+  KO_MATCHES_TEST.push({
+    match_number: 1017+i,
+    team1_name: allT[i*2],
+    team2_name: allT[i*2+1],
+    group_id: 'KO_round16',
+    real_score1: 2, real_score2: 0, is_finished: true
+  });
+}
+// Quartas (4 jogos)
+for(let i=0;i<4;i++){
+  KO_MATCHES_TEST.push({
+    match_number: 1025+i,
+    team1_name: allT[i*2],
+    team2_name: allT[i*2+1],
+    group_id: 'KO_quarter',
+    real_score1: 1, real_score2: 0, is_finished: true
+  });
+}
+// Semi (2 jogos)
+KO_MATCHES_TEST.push({match_number:1029,team1_name:allT[0],team2_name:allT[2],group_id:'KO_semi',real_score1:2,real_score2:1,is_finished:true});
+KO_MATCHES_TEST.push({match_number:1030,team1_name:allT[1],team2_name:allT[3],group_id:'KO_semi',real_score1:1,real_score2:0,is_finished:true});
+// Final e 3º lugar
+KO_MATCHES_TEST.push({match_number:1031,team1_name:allT[0],team2_name:allT[1],group_id:'KO_final',real_score1:2,real_score2:1,is_finished:true});
+KO_MATCHES_TEST.push({match_number:1032,team1_name:allT[2],team2_name:allT[3],group_id:'KO_third',real_score1:1,real_score2:0,is_finished:true});
 
 let testLog = [];
 let testRunning = false;
@@ -2332,23 +2391,41 @@ async function runTest(main) {
     else tlog(`  ✅ ${u.name}: 48 posições de grupo`, 'ok');
   }
 
-  // STEP 4: Palpites eliminatórias
+  // STEP 4: Palpites eliminatórias (nova estrutura com round32)
   tlog('\n🔥 PASSO 4: Palpites das fases...', 'bold');
   const scorerOptions = ['Mbappé','Vinicius Jr','Haaland','Lewandowski','Salah'];
+  // Palpites de 8 melhores 3ºs (group_predictions com group_id='_thirds')
+  for(const [ui, u] of signedUsers.entries()) {
+    const thirdsRows = [];
+    allT.slice(24+ui, 24+ui+8).concat(allT.slice(24)).slice(0,8).forEach((team,idx)=>{
+      thirdsRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:0, bolao_id:testBolao?.id});
+    });
+    await SB.from('group_predictions').upsert(thirdsRows);
+  }
+  tlog('  ✅ Palpites de 8 melhores 3ºs inseridos', 'ok');
+
   for(const [ui, u] of signedUsers.entries()) {
     const rows = [];
-    const phases2 = ['round16','quarter','semi','final','champion','runner_up','third'];
-    const counts2 = {round16:16,quarter:8,semi:4,final:2,champion:1,runner_up:1,third:1};
-    phases2.forEach(phase => {
-      const count = counts2[phase];
-      const picked = ALL_TEAMS.slice(ui*2, ui*2+count).concat(ALL_TEAMS).slice(0,count);
+    // Nova estrutura de fases
+    const phaseDef = [
+      {phase:'round32', count:16},
+      {phase:'round16', count:8},
+      {phase:'quarter', count:4},
+      {phase:'semi',    count:2},
+      {phase:'final',   count:2},
+      {phase:'champion',count:1},
+      {phase:'runner_up',count:1},
+      {phase:'third',   count:1},
+    ];
+    phaseDef.forEach(({phase,count}) => {
+      const picked = ALL_TEAMS.slice(ui, ui+count).concat(ALL_TEAMS).slice(0,count);
       userPreds[u.id].knockout[phase]=picked;
       picked.forEach(team => rows.push({user_id:u.id, phase, team_name:team, points:0, bolao_id:testBolao?.id}));
     });
     const scorer = scorerOptions[ui];
     userPreds[u.id].scorer = scorer;
-    await SB.from('knockout_predictions').delete().eq('user_id',u.id);
-    await SB.from('knockout_predictions').insert(rows);
+    await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+    if(rows.length>0) await SB.from('knockout_predictions').insert(rows);
     await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
     tlog(`  ✅ ${u.name}: fases + artilheiro "${scorer}"`, 'ok');
   }
@@ -2375,6 +2452,10 @@ async function runTest(main) {
   await SB.from('real_knockouts').upsert({phase:'top_scorer', team_ids:[REAL_SCORER_TEST]});
   tlog(`  ✅ Eliminatórias + artilheiro real: ${REAL_SCORER_TEST}`, 'ok');
 
+  // Inserir jogos eliminatórios de teste
+  await SB.from('group_matches').upsert(KO_MATCHES_TEST);
+  tlog(`  ✅ ${KO_MATCHES_TEST.length} jogos eliminatórios inseridos`, 'ok');
+
   // STEP 6: Recalcular pontuações
   tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
   for(const u of signedUsers) {
@@ -2398,15 +2479,15 @@ async function runTest(main) {
     });
     await SB.from('group_predictions').upsert(gUp);
 
-    // Knockout
+    // Knockout (nova estrutura com round32)
     const kRows = [];
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
       teams.forEach(team=>{
         const isReal = REAL_KO_TEST[phase]?.includes(team);
-        kRows.push({user_id:u.id, phase, team_name:team, points:isReal?(phase==='champion'?20:10):0});
+        kRows.push({user_id:u.id, phase, team_name:team, points:isReal?(phase==='champion'?20:10):0, bolao_id:testBolao?.id});
       });
     });
-    await SB.from('knockout_predictions').delete().eq('user_id',u.id);
+    await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
     if(kRows.length>0) await SB.from('knockout_predictions').insert(kRows);
 
     // Scorer
@@ -2494,11 +2575,20 @@ async function cleanupTest(main) {
     tlog('  ℹ️ Nenhum usuário de teste encontrado', 'info');
   }
 
-  // Clean match results, standings, knockouts
+  // Limpar dados do admin (Nenê) — palpites e knockout com estrutura antiga
+  if(STATE.profile?.id) {
+    await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id);
+    await SB.from('group_predictions').delete().eq('user_id',STATE.profile.id);
+    await SB.from('match_predictions').delete().eq('user_id',STATE.profile.id);
+    await SB.from('scorer_predictions').delete().eq('user_id',STATE.profile.id);
+    tlog('  ✅ Palpites do admin limpos', 'ok');
+  }
+
+  // Limpar resultados reais (jogos fase de grupos, classificação, eliminatórias)
   await SB.from('group_matches').delete().neq('match_number',0);
   await SB.from('real_group_standings').delete().neq('group_id','Z');
   await SB.from('real_knockouts').delete().neq('phase','Z');
-  tlog('  ✅ Resultados reais removidos', 'ok');
+  tlog('  ✅ Resultados reais removidos (jogos, grupos, eliminatórias)', 'ok');
 
   // Remove test bolão
   const testBolaoQ = await dbQ('bolao_groups',{invite_code:'TESTE1'});
@@ -2508,6 +2598,7 @@ async function cleanupTest(main) {
     await SB.from('bolao_groups').delete().eq('id',tbId);
     tlog('  ✅ Bolão de teste removido', 'ok');
   }
+
   testUserIds=[]; testDone=false; testLog.push('<span style="color:#10B981">✅ Limpeza concluída! Base zerada.</span>');
   window._testResults=null;
 
@@ -2516,7 +2607,7 @@ async function cleanupTest(main) {
   STATE.profiles = allProfs||[];
 
   renderTestPage(main);
-  showToast('✅ Base limpa! Só você permanece.');
+  showToast('✅ Base limpa! Pronto para novo teste.');
 }
 
 // ── Start ──────────────────────────────────────────────────────────────────
