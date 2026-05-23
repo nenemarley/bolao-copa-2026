@@ -828,11 +828,19 @@ function renderDashboard(main){
     dbQ('group_predictions',mFilter,'user_id,points'),
     dbQ('knockout_predictions',mFilter,'user_id,points'),
     dbQ('scorer_predictions',mFilter,'user_id,points'),
-  ]).then(([mp,gp,kp,sp])=>{
-    if(PAGE_VERSION !== v) return; // stale, abort
+    bolaoId ? dbQ('bolao_members',{bolao_id:bolaoId},'user_id') : Promise.resolve([]),
+  ]).then(([mp,gp,kp,sp,members])=>{
+    if(PAGE_VERSION !== v) return;
     main.innerHTML='';
+
+    // Filtrar só os membros do bolão atual
+    const memberIds = new Set((members||[]).map(m=>m.user_id));
+    const bolaoProfiles = bolaoId
+      ? STATE.profiles.filter(p=>memberIds.has(p.id))
+      : STATE.profiles;
+
     const totals={};
-    STATE.profiles.forEach(p=>{ totals[p.id]={m:0,g:0,k:0,s:0,prof:p}; });
+    bolaoProfiles.forEach(p=>{ totals[p.id]={m:0,g:0,k:0,s:0,prof:p}; });
     (mp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].m+=(r.points||0); });
     (gp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].g+=(r.points||0); });
     (kp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].k+=(r.points||0); });
@@ -840,7 +848,7 @@ function renderDashboard(main){
     const rows=Object.values(totals).map(t=>({...t,total:t.m+t.g+t.k+t.s})).sort((a,b)=>b.total-a.total);
 
     const stats=el('div',{class:'stats'});
-    [{v:STATE.profiles.length,l:'Participantes'},{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
+    [{v:bolaoProfiles.length,l:'Participantes'},{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
       .forEach(s=>stats.appendChild(el('div',{class:'sv'},el('div',{class:'svv'},''+s.v),el('div',{class:'svl'},s.l))));
     main.appendChild(stats);
 
