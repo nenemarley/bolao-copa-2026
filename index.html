@@ -828,13 +828,23 @@ function renderMatches(main){
   }).catch(e=>{ if(e.message!=='timeout'&&PAGE_VERSION===v) console.error('matches:',e); });
 }
 function makeMatchCtrl(initVal, onChange) {
-  let val = initVal;
+  let val = initVal===null||initVal===undefined ? null : initVal;
   const wrap = el('div',{style:{display:'flex',alignItems:'center',gap:'2px'}});
   const mn = el('button',{class:'score-btn'},'-');
-  const dsp = el('span',{class:'score-val'},''+val);
+  const dsp = el('span',{class:'score-val',style:{color:val===null?'var(--muted)':'var(--txt)'}},val===null?'—':''+val);
   const pl = el('button',{class:'score-btn'},'+');
-  mn.onclick=()=>{ if(val>0){val--;dsp.textContent=val;onChange(val);matchDirty=true;updateSaveBar();} };
-  pl.onclick=()=>{ if(val<9){val++;dsp.textContent=val;onChange(val);matchDirty=true;updateSaveBar();} };
+  mn.onclick=()=>{ 
+    if(val===null){val=0;}
+    else if(val>0){val--;}
+    dsp.textContent=val; dsp.style.color='var(--txt)';
+    onChange(val); matchDirty=true; updateSaveBar(); 
+  };
+  pl.onclick=()=>{ 
+    if(val===null){val=0;}
+    else if(val<9){val++;}
+    dsp.textContent=val; dsp.style.color='var(--txt)';
+    onChange(val); matchDirty=true; updateSaveBar(); 
+  };
   wrap.appendChild(mn); wrap.appendChild(dsp); wrap.appendChild(pl);
   return wrap;
 }
@@ -844,27 +854,26 @@ function buildMatchesUI(main){
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMatches(main));
   renderReplicateBar(main, ()=>buildMatchesUI(main));
   
-  // Default score bar (values persist across group switches)
-  if(typeof buildMatchesUI.defS1 === 'undefined') { buildMatchesUI.defS1=1; buildMatchesUI.defS2=0; }
-  let defS1=buildMatchesUI.defS1, defS2=buildMatchesUI.defS2;
+  // Default score bar - use module-level ref to persist values
+  if(!window._def) window._def = {s1:1, s2:0};
   const defBar=el('div',{style:{background:'rgba(255,215,0,.06)',border:'1px solid rgba(255,215,0,.2)',borderRadius:'8px',padding:'.6rem 1rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}});
   defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
-  defBar.appendChild(makeMatchCtrl(defS1, v=>{ defS1=v; buildMatchesUI.defS1=v; }));
+  defBar.appendChild(makeMatchCtrl(window._def.s1, v=>{ window._def.s1=v; }));
   defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
-  defBar.appendChild(makeMatchCtrl(defS2, v=>{ defS2=v; buildMatchesUI.defS2=v; }));
+  defBar.appendChild(makeMatchCtrl(window._def.s2, v=>{ window._def.s2=v; }));
   
   const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:()=>{
     let applied=0;
+    const ds1=window._def.s1, ds2=window._def.s2;
     MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
       if(!canBet(m.num)) return;
-      // Apply if no prediction exists (s1 undefined means never palpited)
       const hasPred = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
       if(!hasPred){
-        matchPreds[m.num]={s1:defS1,s2:defS2};
+        matchPreds[m.num]={s1:ds1,s2:ds2};
         applied++;
       }
     });
-    if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+defS1+'×'+defS2+' aplicado em '+applied+' jogos!'); }
+    if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+applied+' jogos!'); }
     else showToast('Todos os jogos já têm palpite!');
   }},'Aplicar a jogos sem palpite');
   defBar.appendChild(applyBtn);
@@ -909,7 +918,8 @@ function buildMatchesUI(main){
     mc.appendChild(teamsRow);
 
     // Score row
-    const v1=p.s1!==undefined?p.s1:0, v2=p.s2!==undefined?p.s2:0;
+    const hasPred2 = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
+    const v1=hasPred2?p.s1:null, v2=hasPred2?p.s2:null;
     if(canBetNow) {
       const scoreRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',marginBottom:'.3rem'}});
       scoreRow.appendChild(makeMatchCtrl(v1, v=>{ matchPreds[m.num]={...(matchPreds[m.num]||{}),s1:v,s2:matchPreds[m.num]?.s2??0}; }));
@@ -1012,12 +1022,13 @@ function renderStandings(main){
 }
 function buildStandingsUI(main){
   main.innerHTML='';
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1ª posição exata = 10pts · Classificada mas posição errada = 5pts'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'Posição exata = 10pts · Classificado mas posição errada = 5pts · 3º/4º não pontuam'));
   const grid=el('div',{class:'sg'});
   Object.entries(GROUPS).forEach(([g,teams])=>{
     const sc=el('div',{class:'sc'});
     sc.appendChild(el('h4',{},'GRUPO '+g));
-    [1,2,3,4].forEach(pos=>{
+    sc.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--gold)',fontWeight:'600',letterSpacing:'.04em',marginBottom:'.4rem',marginTop:'-.2rem'}},'CLASSIFICADOS PARA OITAVAS'));
+    [1,2].forEach(pos=>{
       const curr=grpPreds[g]?.[pos]?.team||'';
       const rTeam=grpReal[g]?.[pos];
       const pts=grpPreds[g]?.[pos]?.pts;
@@ -1052,12 +1063,12 @@ function updateGrpSaveBar(){
 async function saveStandings(){
   const rows=[];
   Object.entries(GROUPS).forEach(([g])=>{
-    [1,2,3,4].forEach(pos=>{
+    [1,2].forEach(pos=>{
       const p=grpPreds[g]?.[pos];
       if(p?.team){
         let pts=0;
         if(grpReal[g]?.[pos]===p.team) pts=10;
-        else if(Object.values(grpReal[g]||{}).includes(p.team)) pts=5;
+        else if([grpReal[g]?.[1],grpReal[g]?.[2]].includes(p.team)) pts=5;
         rows.push({user_id:STATE.profile.id,group_id:g,position:pos,team_name:p.team,points:pts});
       }
     });
@@ -1422,7 +1433,7 @@ function buildAdminUI(main){
             if(preds.length>0){
               const allR=await dbQ('real_group_standings',{group_id:g});
               const rm={}; allR.forEach(r=>rm[r.position]=r.team_name);
-              await dbUpsert('group_predictions',preds.map(p=>{ let pts=0; if(rm[p.position]===p.team_name)pts=10; else if(Object.values(rm).includes(p.team_name))pts=5; return {...p,points:pts}; }));
+              await dbUpsert('group_predictions',preds.map(p=>{ let pts=0; if((p.position===1||p.position===2)&&rm[p.position]===p.team_name)pts=10; else if((p.position===1||p.position===2)&&[rm[1],rm[2]].includes(p.team_name))pts=5; return {...p,points:pts}; }));
             }
             showToast(`✅ Grupo ${g} atualizado!`);
           }catch(e){ showToast(e.message,'err'); }
@@ -1764,8 +1775,9 @@ async function runTest(main) {
     Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
       Object.entries(positions).forEach(([pos,team])=>{
         let pts=0;
-        if(REAL_STANDINGS_TEST[g][pos]===team) pts=10;
-        else if(Object.values(REAL_STANDINGS_TEST[g]).includes(team)) pts=5;
+        const p=parseInt(pos);
+        if((p===1||p===2)&&REAL_STANDINGS_TEST[g][pos]===team) pts=10;
+        else if((p===1||p===2)&&[REAL_STANDINGS_TEST[g][1],REAL_STANDINGS_TEST[g][2]].includes(team)) pts=5;
         gUp.push({user_id:u.id, group_id:g, position:parseInt(pos), team_name:team, points:pts});
       });
     });
