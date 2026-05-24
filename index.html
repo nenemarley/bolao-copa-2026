@@ -1291,15 +1291,17 @@ async function saveStandings(){
 }
 
 // ── Knockout ───────────────────────────────────────────────────────────────
-let koPreds={}, koReal={}, koScorer='', koDirty=false, koRealThirds=[], koUserThirds=[];
+let koPreds={}, koReal={}, koScorer='', koDirty=false, koRealThirds=[], koUserThirds=[], koUserGrpStandings={};
 // Get teams available for a phase based on previous phase selections
 function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
   const prevPhase = {round16:'round32', quarter:'round16', semi:'quarter', final:'semi', third:'semi'};
 
   if(phase === 'round32') {
+    // Usar palpites do usuário nos grupos como pool (1º e 2º de cada grupo + 8 melhores 3ºs)
+    const standings = (Object.keys(koUserGrpStandings||{}).length>=12) ? koUserGrpStandings : (realStandings||{});
     const classified = [];
-    if(realStandings && Object.keys(realStandings).length >= 12) {
-      Object.entries(realStandings).forEach(([g, pos]) => {
+    if(Object.keys(standings).length >= 12) {
+      Object.entries(standings).forEach(([g, pos]) => {
         if(pos[1]) classified.push(pos[1]);
         if(pos[2]) classified.push(pos[2]);
       });
@@ -1351,7 +1353,8 @@ function renderKnockout(main){
     dbQ('scorer_predictions',{user_id:STATE.profile.id},'player_name,points'),
     CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id,group_id:'_thirds'},'group_id,team_name,points') : Promise.resolve([]),
     dbQ('real_group_standings',{},'group_id,position,team_name'),
-  ]).then(([kp,rk,sp,thirdPreds,rgs])=>{
+    CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'group_id,position,team_name') : Promise.resolve([]),
+  ]).then(([kp,rk,sp,thirdPreds,rgs,userGrpPreds])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'🔥 Fases Eliminatórias'));
@@ -1359,18 +1362,24 @@ function renderKnockout(main){
     renderReplicateBar(main, ()=>buildKoUI(main));
     koPreds={};
     (kp||[]).forEach(p=>{ if(!koPreds[p.phase])koPreds[p.phase]=[]; koPreds[p.phase].push({team:p.team_name,pts:p.points}); });
-    // Truncar ao count de cada fase (evitar dados legados com mais items que o limite)
     PHASES.forEach(ph=>{ if(koPreds[ph.key]&&koPreds[ph.key].length>ph.count) koPreds[ph.key]=koPreds[ph.key].slice(0,ph.count); });
     koReal={};
     (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
     koScorer=(sp||[])[0]?.player_name||'';
-    // Terceiros reais classificados
     koRealThirds = (koReal['best_thirds']?.team_ids||[]);
-    // Terceiros palpitados pelo usuário
     koUserThirds = (thirdPreds||[]).map(p=>p.team_name).filter(Boolean);
-    // Real standings para cascata
+    // Real standings para mostrar resultados reais
     grpReal={};
     (rgs||[]).forEach(r=>{ if(!grpReal[r.group_id])grpReal[r.group_id]={}; grpReal[r.group_id][r.position]=r.team_name; });
+    // Palpites do usuário nos grupos (1º e 2º) para montar pool do round32
+    const userGrpStandings={};
+    (userGrpPreds||[]).forEach(p=>{
+      if(p.group_id==='_thirds') return;
+      if(!userGrpStandings[p.group_id]) userGrpStandings[p.group_id]={};
+      userGrpStandings[p.group_id][p.position]=p.team_name;
+    });
+    // Usar palpites do usuário como pool se definidos, senão usar resultados reais
+    koUserGrpStandings = Object.keys(userGrpStandings).length >= 12 ? userGrpStandings : grpReal;
     koDirty=false;
     buildKoUI(main);
   });
@@ -1869,19 +1878,271 @@ async function saveKoMatches(){
   try{ await upsertWithReplicate('match_predictions',rows); koMatchDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateKoMatchSaveBar(); }
   catch(e){ showToast(e.message,'err'); }
 }
-function fetchResultsFromAI(main) {
-  const today = new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'});
-  const old = document.getElementById('ai-results-info');
-  if(old) { old.remove(); return; }
-  const infoDiv = el('div',{id:'ai-results-info',style:{background:'rgba(59,130,246,.08)',border:'1px solid rgba(59,130,246,.3)',borderRadius:'8px',padding:'1rem',marginBottom:'1rem',fontSize:'.85rem'}});
-  infoDiv.appendChild(el('div',{style:{color:'#93C5FD',fontWeight:'600',marginBottom:'.5rem'}},'📅 Como registrar resultados ('+today+')'));
-  ['1. Acesse o Google e busque "Copa 2026 resultados de hoje"',
-   '2. Encontre os placares dos jogos do dia',
-   '3. Insira cada placar nos campos abaixo e clique Salvar',
-   '4. As pontuações dos palpiteiros são atualizadas automaticamente!'
-  ].forEach(s=>{ infoDiv.appendChild(el('div',{style:{color:'var(--muted)',marginBottom:'4px',paddingLeft:'8px'}},s)); });
-  infoDiv.appendChild(el('button',{class:'btn btn-o btn-sm',style:{marginTop:'8px'},onclick:()=>infoDiv.remove()},'Fechar'));
-  main.insertBefore(infoDiv, main.children[2]);
+// ── Auto-update com Claude API + Web Search ────────────────────────────────
+const AI_KEY_STORAGE = 'bolao_claude_api_key';
+
+function getApiKey() {
+  return localStorage.getItem(AI_KEY_STORAGE)||'';
+}
+
+function saveApiKey(key) {
+  localStorage.setItem(AI_KEY_STORAGE, key.trim());
+}
+
+async function callClaudeWithSearch(prompt) {
+  const apiKey = getApiKey();
+  if(!apiKey) throw new Error('API key não configurada');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-beta':'web-search-2025-03-05'
+    },
+    body: JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:2000,
+      tools:[{type:'web_search_20250305',name:'web_search'}],
+      messages:[{role:'user',content:prompt}]
+    })
+  });
+  if(!resp.ok) {
+    const err = await resp.json().catch(()=>({}));
+    throw new Error(err?.error?.message||'Erro na API ('+resp.status+')');
+  }
+  const data = await resp.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  return text;
+}
+
+async function fetchResultsFromAI(main, phase) {
+  // Verificar API key
+  let apiKey = getApiKey();
+  if(!apiKey) {
+    const key = prompt('Cole sua Claude API Key (ficará salva só neste dispositivo):');
+    if(!key||!key.trim()) return;
+    saveApiKey(key);
+    apiKey = key.trim();
+  }
+
+  // Criar painel de progresso
+  let panel = document.getElementById('ai-fetch-panel');
+  if(panel) panel.remove();
+  panel = el('div',{id:'ai-fetch-panel',style:{background:'rgba(59,130,246,.08)',border:'1px solid rgba(59,130,246,.3)',borderRadius:'12px',padding:'1rem',marginBottom:'1rem'}});
+  const statusDiv = el('div',{style:{fontSize:'.85rem',color:'#93C5FD',fontWeight:'600',marginBottom:'.5rem'}});
+  const logDiv = el('div',{style:{fontSize:'.75rem',color:'var(--muted)',maxHeight:'200px',overflowY:'auto',fontFamily:'monospace'}});
+  const closeBtn = el('button',{class:'btn btn-o btn-sm',style:{marginTop:'8px'},onclick:()=>panel.remove()},'Fechar');
+  panel.appendChild(statusDiv);
+  panel.appendChild(logDiv);
+  panel.appendChild(closeBtn);
+  main.insertBefore(panel, main.children[2]||main.lastChild);
+
+  const log = (msg, color='var(--muted)') => {
+    const d = document.createElement('div');
+    d.style.color = color;
+    d.textContent = msg;
+    logDiv.appendChild(d);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  };
+
+  const today = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const phaseLabel = phase==='groups'?'fase de grupos':phase==='round32'?'Rodada de 32':phase==='round16'?'Oitavas de Final':phase==='quarter'?'Quartas de Final':phase==='semi'?'Semifinal':'Final';
+
+  try {
+    statusDiv.textContent = '🔍 Buscando resultados da Copa 2026 ('+today+')...';
+    log('→ Consultando Claude com web search...');
+
+    const prompt = `Busque os resultados dos jogos da Copa do Mundo FIFA 2026 de hoje (${today}) ou os mais recentes disponíveis, especificamente da ${phaseLabel}.
+
+Para cada jogo encontrado, retorne APENAS um JSON válido neste formato (sem markdown, sem explicação):
+{
+  "date": "${today}",
+  "phase": "${phase}",
+  "matches": [
+    {"team1": "Nome do time 1", "score1": 2, "team2": "Nome do time 2", "score2": 1, "finished": true}
+  ],
+  "standings": {
+    "A": {"1": "Time 1º lugar", "2": "Time 2º lugar", "3": "Time 3º lugar"},
+    "B": {"1": "...", "2": "...", "3": "..."}
+  },
+  "best_thirds": ["Time1", "Time2", "Time3", "Time4", "Time5", "Time6", "Time7", "Time8"],
+  "knockout_classified": {
+    "round32": ["16 times que passaram para oitavas"],
+    "round16": ["8 times que passaram para quartas"],
+    "quarter": ["4 semifinalistas"],
+    "semi": ["2 finalistas"],
+    "champion": ["Campeão"]
+  }
+}
+
+Use os nomes dos times em português como aparecem nesta lista: ${ALL_TEAMS.join(', ')}.
+Inclua apenas os dados que já estão confirmados. Se não houver jogos hoje, busque os mais recentes.
+Retorne SOMENTE o JSON, sem texto adicional.`;
+
+    const raw = await callClaudeWithSearch(prompt);
+    log('→ Resposta recebida, processando...', '#10B981');
+
+    // Parsear JSON
+    let data;
+    try {
+      const clean = raw.replace(/```json|```/g,'').trim();
+      data = JSON.parse(clean);
+    } catch(e) {
+      throw new Error('Resposta não é JSON válido. Tente novamente.');
+    }
+
+    if(!data.matches || data.matches.length===0) {
+      statusDiv.textContent = '⚠️ Nenhum jogo encontrado para hoje.';
+      log('Nenhum jogo disponível.', '#F59E0B');
+      return;
+    }
+
+    log('→ '+data.matches.length+' jogo(s) encontrado(s)', '#10B981');
+
+    // Mostrar preview para confirmação
+    statusDiv.textContent = '✅ Resultados encontrados — confirme abaixo:';
+    const previewDiv = el('div',{style:{marginTop:'8px',display:'flex',flexDirection:'column',gap:'6px'}});
+
+    data.matches.forEach(m=>{
+      const row = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem',background:'var(--card)',borderRadius:'6px',padding:'6px 10px'}});
+      row.appendChild(el('span',{},(FLAGS[m.team1]||'🏳')+' '+m.team1));
+      row.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontSize:'1rem'}},m.score1+' — '+m.score2));
+      row.appendChild(el('span',{},(FLAGS[m.team2]||'🏳')+' '+m.team2));
+      row.appendChild(el('span',{style:{fontSize:'.7rem',color:m.finished?'var(--ok)':'#F59E0B'}},m.finished?'✓ Final':'⏳'));
+      previewDiv.appendChild(row);
+    });
+    panel.insertBefore(previewDiv, closeBtn);
+
+    // Botão confirmar
+    const confirmBtn = el('button',{class:'btn btn-p',style:{marginTop:'8px',marginRight:'8px'},onclick:async()=>{
+      confirmBtn.disabled=true; confirmBtn.textContent='⏳ Salvando...';
+      try {
+        await applyAIResults(data, log);
+        statusDiv.textContent = '✅ Banco atualizado com sucesso!';
+        confirmBtn.remove();
+        log('✅ Tudo salvo! Recarregando...', '#10B981');
+        setTimeout(()=>{ panel.remove(); buildAdminUI(main); }, 1500);
+      } catch(e) {
+        statusDiv.textContent = '❌ Erro ao salvar: '+e.message;
+        confirmBtn.disabled=false; confirmBtn.textContent='Tentar novamente';
+      }
+    }},'✅ Confirmar e salvar no banco');
+    panel.insertBefore(confirmBtn, closeBtn);
+
+  } catch(e) {
+    statusDiv.textContent = '❌ '+e.message;
+    log('Erro: '+e.message, '#EF4444');
+    if(e.message.includes('401')||e.message.includes('API key')) {
+      localStorage.removeItem(AI_KEY_STORAGE);
+      log('API key removida. Tente novamente com uma key válida.', '#F59E0B');
+    }
+  }
+}
+
+// Mapeamento de variações de nomes que Claude pode retornar
+const TEAM_NAME_MAP = {
+  'USA':'Estados Unidos','United States':'Estados Unidos','EUA':'Estados Unidos',
+  'Panama':'Panamá','Bolivia':'Bolívia','New Zealand':'Nova Zelândia',
+  'Canada':'Canadá','Mexico':'México','Ecuador':'Equador','Brazil':'Brasil',
+  'Paraguay':'Paraguai','Australia':'Austrália','Germany':'Alemanha',
+  'Japan':'Japão','Cameroon':'Camarões','Saudi Arabia':'Arábia Saudita',
+  'Poland':'Polônia','South Korea':'Coreia do Sul','Korea Republic':'Coreia do Sul',
+  'Republic of Korea':'Coreia do Sul','France':'França','Morocco':'Marrocos',
+  'Belgium':'Bélgica','Croatia':'Croácia','Spain':'Espanha','Serbia':'Sérvia',
+  'Turkey':'Turquia','Turkiye':'Turquia','Netherlands':'Holanda','Holland':'Holanda',
+  'Denmark':'Dinamarca','Ukraine':'Ucrânia','Libya':'Líbia','Uruguay':'Uruguai',
+  'Colombia':'Colômbia','Iraq':'Iraque','Kazakhstan':'Cazaquistão',
+  'England':'Inglaterra','Tunisia':'Tunísia',"Côte d'Ivoire":'Costa do Marfim',
+  'Ivory Coast':'Costa do Marfim','Slovenia':'Eslovênia','Italy':'Itália',
+  'South Africa':'África do Sul','Albania':'Albânia',
+};
+
+function normalizeTeamName(name) {
+  if(!name) return null;
+  if(ALL_TEAMS.includes(name)) return name;
+  if(TEAM_NAME_MAP[name]) return TEAM_NAME_MAP[name];
+  // Case-insensitive fallback
+  const lower = name.toLowerCase();
+  return ALL_TEAMS.find(t=>t.toLowerCase()===lower) || null;
+}
+
+async function applyAIResults(data, log) {
+  // 1. Salvar resultados dos jogos da fase de grupos
+  if(data.matches && data.matches.length>0) {
+    for(const m of data.matches) {
+      if(!m.finished) continue;
+      // Normalizar nomes (Claude pode retornar em inglês ou variações)
+      const t1 = normalizeTeamName(m.team1);
+      const t2 = normalizeTeamName(m.team2);
+      if(!t1){ log('⚠️ Time não reconhecido: "'+m.team1+'" — ignorado', '#F59E0B'); continue; }
+      if(!t2){ log('⚠️ Time não reconhecido: "'+m.team2+'" — ignorado', '#F59E0B'); continue; }
+      const matchEntry = Object.values(adminMatches).find(am=>
+        (am.team1_name===t1 && am.team2_name===t2) ||
+        (am.team1_name===t2 && am.team2_name===t1)
+      );
+      if(!matchEntry){ log('⚠️ Jogo não encontrado: '+t1+' × '+t2, '#F59E0B'); continue; }
+      const s1 = matchEntry.team1_name===t1 ? m.score1 : m.score2;
+      const s2 = matchEntry.team1_name===t1 ? m.score2 : m.score1;
+      await dbUpsert('group_matches',{match_number:matchEntry.match_number,real_score1:s1,real_score2:s2,is_finished:true,team1_name:matchEntry.team1_name,team2_name:matchEntry.team2_name,group_id:matchEntry.group_id});
+      const preds = await dbQ('match_predictions',{match_number:matchEntry.match_number});
+      if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,s1,s2)})));
+      adminMatches[matchEntry.match_number]={...matchEntry,real_score1:s1,real_score2:s2,is_finished:true};
+      log('✅ '+matchEntry.team1_name+' '+s1+'-'+s2+' '+matchEntry.team2_name, '#10B981');
+    }
+  }
+
+  // 2. Salvar classificação dos grupos
+  if(data.standings && Object.keys(data.standings).length>0) {
+    const standRows=[];
+    Object.entries(data.standings).forEach(([g,pos])=>{
+      Object.entries(pos).forEach(([p,t])=>{
+        const norm = normalizeTeamName(t);
+        if(norm) standRows.push({group_id:g,position:parseInt(p),team_name:norm});
+        else if(t) log('⚠️ Time não reconhecido na classificação: "'+t+'"', '#F59E0B');
+      });
+    });
+    if(standRows.length>0) {
+      await dbUpsert('real_group_standings',standRows);
+      // Recalcular pontos de group_predictions
+      for(const row of standRows) {
+        const preds = await dbQ('group_predictions',{group_id:row.group_id,position:row.position});
+        if(preds.length>0) {
+          const allReal = standRows.filter(r=>r.group_id===row.group_id);
+          const rm={}; allReal.forEach(r=>rm[r.position]=r.team_name);
+          await dbUpsert('group_predictions',preds.map(p=>{
+            let pts=0;
+            if((p.position===1||p.position===2)&&rm[p.position]===p.team_name) pts=10;
+            else if((p.position===1||p.position===2)&&[rm[1],rm[2]].includes(p.team_name)) pts=5;
+            return {...p,points:pts};
+          }));
+        }
+      }
+      log('✅ Classificação de '+Object.keys(data.standings).length+' grupos atualizada', '#10B981');
+    }
+  }
+
+  // 3. Salvar 8 melhores 3ºs
+  if(data.best_thirds && data.best_thirds.length>0) {
+    const normThirds = data.best_thirds.map(t=>normalizeTeamName(t)).filter(Boolean);
+    await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:normThirds});
+    const preds = await dbQ('group_predictions',{group_id:'_thirds',position:3});
+    if(preds.length>0) await dbUpsert('group_predictions',preds.map(p=>({...p,points:data.best_thirds.includes(p.team_name)?5:0})));
+    log('✅ 8 melhores 3ºs definidos', '#10B981');
+  }
+
+  // 4. Salvar classificados das fases eliminatórias
+  if(data.knockout_classified) {
+    for(const [phase, teams] of Object.entries(data.knockout_classified)) {
+      if(!teams||teams.length===0) continue;
+      const normTeams = teams.map(t=>normalizeTeamName(t)).filter(Boolean);
+      await dbUpsert('real_knockouts',{phase,team_ids:normTeams});
+      const pts = phase==='champion'?20:10;
+      const preds = await dbQ('knockout_predictions',{phase});
+      if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:normTeams.includes(p.team_name)?pts:0})));
+      log('✅ '+phase+': '+normTeams.length+' times classificados', '#10B981');
+    }
+  }
 }
 
 
@@ -1910,15 +2171,26 @@ function buildAdminUI(main){
   main.appendChild(tabs);
 
   if(adminTab==='matches'){
-    // Buscar resultados button
+    // Busca automática com Claude AI
     const fetchBar = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem',alignItems:'center',flexWrap:'wrap'}});
-    const fetchBtn = el('button',{class:'btn btn-s',style:{display:'flex',alignItems:'center',gap:'6px'},onclick:()=>fetchResultsFromAI(main)},
-      '📅 Como registrar resultados?');
-    const fetchInfo = el('span',{style:{fontSize:'.75rem',color:'var(--muted)'}},'Passo a passo para inserir os resultados do dia');
+    const phaseSelect = el('select',{class:'ps',style:{flex:'1',minWidth:'160px'}});
+    [['groups','⚽ Fase de Grupos'],['round32','🔥 Rodada de 32'],['round16','⚔️ Oitavas'],['quarter','⚔️ Quartas'],['semi','⚔️ Semifinal'],['final','🏆 Final']].forEach(([v,l])=>{
+      phaseSelect.appendChild(el('option',{value:v},l));
+    });
+    const fetchBtn = el('button',{class:'btn btn-s',onclick:()=>fetchResultsFromAI(main,phaseSelect.value)},
+      '🤖 Buscar resultados com IA');
+    const cfgBtn = el('button',{class:'btn btn-o btn-sm',onclick:()=>{
+      const cur=getApiKey();
+      const key=prompt('Claude API Key'+(cur?'\n(atual: ...'+cur.slice(-8)+')':'')+':\n(deixe em branco para remover)');
+      if(key===null) return;
+      if(key.trim()) { saveApiKey(key); showToast('✅ API key salva!'); }
+      else { localStorage.removeItem(AI_KEY_STORAGE); showToast('API key removida'); }
+    }},'🔑 API Key');
+    fetchBar.appendChild(phaseSelect);
     fetchBar.appendChild(fetchBtn);
-    fetchBar.appendChild(fetchInfo);
+    fetchBar.appendChild(cfgBtn);
     main.appendChild(fetchBar);
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Ou insira o placar manualmente. Pontuações recalculadas automaticamente.'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Ou insira o placar manualmente abaixo. Pontuações recalculadas automaticamente.'));
     const gb=el('div',{class:'gb'});
     Object.keys(GROUPS).forEach(g=>gb.appendChild(el('button',{class:`btn btn-sm ${adminGrp===g?'btn-p':'btn-o'}`,onclick:()=>{ adminGrp=g; buildAdminUI(main); }},'Grupo '+g)));
     main.appendChild(gb);
@@ -2165,6 +2437,41 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='knockout'){
+    // Card especial para round32: selecionar os 16 que realmente passaram para oitavas
+    const round32Card=el('div',{class:'card',style:{marginBottom:'1rem'}});
+    round32Card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},'RODADA DE 32 — QUEM REALMENTE PASSOU PARA AS OITAVAS?'));
+    round32Card.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Selecione os 16 times que realmente se classificaram. Isso calcula os pontos dos participantes.'));
+
+    // Pool: top2 de cada grupo + 8 melhores 3ºs
+    const r32Pool=[];
+    Object.entries(adminStandings).forEach(([g,pos])=>{ if(pos[1])r32Pool.push(pos[1]); if(pos[2])r32Pool.push(pos[2]); });
+    (adminKo['best_thirds']?.team_ids||[]).forEach(t=>{ if(!r32Pool.includes(t)) r32Pool.push(t); });
+    if(r32Pool.length===0){ round32Card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.85rem'}},'⚠️ Defina primeiro a classificação dos grupos e os 8 melhores 3ºs.')); }
+    else {
+      const currR32 = adminKo['round32']?.team_ids||[];
+      round32Card.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'600',color:currR32.length===16?'var(--ok)':'var(--muted)',marginBottom:'.5rem'}},currR32.length+'/16 definidos'+(currR32.length===16?' ✓':'')));
+      const r32Btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+      r32Pool.forEach(team=>{
+        const isR=currR32.includes(team);
+        const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
+          const currNow=adminKo['round32']?.team_ids||[];
+          const next=currNow.includes(team)?currNow.filter(t=>t!==team):[...currNow,team];
+          if(next.length>16){showToast('Máximo 16 times!','err');return;}
+          try{
+            await dbUpsert('real_knockouts',{phase:'round32',team_ids:next});
+            // Recalcular pontos dos palpites de round32
+            const preds=await dbQ('knockout_predictions',{phase:'round32'});
+            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?10:0})));
+            if(!adminKo['round32'])adminKo['round32']={phase:'round32',team_ids:[]};
+            adminKo['round32'].team_ids=next;
+            showToast('✅ Rodada de 32 atualizada!'); buildAdminUI(main);
+          }catch(e){showToast(e.message,'err');}
+        }},`${FLAGS[team]||''} ${team}`);
+        r32Btns.appendChild(b);
+      });
+      round32Card.appendChild(r32Btns);
+    }
+    main.appendChild(round32Card);
     PHASES.forEach(ph=>{
       if(ph.key==='round32') return; // round32 é gerenciado por "quem passa" pelos usuários
       const rp=adminKo[ph.key];
@@ -2173,14 +2480,17 @@ function buildAdminUI(main){
       const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
       const prevMap = {round16:'round32',quarter:'round16',semi:'quarter',final:'semi',champion:'final',runner_up:'final',third:'semi'};
       let adminAvailTeams = ALL_TEAMS;
-      const best8thirds = adminKo['best_thirds']?.team_ids||[];
-      if(ph.key==='round16'){
-        adminAvailTeams=[];
-        Object.values(adminStandings).forEach(pos=>{ if(pos[1])adminAvailTeams.push(pos[1]); if(pos[2])adminAvailTeams.push(pos[2]); });
-        best8thirds.forEach(t=>{ if(!adminAvailTeams.includes(t)) adminAvailTeams.push(t); });
-        if(adminAvailTeams.length<2) adminAvailTeams=ALL_TEAMS;
-      } else if(prevMap[ph.key] && adminKo[prevMap[ph.key]]?.team_ids?.length>0) {
+      if(prevMap[ph.key] && adminKo[prevMap[ph.key]]?.team_ids?.length>0) {
         adminAvailTeams = adminKo[prevMap[ph.key]].team_ids;
+      } else if(ph.key==='round16') {
+        // round32 ainda não definido — mostrar aviso
+        adminAvailTeams = [];
+      }
+      if(adminAvailTeams.length===0){
+        card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.82rem',fontStyle:'italic'}},
+          '⬆️ Defina primeiro quem passou pela fase anterior'));
+        main.appendChild(card);
+        return;
       }
       adminAvailTeams.forEach(team=>{
         const isR=(rp?.team_ids||[]).includes(team);
