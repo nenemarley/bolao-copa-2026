@@ -1899,27 +1899,142 @@ async function fetchResultsFromAI(main, phase) {
     panel.appendChild(header);
 
     if(mode==='prompt') {
-      // Gerar prompt
-      const prompt = `Busque os resultados dos jogos da Copa do Mundo FIFA 2026 de hoje (${today}), fase: ${phaseLabel}.
+      const today = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
 
-Retorne SOMENTE um JSON válido neste formato (sem markdown, sem explicação):
+      // Prompt inteligente por fase
+      let prompt = '';
+
+      if(phase==='groups') {
+        prompt = `Busque os resultados dos jogos da Copa do Mundo FIFA 2026 de hoje (${today}), fase de grupos.
+
+IMPORTANTE sobre classificação:
+- A classificação dos grupos SÓ é definida após os 6 jogos de cada grupo (3ª rodada)
+- Antes da 3ª rodada, deixe "standings" e "best_thirds" como null
+- Se hoje for a 3ª rodada de algum grupo, inclua a classificação final desse grupo
+- Os 8 melhores 3ºs só são conhecidos após TODOS os 12 grupos encerrarem
+
+Retorne SOMENTE este JSON (sem markdown):
 {
   "matches": [
-    {"team1": "Nome em português", "score1": 2, "team2": "Nome em português", "score2": 1, "finished": true}
+    {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 1, "finished": true}
   ],
   "standings": {
     "A": {"1": "1º colocado", "2": "2º colocado", "3": "3º colocado", "4": "4º colocado"}
   },
   "best_thirds": ["Time1","Time2","Time3","Time4","Time5","Time6","Time7","Time8"],
+  "knockout_classified": null
+}
+
+Se a 3ª rodada ainda não acabou, retorne standings=null e best_thirds=null.
+Times em português: ${ALL_TEAMS.join(', ')}.`;
+
+      } else if(phase==='round32') {
+        prompt = `Busque os resultados dos jogos da Rodada de 32 da Copa do Mundo FIFA 2026 (${today}).
+
+IMPORTANTE: Cada jogo que terminar classifica 1 time para as Oitavas de Final.
+- Liste TODOS os jogos da Rodada de 32 com resultados
+- Em "knockout_classified.round32" coloque SOMENTE os times que já venceram seus jogos
+- Se nem todos os 16 jogos terminaram, liste só os vencedores confirmados até agora
+
+Retorne SOMENTE este JSON (sem markdown):
+{
+  "matches": [
+    {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 0, "finished": true}
+  ],
+  "standings": null,
+  "best_thirds": null,
   "knockout_classified": {
-    "round32": ["16 times que passaram para oitavas"]
+    "round32": ["time1", "time2"]
   }
 }
 
-Use estes nomes em português: ${ALL_TEAMS.join(', ')}.
-Inclua apenas dados confirmados. Campos sem dados: null.`;
+Times em português: ${ALL_TEAMS.join(', ')}.`;
 
-      panel.appendChild(el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginBottom:'.75rem'}},'1. Copie o prompt abaixo → 2. Cole no chat do Claude → 3. Copie o JSON que ele retornar → 4. Cole aqui'));
+      } else if(phase==='round16') {
+        prompt = `Busque os resultados das Oitavas de Final da Copa do Mundo FIFA 2026 (${today}).
+
+IMPORTANTE: Cada jogo classifica 1 time para as Quartas de Final.
+- Liste todos os jogos das Oitavas com resultados
+- Em "knockout_classified.round16" coloque SOMENTE os vencedores confirmados
+
+Retorne SOMENTE este JSON (sem markdown):
+{
+  "matches": [
+    {"team1": "Nome pt-BR", "score1": 1, "team2": "Nome pt-BR", "score2": 0, "finished": true}
+  ],
+  "standings": null,
+  "best_thirds": null,
+  "knockout_classified": {
+    "round16": ["time1", "time2"]
+  }
+}
+
+Times em português: ${ALL_TEAMS.join(', ')}.`;
+
+      } else if(phase==='quarter') {
+        prompt = `Busque os resultados das Quartas de Final da Copa do Mundo FIFA 2026 (${today}).
+
+Retorne SOMENTE este JSON (sem markdown):
+{
+  "matches": [
+    {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 1, "finished": true}
+  ],
+  "standings": null,
+  "best_thirds": null,
+  "knockout_classified": {
+    "quarter": ["semifinalista1", "semifinalista2"]
+  }
+}
+
+Times em português: ${ALL_TEAMS.join(', ')}.`;
+
+      } else if(phase==='semi') {
+        prompt = `Busque os resultados das Semifinais da Copa do Mundo FIFA 2026 (${today}).
+
+IMPORTANTE:
+- Os 2 vencedores vão para a Final
+- Os 2 perdedores vão para a disputa de 3º lugar
+- Inclua ambas as informações em knockout_classified
+
+Retorne SOMENTE este JSON (sem markdown):
+{
+  "matches": [
+    {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 1, "finished": true}
+  ],
+  "standings": null,
+  "best_thirds": null,
+  "knockout_classified": {
+    "semi": ["finalista1", "finalista2"],
+    "final": ["finalista1", "finalista2"],
+    "third": ["perdedor1_que_disputará_3lugar"]
+  }
+}
+
+Times em português: ${ALL_TEAMS.join(', ')}.`;
+
+      } else if(phase==='final') {
+        prompt = `Busque o resultado da Final e do 3º lugar da Copa do Mundo FIFA 2026 (${today}).
+
+Retorne SOMENTE este JSON (sem markdown):
+{
+  "matches": [
+    {"team1": "Nome pt-BR", "score1": 3, "team2": "Nome pt-BR", "score2": 1, "finished": true},
+    {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 0, "finished": true}
+  ],
+  "standings": null,
+  "best_thirds": null,
+  "knockout_classified": {
+    "champion": ["Campeão"],
+    "runner_up": ["Vice-campeão"],
+    "third": ["3º lugar"]
+  }
+}
+
+Times em português: ${ALL_TEAMS.join(', ')}.`;
+      }
+
+      panel.appendChild(el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginBottom:'.75rem',lineHeight:'1.5'}},
+        '1. Copie o prompt → 2. Cole aqui no chat do Claude → 3. Copie o JSON da resposta → 4. Clique "Próximo passo" e cole'));
 
       const promptBox = el('textarea',{style:{width:'100%',height:'140px',background:'#0a0f1e',border:'1px solid #374151',borderRadius:'8px',color:'#10B981',fontFamily:'monospace',fontSize:'.7rem',padding:'8px',resize:'none'}});
       promptBox.value = prompt;
