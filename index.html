@@ -200,8 +200,9 @@ const PHASES = [
 // runner_up = o outro finalista, automático, 10pts já contados na fase "final"
 // third = 1 dos 2 perdedores da semi, 10pts
 
-// Chaveamento fixo da Rodada de 32 (FIFA oficial)
-// slot: [lado1, lado2] onde cada lado é {type:'1'|'2'|'3', group:'A'...'L', thirdGroups:['A','B',...]}
+// ── Chaveamento completo FIFA 2026 (fixo por número de jogo) ─────────────────
+// Rodada de 32: jogos 73-88
+// slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
 const ROUND32_BRACKET = [
   {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
   {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',thirdGroups:['A','B','C','D','F']}},
@@ -215,11 +216,72 @@ const ROUND32_BRACKET = [
   {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',thirdGroups:['A','E','H','I','J']}},
   {id:83, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
   {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
-  {id:85, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},  // winner goes to R16
+  {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',thirdGroups:['E','F','G','I','J']}},
   {id:86, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
-  {id:87, slot1:{type:'1',group:'B'}, slot2:{type:'3',thirdGroups:['E','F','G','I','J']}},
-  {id:88, slot1:{type:'1',group:'K'}, slot2:{type:'3',thirdGroups:['D','E','I','J','L']}},
+  {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',thirdGroups:['D','E','I','J','L']}},
+  {id:88, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
 ];
+// Oitavas de Final: jogos 89-96 (vencedor de X vs vencedor de Y)
+const ROUND16_BRACKET = [
+  {id:89, slot1:{type:'W',matchId:74}, slot2:{type:'W',matchId:77}},
+  {id:90, slot1:{type:'W',matchId:73}, slot2:{type:'W',matchId:75}},
+  {id:91, slot1:{type:'W',matchId:76}, slot2:{type:'W',matchId:78}},
+  {id:92, slot1:{type:'W',matchId:79}, slot2:{type:'W',matchId:80}},
+  {id:93, slot1:{type:'W',matchId:83}, slot2:{type:'W',matchId:84}},
+  {id:94, slot1:{type:'W',matchId:81}, slot2:{type:'W',matchId:82}},
+  {id:95, slot1:{type:'W',matchId:86}, slot2:{type:'W',matchId:88}},
+  {id:96, slot1:{type:'W',matchId:85}, slot2:{type:'W',matchId:87}},
+];
+// Quartas de Final: jogos 97-100
+const QUARTER_BRACKET = [
+  {id:97, slot1:{type:'W',matchId:89}, slot2:{type:'W',matchId:90}},
+  {id:98, slot1:{type:'W',matchId:93}, slot2:{type:'W',matchId:94}},
+  {id:99, slot1:{type:'W',matchId:91}, slot2:{type:'W',matchId:92}},
+  {id:100,slot1:{type:'W',matchId:95}, slot2:{type:'W',matchId:96}},
+];
+// Semifinais: jogos 101-102
+const SEMI_BRACKET = [
+  {id:101,slot1:{type:'W',matchId:97}, slot2:{type:'W',matchId:98}},
+  {id:102,slot1:{type:'W',matchId:99}, slot2:{type:'W',matchId:100}},
+];
+// 3º Lugar: jogo 103 | Final: jogo 104
+const THIRD_BRACKET = [{id:103,slot1:{type:'L',matchId:101},slot2:{type:'L',matchId:102}}];
+const FINAL_BRACKET  = [{id:104,slot1:{type:'W',matchId:101},slot2:{type:'W',matchId:102}}];
+
+// Mapa completo por fase
+const PHASE_BRACKETS = {
+  KO_round32: ROUND32_BRACKET,
+  KO_round16: ROUND16_BRACKET,
+  KO_quarter: QUARTER_BRACKET,
+  KO_semi:    SEMI_BRACKET,
+  KO_third:   THIRD_BRACKET,
+  KO_final:   FINAL_BRACKET,
+};
+
+// Resolver slot a partir dos resultados reais cadastrados
+function resolveMatchSlot(slot, realStandings, realThirds, adminMatchesMap) {
+  if(slot.type==='1'||slot.type==='2') {
+    const pos = slot.type==='1'?1:2;
+    return realStandings?.[slot.group]?.[pos] || (pos+'º do Grupo '+slot.group);
+  }
+  if(slot.type==='3') {
+    // 3º melhor — verificar qual dos grupos possíveis classificou
+    const classified = realThirds||[];
+    const found = (slot.thirdGroups||[]).map(g=>realStandings?.[g]?.[3]).find(t=>t&&classified.includes(t));
+    return found || '3º ('+( slot.thirdGroups||[]).join('/')+')';
+  }
+  if(slot.type==='W'||slot.type==='L') {
+    // Vencedor ou perdedor de um jogo anterior
+    const m = adminMatchesMap?.[slot.matchId];
+    if(m?.is_finished) {
+      if(slot.type==='W') return m.real_score1>m.real_score2?m.team1_name:m.real_score2>m.real_score1?m.team2_name:(m.team1_name+'?');
+      if(slot.type==='L') return m.real_score1<m.real_score2?m.team1_name:m.real_score2<m.real_score1?m.team2_name:(m.team1_name+'?');
+    }
+    const prefix = slot.type==='W'?'Venc.':'Perd.';
+    return prefix+' Jogo '+slot.matchId;
+  }
+  return '?';
+}
 
 // Datas dos jogos Copa 2026 (aproximadas, fuso horário de Brasília)
 const MATCH_DATES = {
@@ -945,24 +1007,14 @@ function buildMatchesUI(main){
   const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:()=>{
     let applied=0;
     const ds1=window._def.s1, ds2=window._def.s2;
-    _dbg('[PLACAR PADRÃO] Aplicando',ds1,'×',ds2,'no grupo',activeGrp);
-    _dbg('[PLACAR PADRÃO] matchPreds antes:', JSON.stringify(matchPreds));
     MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
-      const cb=canBet(m.num);
-      const hasPred = matchPreds[m.num] && matchPreds[m.num].s1 !== undefined;
-      _dbg(`[PLACAR PADRÃO] Jogo #${m.num}: canBet=${cb}, hasPred=${hasPred}`);
-      if(!cb) return;
-      if(!hasPred){
-        matchPreds[m.num]={s1:ds1,s2:ds2};
-        applied++;
-        _dbg(`[PLACAR PADRÃO] ✅ Aplicado jogo #${m.num}`);
-      }
+      if(!canBet(m.num)) return;
+      matchPreds[m.num]={s1:ds1,s2:ds2};
+      applied++;
     });
-    _dbg('[PLACAR PADRÃO] Total aplicados:',applied);
-    _dbg('[PLACAR PADRÃO] matchPreds depois:', JSON.stringify(matchPreds));
     if(applied>0){ matchDirty=true; buildMatchesUI(main); showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+applied+' jogos!'); updateSaveBar(); }
-    else showToast('Todos os jogos já têm palpite!');
-  }},'Aplicar a jogos sem palpite');
+    else showToast('Nenhum jogo disponível para palpitar!');
+  }},'Aplicar a todos os jogos');
   defBar.appendChild(applyBtn);
   const dbgBtn=el('button',{class:'btn btn-o btn-sm',style:{fontSize:'.65rem',padding:'3px 7px',marginLeft:'4px'},onclick:_showDebugPanel},'🔍');
   defBar.appendChild(dbgBtn);
@@ -1682,7 +1734,8 @@ function renderKoMatches(main){
     CURRENT_BOLAO ? dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points') : Promise.resolve([]),
     dbQ('group_matches',{},'match_number,team1_name,team2_name,real_score1,real_score2,is_finished,group_id'),
     dbQ('real_group_standings',{},'group_id,position,team_name'),
-  ]).then(([mp,rm,rs])=>{
+    dbQ('real_knockouts',{},'phase,team_ids'),
+  ]).then(([mp,rm,rs,rk])=>{
     if(PAGE_VERSION!==v) return;
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'⚔️ Jogos Eliminatórios'));
@@ -1695,6 +1748,9 @@ function renderKoMatches(main){
     // Real standings para resolver slots
     const realSt={};
     (rs||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+    // Real knockouts para saber 8 melhores 3ºs
+    koReal={};
+    (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
     koMatchDirty=false;
     koMatchRealSt=realSt||{};
     buildKoMatchesUI(main, koMatchRealSt);
@@ -1718,17 +1774,21 @@ function buildKoMatchesUI(main, realSt){
   const phaseMatches = Object.values(koMatchReal).filter(m=>m.group_id===phaseKey);
 
   if(phaseMatches.length===0){
-    // Fase não cadastrada ainda
-    const empty=el('div',{style:{textAlign:'center',padding:'2rem',color:'var(--muted)'}});
-    if(koMatchPhase==='round32'){
-      // Mostrar o chaveamento previsto (slots)
-      empty.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'📋'));
-      empty.appendChild(el('div',{style:{fontWeight:'600',color:'var(--txt)',marginBottom:'.5rem'}},'Confrontos previstos da Rodada de 32'));
-      empty.appendChild(el('div',{style:{fontSize:'.8rem',marginBottom:'1rem'}},'Os palpites de placar estarão disponíveis quando o Admin confirmar os confrontos após a fase de grupos.'));
-      const bkt=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',textAlign:'left'}});
-      ROUND32_BRACKET.forEach(m=>{
-        const t1=String(resolveSlot(m.slot1,realSt)||'?');
-        const t2=String(resolveSlot(m.slot2,realSt)||'?');
+    // Mostrar chaveamento previsto para qualquer fase
+    const bracket = PHASE_BRACKETS[phaseKey];
+    const adminMatchesMap = {};
+    Object.values(koMatchReal).forEach(m=>{ adminMatchesMap[m.match_number]=m; });
+    const realThirds = (koReal&&koReal['best_thirds']?.team_ids)||[];
+
+    const empty=el('div',{style:{padding:'1rem 0',color:'var(--muted)'}});
+    empty.appendChild(el('div',{style:{fontWeight:'600',color:'var(--txt)',marginBottom:'.4rem',fontSize:'.9rem'}},'📋 Confrontos previstos — '+KO_PHASE_LABELS[koMatchPhase]));
+    empty.appendChild(el('div',{style:{fontSize:'.75rem',marginBottom:'1rem'}},'Os palpites de placar ficam disponíveis quando o Admin confirmar os jogos.'));
+
+    if(bracket && bracket.length>0){
+      const bkt=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+      bracket.forEach(m=>{
+        const t1=String(resolveMatchSlot(m.slot1,realSt,realThirds,adminMatchesMap)||'?');
+        const t2=String(resolveMatchSlot(m.slot2,realSt,realThirds,adminMatchesMap)||'?');
         const row=el('div',{style:{background:'var(--card)',border:'1px solid var(--bdr)',borderRadius:'8px',padding:'.6rem .875rem',display:'flex',alignItems:'center',gap:'8px',fontSize:'.82rem'}});
         row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'28px',fontSize:'.7rem'}},'#'+String(m.id)));
         row.appendChild(el('span',{style:{flex:'1',fontWeight:'600'}},t1));
@@ -1738,9 +1798,7 @@ function buildKoMatchesUI(main, realSt){
       });
       empty.appendChild(bkt);
     } else {
-      empty.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'⏳'));
-      empty.appendChild(el('div',{style:{fontWeight:'600',color:'var(--txt)',marginBottom:'.5rem'}},'Confrontos ainda não disponíveis'));
-      empty.appendChild(el('div',{style:{fontSize:'.8rem'}},'O Admin cadastrará os confrontos após a fase anterior.'));
+      empty.appendChild(el('div',{style:{fontSize:'.85rem',fontStyle:'italic'}},'Chaveamento desta fase não mapeado ainda.'));
     }
     main.appendChild(empty);
     return;
@@ -2028,6 +2086,36 @@ function buildAdminUI(main){
       }catch(e){showToast(e.message,'err');}
     }},'Adicionar');
     addCard.appendChild(t1s); addCard.appendChild(t2s); addCard.appendChild(addBtn);
+
+    // Botão gerar automaticamente pelo chaveamento FIFA
+    const bracket = PHASE_BRACKETS[phKey];
+    if(bracket && bracket.length>0 && phMatches.length===0){
+      const autoBtn=el('button',{class:'btn btn-s btn-sm',style:{marginTop:'8px',width:'100%'},onclick:async()=>{
+        autoBtn.textContent='⏳ Gerando...'; autoBtn.disabled=true;
+        const realThirds=(adminKo['best_thirds']?.team_ids)||[];
+        const adminMatchesMap={};
+        Object.values(adminMatches).forEach(m=>{ adminMatchesMap[m.match_number]=m; });
+        const koNums=Object.keys(adminMatches).map(Number).filter(n=>n>=1000);
+        let nextNum=koNums.length>0?Math.max(...koNums)+1:1001;
+        let ok=0, skip=0;
+        for(const m of bracket){
+          const t1=resolveMatchSlot(m.slot1,adminStandings,realThirds,adminMatchesMap);
+          const t2=resolveMatchSlot(m.slot2,adminStandings,realThirds,adminMatchesMap);
+          // Só gera se ambos os times são conhecidos (não são slots genéricos)
+          const isResolved = t1&&!t1.startsWith('Venc.')&&!t1.startsWith('Perd.')&&!t1.includes('º do Grupo')&&!t1.includes('3º (');
+          const isResolved2 = t2&&!t2.startsWith('Venc.')&&!t2.startsWith('Perd.')&&!t2.includes('º do Grupo')&&!t2.includes('3º (');
+          if(!isResolved||!isResolved2){ skip++; continue; }
+          try{
+            await dbUpsert('group_matches',{match_number:m.id,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false,real_score1:null,real_score2:null});
+            adminMatches[m.id]={match_number:m.id,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false};
+            ok++;
+          }catch(e){ skip++; }
+        }
+        showToast('✅ '+ok+' jogos gerados!'+(skip>0?' ('+skip+' aguardando resultados anteriores)':''));
+        buildAdminUI(main);
+      }},'⚡ Gerar confrontos automaticamente pelo chaveamento FIFA');
+      addCard.appendChild(autoBtn);
+    }
 
     if(koPool.length===ALL_TEAMS.length){
       const warn=el('div',{style:{fontSize:'.75rem',color:'#F59E0B',marginTop:'.5rem'}});
