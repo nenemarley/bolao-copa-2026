@@ -3389,12 +3389,8 @@ async function runTest(main) {
       if(error) throw error;
       const uid = data.user.id;
       const token = data.session.access_token;
-      // Create profile
+      // Create profile (enquanto ainda logado como o usuário)
       await SB.from('profiles').upsert({id:uid, username:u.username, display_name:u.name});
-      // Join test bolão
-      if(testBolao) {
-        await SB.from('bolao_members').upsert({bolao_id:testBolao.id, user_id:uid, replicate_preds:true});
-      }
       signedUsers.push({...u, id:uid, token});
       testUserIds.push(uid);
       tlog(`  ✅ ${u.name} pronto`, 'ok');
@@ -3402,10 +3398,19 @@ async function runTest(main) {
       tlog(`  ❌ ${u.name}: ${e.message}`, 'err');
     }
   }
-  tlog(`  → ${signedUsers.length}/5 usuários prontos`, 'info');
 
-  // Restaurar sessão admin
+  // Restaurar sessão admin ANTES de vincular ao bolão
   if(adminSess) await SB.auth.setSession(adminSess);
+
+  // Vincular todos os usuários ao bolão como admin
+  if(testBolao) {
+    for(const u of signedUsers) {
+      await SB.from('bolao_members').upsert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true});
+    }
+    tlog(`  ✅ ${signedUsers.length} usuários vinculados ao bolão de teste`, 'ok');
+  }
+
+  tlog(`  → ${signedUsers.length}/5 usuários prontos`, 'info');
 
   // STEP 2: Palpites de jogos
   tlog('\n⚽ PASSO 2: Palpites dos jogos...', 'bold');
@@ -3617,12 +3622,21 @@ async function runTest(main) {
   window._testResults = results;
   testRunning = false;
   testDone = true;
-  
+
+  // SEMPRE restaurar sessão do admin ao finalizar
+  if(adminSess) {
+    await SB.auth.setSession(adminSess);
+    tlog('  ✅ Sessão do admin restaurada', 'ok');
+  }
+
   // Reload profiles
   const {data:allProfs} = await SB.from('profiles').select('id,display_name,is_admin');
   STATE.profiles = allProfs||[];
-  
+  await loadMyBolaos(STATE.profile.id);
+  CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code==='TESTE1')||MY_BOLAOS[0];
+
   renderTestPage(main);
+  showToast('✅ Teste completo! Logado como Nenê.');
 }
 
 async function cleanupTest(main) {
