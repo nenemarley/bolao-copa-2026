@@ -1178,81 +1178,137 @@ function renderStandings(main){
 }
 function buildStandingsUI(main){
   main.innerHTML='';
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1º/2º posição exata=10pts · 1º/2º classificado posição errada=5pts · 3º colocado classificado=5pts · 4º não pontua'));
-  const grid=el('div',{class:'sg'});
+
+  if(!window._grpSubTab) window._grpSubTab='classified';
+
+  // Sub-abas
+  const subTabs=el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem'}});
+  const tabCls=(k)=>`btn ${window._grpSubTab===k?'btn-p':'btn-o'}`;
+  const t1=el('button',{class:tabCls('classified'),onclick:()=>{ window._grpSubTab='classified'; buildStandingsUI(main); }},'📊 Classificados por Grupo');
+  const t2=el('button',{class:tabCls('thirds'),onclick:()=>{ window._grpSubTab='thirds'; buildStandingsUI(main); }},'🥉 Melhores 3ºs');
+  subTabs.appendChild(t1); subTabs.appendChild(t2);
+  main.appendChild(subTabs);
 
   const selectedThirds = grpPreds['_thirds'] || [];
   const realThirdsReal = grpReal['_thirds_real'] || [];
-  const thirdsCount = selectedThirds.length;
 
-  Object.entries(GROUPS).forEach(([g,teams])=>{
-    const sc=el('div',{class:'sc'});
-    sc.appendChild(el('h4',{},'GRUPO '+g));
-    sc.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--gold)',fontWeight:'600',letterSpacing:'.04em',marginBottom:'.4rem',marginTop:'-.2rem'}},'CLASSIFICADOS PARA OITAVAS'));
+  // ── ABA 1: CLASSIFICADOS POR GRUPO ──────────────────────────────────────
+  if(window._grpSubTab==='classified'){
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'1rem'}},'1º/2º posição exata = 10pts · Classificado posição errada = 5pts · 3º/4º não pontuam'));
+    const grid=el('div',{class:'sg'});
 
-    // 1º e 2º — igual ao antes
-    [1,2].forEach(pos=>{
-      const curr=grpPreds[g]?.[pos]?.team||'';
-      const rTeam=grpReal[g]?.[pos];
-      const pts=grpPreds[g]?.[pos]?.pts;
-      const pr=el('div',{class:'pr'});
-      pr.appendChild(el('span',{class:'pl'},pos+'º'));
-      const sel=el('select',{class:'ps'});
-      sel.appendChild(el('option',{value:''},'— Selecione —'));
-      teams.forEach(t=>{ const o=el('option',{value:t},(FLAGS[t]||'')+' '+t); if(t===curr) o.selected=true; sel.appendChild(o); });
-      sel.onchange=()=>{ if(!grpPreds[g])grpPreds[g]={}; grpPreds[g][pos]={team:sel.value,pts:0}; grpDirty=true; updateGrpSaveBar(); };
-      pr.appendChild(sel);
-      if(rTeam&&pts!==undefined){
-        pr.appendChild(el('span',{class:`pp ${pts>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},pts+'p'));
-      }
-      sc.appendChild(pr);
+    Object.entries(GROUPS).forEach(([g,teams])=>{
+      const sc=el('div',{class:'sc'});
+      sc.appendChild(el('h4',{},'GRUPO '+g));
+
+      // Todas as 4 posições — 1º e 2º pontuam, 3º e 4º não pontuam
+      [1,2,3,4].forEach(pos=>{
+        const curr=grpPreds[g]?.[pos]?.team||'';
+        // Times já usados nas outras posições deste grupo
+        const usedOthers = [1,2,3,4].filter(p=>p!==pos).map(p=>grpPreds[g]?.[p]?.team).filter(Boolean);
+        const rTeam=grpReal[g]?.[pos];
+        const rTeam1=grpReal[g]?.[1]; const rTeam2=grpReal[g]?.[2];
+
+        // Pontuação em tempo real (só 1º e 2º pontuam)
+        let pts=undefined;
+        if(curr && (rTeam1||rTeam2)){
+          if(pos<=2){
+            if(curr===rTeam) pts=10;
+            else if([rTeam1,rTeam2].includes(curr)) pts=5;
+            else if(rTeam) pts=0;
+          } else {
+            pts=undefined; // 3º e 4º nunca pontuam — não mostrar badge
+          }
+        }
+
+        const pr=el('div',{class:'pr'});
+        const posLabel=el('span',{class:'pl',style:{color:pos<=2?'var(--txt)':'var(--muted)'}},pos+'º');
+        pr.appendChild(posLabel);
+
+        const sel=el('select',{class:'ps'});
+        sel.appendChild(el('option',{value:''},'— Selecione —'));
+        teams.forEach(t=>{
+          if(usedOthers.includes(t)) return; // sem duplicatas
+          const o=el('option',{value:t},(FLAGS[t]||'')+' '+t);
+          if(t===curr) o.selected=true;
+          sel.appendChild(o);
+        });
+        sel.onchange=()=>{
+          if(!grpPreds[g])grpPreds[g]={};
+          let newPts=0;
+          if(sel.value && pos<=2 && grpReal[g]){
+            if(grpReal[g][pos]===sel.value) newPts=10;
+            else if([grpReal[g][1],grpReal[g][2]].includes(sel.value)) newPts=5;
+          }
+          grpPreds[g][pos]={team:sel.value,pts:newPts};
+          grpDirty=true; updateGrpSaveBar();
+          buildStandingsUI(main);
+        };
+        pr.appendChild(sel);
+
+        // Badge de pontuação só para 1º e 2º
+        if(pos<=2 && curr && pts!==undefined){
+          pr.appendChild(el('span',{class:`pp ${pts===10?'p10':pts===5?'p5':'p0'}`,style:{whiteSpace:'nowrap'}},pts+'p'));
+        }
+        sc.appendChild(pr);
+      });
+
+      grid.appendChild(sc);
     });
+    main.appendChild(grid);
+  }
 
-    // Separador + 3º melhor
-    sc.appendChild(el('div',{style:{borderTop:'1px solid var(--bdr)',margin:'.5rem 0 .3rem'}}));
-    sc.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',fontWeight:'600',letterSpacing:'.04em',marginBottom:'.3rem'}},'MELHOR 3º (máx 8 no total)'));
+  // ── ABA 2: MELHORES 3ºS ─────────────────────────────────────────────────
+  if(window._grpSubTab==='thirds'){
+    const thirdsCount=selectedThirds.length;
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'.5rem'}},'Selecione até 8 times que passarão como melhores 3ºs colocados · Acertar = 5pts cada'));
+    main.appendChild(el('div',{style:{textAlign:'center',fontSize:'.82rem',fontWeight:'600',color:thirdsCount===8?'var(--ok)':'var(--gold)',marginBottom:'1rem'}},
+      thirdsCount+'/8 selecionados'+(thirdsCount===8?' ✓':'')));
 
-    const selTeamInGrp = teams.find(t=>selectedThirds.includes(t)) || '';
-    const rTeam3 = realThirdsReal.length > 0 ? (realThirdsReal.find(t=>teams.includes(t))||null) : null;
-    const pts3 = selTeamInGrp && rTeam3 && selTeamInGrp===rTeam3 ? 5 : undefined;
-    const isLocked = thirdsCount >= 8 && !selTeamInGrp; // bloqueado se já tem 8 e este grupo não tem nenhum
+    // Grid com um botão por grupo — mostrando o 3º colocado palpitado pelo usuário
+    // O usuário seleciona UM time de cada grupo como possível melhor 3º
+    const grid3=el('div',{class:'sg'});
+    Object.entries(GROUPS).forEach(([g,teams])=>{
+      const sc=el('div',{class:'sc'});
+      sc.appendChild(el('h4',{},'GRUPO '+g));
 
-    const pr3=el('div',{class:'pr'});
-    pr3.appendChild(el('span',{class:'pl',style:{color:'var(--muted)'}},'3º'));
-    const sel3=el('select',{class:'ps',disabled:isLocked});
-    if(isLocked) sel3.style.opacity='0.4';
-    sel3.appendChild(el('option',{value:''},'— Selecione —'));
-    teams.forEach(t=>{
-      const o=el('option',{value:t},(FLAGS[t]||'')+' '+t);
-      if(t===selTeamInGrp) o.selected=true;
-      sel3.appendChild(o);
-    });
-    sel3.onchange=()=>{
-      if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
-      // Remover qualquer time deste grupo que já estava selecionado
-      teams.forEach(t=>{ const i=grpPreds['_thirds'].indexOf(t); if(i>=0) grpPreds['_thirds'].splice(i,1); });
-      // Adicionar o novo se selecionado
-      if(sel3.value) {
-        if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8 times atingido!','err'); sel3.value=''; return; }
-        grpPreds['_thirds'].push(sel3.value);
+      // Times disponíveis: os que não foram usados no 1º/2º/4º deste grupo
+      const usedIn124=[1,2,4].map(p=>grpPreds[g]?.[p]?.team).filter(Boolean);
+      const selTeamInGrp=teams.find(t=>selectedThirds.includes(t))||'';
+      const rTeam3=realThirdsReal.length>0?(realThirdsReal.find(t=>teams.includes(t))||null):null;
+      const isLocked=thirdsCount>=8&&!selTeamInGrp;
+
+      const pr3=el('div',{class:'pr'});
+      pr3.appendChild(el('span',{class:'pl',style:{color:'var(--muted)'}},'3º'));
+      const sel3=el('select',{class:'ps',disabled:isLocked});
+      if(isLocked) sel3.style.opacity='0.4';
+      sel3.appendChild(el('option',{value:''},'— Selecione —'));
+      teams.forEach(t=>{
+        if(usedIn124.includes(t)) return;
+        const o=el('option',{value:t},(FLAGS[t]||'')+' '+t);
+        if(t===selTeamInGrp) o.selected=true;
+        sel3.appendChild(o);
+      });
+      sel3.onchange=()=>{
+        if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
+        teams.forEach(t=>{ const i=grpPreds['_thirds'].indexOf(t); if(i>=0) grpPreds['_thirds'].splice(i,1); });
+        if(sel3.value){
+          if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8!','err'); sel3.value=''; return; }
+          grpPreds['_thirds'].push(sel3.value);
+        }
+        grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
+      };
+      pr3.appendChild(sel3);
+      if(selTeamInGrp && rTeam3!==null && rTeam3!==undefined){
+        const p3=selTeamInGrp===rTeam3?5:0;
+        pr3.appendChild(el('span',{class:`pp ${p3>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},p3+'p'));
       }
-      grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
-    };
-    pr3.appendChild(sel3);
-    // Mostrar pontuação do 3º
-    if(selTeamInGrp && rTeam3!==null && rTeam3!==undefined){
-      const p3=selTeamInGrp===rTeam3?5:0;
-      pr3.appendChild(el('span',{class:`pp ${p3>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},p3+'p'));
-    }
-    sc.appendChild(pr3);
-    grid.appendChild(sc);
-  });
+      sc.appendChild(pr3);
+      grid3.appendChild(sc);
+    });
+    main.appendChild(grid3);
+  }
 
-  // Contador global de 3ºs
-  const cntDiv=el('div',{style:{textAlign:'center',fontSize:'.78rem',color:thirdsCount===8?'var(--ok)':'var(--muted)',marginTop:'.5rem',marginBottom:'1rem'}},
-    thirdsCount+'/8 terceiros colocados selecionados'+(thirdsCount===8?' ✓':''));
-  main.appendChild(cntDiv);
-  main.appendChild(grid);
   updateGrpSaveBar();
 }
 function updateGrpSaveBar(){
@@ -1269,12 +1325,15 @@ function updateGrpSaveBar(){
 async function saveStandings(){
   const rows=[];
   Object.entries(GROUPS).forEach(([g])=>{
-    [1,2].forEach(pos=>{
+    [1,2,3,4].forEach(pos=>{
       const p=grpPreds[g]?.[pos];
       if(p?.team){
         let pts=0;
-        if(grpReal[g]?.[pos]===p.team) pts=10;
-        else if([grpReal[g]?.[1],grpReal[g]?.[2]].includes(p.team)) pts=5;
+        // Só 1º e 2º pontuam
+        if(pos<=2){
+          if(grpReal[g]?.[pos]===p.team) pts=10;
+          else if([grpReal[g]?.[1],grpReal[g]?.[2]].includes(p.team)) pts=5;
+        }
         rows.push({user_id:STATE.profile.id,group_id:g,position:pos,team_name:p.team,points:pts});
       }
     });
@@ -2260,39 +2319,93 @@ function buildAdminUI(main){
     fetchBar.appendChild(fetchBtn);
     main.appendChild(fetchBar);
     main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.75rem',marginBottom:'1rem'}},'Gere o prompt → cole no chat do Claude → copie o JSON → cole de volta aqui. Ou insira o placar manualmente abaixo.'));
+
+    // Placar padrão admin
+    if(!window._adminDef) window._adminDef={s1:null,s2:null};
+    const defBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
+    defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
+    defBar.appendChild(makeMatchCtrl(window._adminDef.s1, v=>{ window._adminDef.s1=v; }));
+    defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+    defBar.appendChild(makeMatchCtrl(window._adminDef.s2, v=>{ window._adminDef.s2=v; }));
+    const adminApplyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
+      const ds1=window._adminDef.s1, ds2=window._adminDef.s2;
+      if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
+      adminApplyBtn.textContent='⏳...'; adminApplyBtn.disabled=true;
+      let saved=0;
+      for(const m of MATCHES.filter(x=>x.group===adminGrp)){
+        try{
+          await dbUpsert('group_matches',{match_number:m.num,real_score1:ds1,real_score2:ds2,is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group});
+          const preds=await dbQ('match_predictions',{match_number:m.num});
+          if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,ds1,ds2)})));
+          adminMatches[m.num]={...adminMatches[m.num],real_score1:ds1,real_score2:ds2,is_finished:true};
+          saved++;
+        }catch(e){}
+      }
+      showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+saved+' jogos!');
+      adminApplyBtn.textContent='Aplicar a todos'; adminApplyBtn.disabled=false;
+      buildAdminUI(main);
+    }},'Aplicar a todos');
+    defBar.appendChild(adminApplyBtn);
+    main.appendChild(defBar);
+
     const gb=el('div',{class:'gb'});
-    Object.keys(GROUPS).forEach(g=>gb.appendChild(el('button',{class:`btn btn-sm ${adminGrp===g?'btn-p':'btn-o'}`,onclick:()=>{ adminGrp=g; buildAdminUI(main); }},'Grupo '+g)));
+    Object.keys(GROUPS).forEach(g=>gb.appendChild(el('button',{class:`gb-btn${adminGrp===g?' active':''}`,onclick:()=>{ adminGrp=g; buildAdminUI(main); }},'Grupo '+g)));
     main.appendChild(gb);
+
+    // Subtítulo do grupo
+    const grpTeams2=GROUPS[adminGrp]||[];
+    const grpInfo2=el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'1rem'}});
+    grpInfo2.appendChild(el('span',{style:{fontWeight:'600',color:'var(--txt)'}},'Grupo '+adminGrp+' — '));
+    grpTeams2.forEach((t,i)=>{ grpInfo2.appendChild(el('span',{},(FLAGS[t]||'')+' '+t)); if(i<grpTeams2.length-1) grpInfo2.appendChild(document.createTextNode(' · ')); });
+    main.appendChild(grpInfo2);
+
     MATCHES.filter(m=>m.group===adminGrp).forEach(m=>{
       const real=adminMatches[m.num]||{};
-      const row=el('div',{class:'amr'});
-      row.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem'}},el('span',{},FLAGS[m.t1]||''),m.t1));
-      let av1=real.real_score1!==undefined?real.real_score1:0;
-      let av2=real.real_score2!==undefined?real.real_score2:0;
-      const i1=el('input',{class:'sinp',type:'number',min:'0',max:'9',value:av1});
-      const i2=el('input',{class:'sinp',type:'number',min:'0',max:'9',value:av2});
-      i1.oninput=()=>{ av1=parseInt(i1.value)||0; };
-      i2.oninput=()=>{ av2=parseInt(i2.value)||0; };
-      const si=el('div',{style:{display:'flex',gap:'4px',alignItems:'center'}},i1,el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'),i2);
-      row.appendChild(si);
-      row.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem',justifyContent:'flex-end'}},m.t2,el('span',{},FLAGS[m.t2]||'')));
-      const saveBtn=el('button',{class:`btn btn-sm ${real.is_finished?'btn-s':'btn-p'}`,onclick:async()=>{
-        const s1=parseInt(i1.value),s2=parseInt(i2.value);
-        if(isNaN(s1)||isNaN(s2)) return;
-        saveBtn.textContent='...';
-        try{
-          await dbUpsert('group_matches',{match_number:m.num,real_score1:s1,real_score2:s2,is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group});
-          const preds=await dbQ('match_predictions',{match_number:m.num});
-          if(preds.length>0){
-            await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,s1,s2)})));
-          }
-          showToast(`✅ Jogo #${m.num} salvo!`);
-          adminMatches[m.num]={...adminMatches[m.num],real_score1:s1,real_score2:s2,is_finished:true};
-          saveBtn.textContent='✓ Atualizar'; saveBtn.className='btn btn-sm btn-s';
-        }catch(e){ showToast(e.message,'err'); saveBtn.textContent='Salvar'; }
-      }},real.is_finished?'✓ Atualizar':'Salvar');
-      row.appendChild(saveBtn);
-      main.appendChild(row);
+      const hasSc = real.is_finished && real.real_score1!==undefined;
+      const initS1 = hasSc ? real.real_score1 : null;
+      const initS2 = hasSc ? real.real_score2 : null;
+
+      // Estado local para este jogo
+      let vs1=initS1, vs2=initS2;
+
+      const mc=el('div',{class:'mc'+(hasSc?' fin':''),style:{display:'block',padding:'.875rem',marginBottom:'8px'}});
+
+      // Times
+      const tr=el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.5rem'}});
+      tr.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t1]||'🏳'));
+      tr.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',flex:'1'}},m.t1));
+      tr.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700'}},'×'));
+      tr.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',flex:'1',textAlign:'right'}},m.t2));
+      tr.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t2]||'🏳'));
+      mc.appendChild(tr);
+
+      // Controles +/-
+      const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',marginBottom:'.4rem'}});
+      scoreRow.appendChild(makeMatchCtrl(initS1, v=>{ vs1=v; }));
+      scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 4px'}},'×'));
+      scoreRow.appendChild(makeMatchCtrl(initS2, v=>{ vs2=v; }));
+      mc.appendChild(scoreRow);
+
+      // Botão salvar
+      const saveBtn=el('button',{
+        class:`btn btn-sm ${hasSc?'btn-s':'btn-p'}`,
+        style:{width:'100%',marginTop:'.3rem'},
+        onclick:async()=>{
+          if(vs1===null||vs2===null){showToast('Defina o placar','err');return;}
+          saveBtn.textContent='...'; saveBtn.disabled=true;
+          try{
+            await dbUpsert('group_matches',{match_number:m.num,real_score1:vs1,real_score2:vs2,is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group});
+            const preds=await dbQ('match_predictions',{match_number:m.num});
+            if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,vs1,vs2)})));
+            showToast('✅ '+m.t1+' '+vs1+'-'+vs2+' '+m.t2+' salvo!');
+            adminMatches[m.num]={...adminMatches[m.num],real_score1:vs1,real_score2:vs2,is_finished:true};
+            saveBtn.textContent='✓ Atualizar'; saveBtn.className='btn btn-sm btn-s'; saveBtn.disabled=false;
+            mc.className='mc fin'; mc.style.display='block'; mc.style.padding='.875rem'; mc.style.marginBottom='8px';
+          }catch(e){ showToast(e.message,'err'); saveBtn.textContent='Salvar'; saveBtn.disabled=false; }
+        }
+      },hasSc?'✓ Atualizar':'Salvar');
+      mc.appendChild(saveBtn);
+      main.appendChild(mc);
     });
   }
 
