@@ -1176,6 +1176,47 @@ function renderStandings(main){
     buildStandingsUI(main);
   });
 }
+// Sincroniza koPreds com o pool atual baseado nos palpites de grupos
+// Remove times do koPreds que saíram do pool (por mudança de grupo)
+function syncKoPredsWithGrpPreds(){
+  // Recalcular pool do round32 com grpPreds atual
+  const userStandings={};
+  Object.entries(GROUPS).forEach(([g])=>{
+    if(!userStandings[g]) userStandings[g]={};
+    [1,2,3,4].forEach(pos=>{
+      if(grpPreds[g]?.[pos]?.team) userStandings[g][pos]=grpPreds[g][pos].team;
+    });
+  });
+  koUserGrpStandings=userStandings;
+
+  const pool32=[];
+  Object.values(userStandings).forEach(pos=>{
+    if(pos[1]) pool32.push(pos[1]);
+    if(pos[2]) pool32.push(pos[2]);
+  });
+  (grpPreds['_thirds']||[]).forEach(t=>{ if(!pool32.includes(t)) pool32.push(t); });
+
+  // Limpar round32 de times que saíram do pool
+  if(koPreds['round32']) {
+    koPreds['round32'] = koPreds['round32'].filter(x=>pool32.includes(x.team));
+  }
+  // Cascata: limpar fases seguintes com base no novo round32
+  const nextMap={
+    round32:['round16','quarter','semi','final','champion','runner_up','third'],
+    round16:['quarter','semi','final','champion','runner_up','third'],
+    quarter:['semi','final','champion','runner_up','third'],
+    semi:['final','champion','runner_up','third'],
+    final:['champion','runner_up']
+  };
+  ['round32','round16','quarter','semi','final'].forEach(phase=>{
+    if(!koPreds[phase]) return;
+    const avail=koPreds[phase].map(x=>x.team);
+    (nextMap[phase]||[]).forEach(np=>{
+      if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>avail.includes(x.team));
+    });
+  });
+}
+
 function buildStandingsUI(main){
   main.innerHTML='';
 
@@ -1235,12 +1276,25 @@ function buildStandingsUI(main){
         });
         sel.onchange=()=>{
           if(!grpPreds[g])grpPreds[g]={};
+          const oldTeam = grpPreds[g][pos]?.team||'';
           let newPts=0;
           if(sel.value && pos<=2 && grpReal[g]){
             if(grpReal[g][pos]===sel.value) newPts=10;
             else if([grpReal[g][1],grpReal[g][2]].includes(sel.value)) newPts=5;
           }
           grpPreds[g][pos]={team:sel.value,pts:newPts};
+          // Se mudou o 3º colocado, remover o time antigo dos _thirds automaticamente
+          if(pos===3 && oldTeam && oldTeam!==sel.value && grpPreds['_thirds']) {
+            const i=grpPreds['_thirds'].indexOf(oldTeam);
+            if(i>=0) grpPreds['_thirds'].splice(i,1);
+          }
+          // Se mudou 1º ou 2º e o novo time estava nos _thirds, removê-lo também
+          if(pos<=2 && sel.value && grpPreds['_thirds']) {
+            const i=grpPreds['_thirds'].indexOf(sel.value);
+            if(i>=0) grpPreds['_thirds'].splice(i,1);
+          }
+          // FIX 1+3: sincronizar koPreds com o novo pool (grupos mudaram)
+          syncKoPredsWithGrpPreds();
           grpDirty=true; updateGrpSaveBar();
           buildStandingsUI(main);
         };
@@ -1308,6 +1362,7 @@ function buildStandingsUI(main){
             if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8!','err'); return; }
             grpPreds['_thirds'].push(third3);
           }
+          syncKoPredsWithGrpPreds();
           grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
         }
       },label);
@@ -1443,7 +1498,17 @@ function renderKnockout(main){
     });
     // Usar palpites do usuário como pool se definidos, senão usar resultados reais
     // REGRA: usar SEMPRE os palpites do usuário — nunca grpReal (resultados reais do admin)
-    koUserGrpStandings = userGrpStandings; // pode ter menos de 12 grupos — é normal
+    // FIX 4: se grpPreds está dirty (usuário mudou grupos sem salvar), usar grpPreds atual
+    if(grpDirty && Object.keys(grpPreds).length>0) {
+      const liveStandings={};
+      Object.entries(GROUPS).forEach(([g])=>{
+        if(!liveStandings[g]) liveStandings[g]={};
+        [1,2,3,4].forEach(pos=>{ if(grpPreds[g]?.[pos]?.team) liveStandings[g][pos]=grpPreds[g][pos].team; });
+      });
+      koUserGrpStandings = liveStandings;
+    } else {
+      koUserGrpStandings = userGrpStandings;
+    }
     koDirty=false;
     buildKoUI(main);
   });
