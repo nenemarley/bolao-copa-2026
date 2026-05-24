@@ -173,20 +173,20 @@ const SB = createClient(
 
 // ── Copa 2026 Data ─────────────────────────────────────────────────────────
 const GROUPS = {
-  A:["Estados Unidos","Panamá","Bolívia","Nova Zelândia"],
-  B:["Argentina","Chile","Peru","Canadá"],
-  C:["México","Jamaica","Venezuela","Equador"],
-  D:["Brasil","Costa Rica","Paraguai","Austrália"],
-  E:["Alemanha","Japão","Camarões","Arábia Saudita"],
-  F:["Portugal","Polônia","Burkina Faso","Coreia do Sul"],
-  G:["França","Marrocos","Bélgica","Croácia"],
-  H:["Espanha","Sérvia","Turquia","Senegal"],
-  I:["Holanda","Dinamarca","Ucrânia","Líbia"],
-  J:["Uruguai","Colômbia","Iraque","Cazaquistão"],
-  K:["Inglaterra","Tunísia","Costa do Marfim","Eslovênia"],
-  L:["Itália","África do Sul","Cuba","Albânia"],
+  A:["México","África do Sul","Coreia do Sul","República Tcheca"],
+  B:["Canadá","Bósnia","Catar","Suíça"],
+  C:["Brasil","Marrocos","Haiti","Escócia"],
+  D:["Estados Unidos","Paraguai","Austrália","Turquia"],
+  E:["Alemanha","Curaçao","Costa do Marfim","Equador"],
+  F:["Holanda","Japão","Suécia","Tunísia"],
+  G:["Bélgica","Egito","Irã","Nova Zelândia"],
+  H:["Espanha","Cabo Verde","Arábia Saudita","Uruguai"],
+  I:["França","Senegal","Iraque","Noruega"],
+  J:["Argentina","Argélia","Áustria","Jordânia"],
+  K:["Portugal","RD Congo","Uzbequistão","Colômbia"],
+  L:["Inglaterra","Croácia","Gana","Panamá"],
 };
-const FLAGS = {"Estados Unidos":"🇺🇸","Panamá":"🇵🇦","Bolívia":"🇧🇴","Nova Zelândia":"🇳🇿","Argentina":"🇦🇷","Chile":"🇨🇱","Peru":"🇵🇪","Canadá":"🇨🇦","México":"🇲🇽","Jamaica":"🇯🇲","Venezuela":"🇻🇪","Equador":"🇪🇨","Brasil":"🇧🇷","Costa Rica":"🇨🇷","Paraguai":"🇵🇾","Austrália":"🇦🇺","Alemanha":"🇩🇪","Japão":"🇯🇵","Camarões":"🇨🇲","Arábia Saudita":"🇸🇦","Portugal":"🇵🇹","Polônia":"🇵🇱","Burkina Faso":"🇧🇫","Coreia do Sul":"🇰🇷","França":"🇫🇷","Marrocos":"🇲🇦","Bélgica":"🇧🇪","Croácia":"🇭🇷","Espanha":"🇪🇸","Sérvia":"🇷🇸","Turquia":"🇹🇷","Senegal":"🇸🇳","Holanda":"🇳🇱","Dinamarca":"🇩🇰","Ucrânia":"🇺🇦","Líbia":"🇱🇾","Uruguai":"🇺🇾","Colômbia":"🇨🇴","Iraque":"🇮🇶","Cazaquistão":"🇰🇿","Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Tunísia":"🇹🇳","Costa do Marfim":"🇨🇮","Eslovênia":"🇸🇮","Itália":"🇮🇹","África do Sul":"🇿🇦","Cuba":"🇨🇺","Albânia":"🇦🇱"};
+const FLAGS = {"México":"🇲🇽","África do Sul":"🇿🇦","Coreia do Sul":"🇰🇷","República Tcheca":"🇨🇿","Canadá":"🇨🇦","Bósnia":"🇧🇦","Catar":"🇶🇦","Suíça":"🇨🇭","Brasil":"🇧🇷","Marrocos":"🇲🇦","Haiti":"🇭🇹","Escócia":"🏴󠁧󠁢󠁳󠁣󠁴󠁿","Estados Unidos":"🇺🇸","Paraguai":"🇵🇾","Austrália":"🇦🇺","Turquia":"🇹🇷","Alemanha":"🇩🇪","Curaçao":"🇨🇼","Costa do Marfim":"🇨🇮","Equador":"🇪🇨","Holanda":"🇳🇱","Japão":"🇯🇵","Suécia":"🇸🇪","Tunísia":"🇹🇳","Bélgica":"🇧🇪","Egito":"🇪🇬","Irã":"🇮🇷","Nova Zelândia":"🇳🇿","Espanha":"🇪🇸","Cabo Verde":"🇨🇻","Arábia Saudita":"🇸🇦","Uruguai":"🇺🇾","França":"🇫🇷","Senegal":"🇸🇳","Iraque":"🇮🇶","Noruega":"🇳🇴","Argentina":"🇦🇷","Argélia":"🇩🇿","Áustria":"🇦🇹","Jordânia":"🇯🇴","Portugal":"🇵🇹","RD Congo":"🇨🇩","Uzbequistão":"🇺🇿","Colômbia":"🇨🇴","Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Croácia":"🇭🇷","Gana":"🇬🇭","Panamá":"🇵🇦"};
 const ALL_TEAMS = Object.values(GROUPS).flat();
 const PHASES = [
   {key:"round32",  label:"Rodada de 32",     count:16, pts:10},
@@ -204,22 +204,38 @@ const PHASES = [
 // Rodada de 32: jogos 73-88
 // slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
 const ROUND32_BRACKET = [
+  // Jogo 73: 2A vs 2B (Runner-up A vs Runner-up B)
   {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
+  // Jogo 74: 1E vs 3º(A/B/C/D/F)
   {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',thirdGroups:['A','B','C','D','F']}},
+  // Jogo 75: 1F vs 2C
   {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
+  // Jogo 76: 1C vs 2F
   {id:76, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
+  // Jogo 77: 1I vs 3º(C/D/F/G/H)
   {id:77, slot1:{type:'1',group:'I'}, slot2:{type:'3',thirdGroups:['C','D','F','G','H']}},
+  // Jogo 78: 2E vs 2I
   {id:78, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
+  // Jogo 79: 1A vs 3º(C/E/F/H/I)
   {id:79, slot1:{type:'1',group:'A'}, slot2:{type:'3',thirdGroups:['C','E','F','H','I']}},
+  // Jogo 80: 1L vs 3º(E/H/I/J/K)
   {id:80, slot1:{type:'1',group:'L'}, slot2:{type:'3',thirdGroups:['E','H','I','J','K']}},
+  // Jogo 81: 1D vs 3º(B/E/F/I/J)
   {id:81, slot1:{type:'1',group:'D'}, slot2:{type:'3',thirdGroups:['B','E','F','I','J']}},
+  // Jogo 82: 1G vs 3º(A/E/H/I/J)
   {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',thirdGroups:['A','E','H','I','J']}},
+  // Jogo 83: 2K vs 2L
   {id:83, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
+  // Jogo 84: 1H vs 2J
   {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
+  // Jogo 85: 1B vs 3º(E/F/G/I/J)
   {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',thirdGroups:['E','F','G','I','J']}},
-  {id:86, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
+  // Jogo 86: 1J vs 2H
+  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
+  // Jogo 87: 1K vs 3º(D/E/I/J/L)
   {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',thirdGroups:['D','E','I','J','L']}},
-  {id:88, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
+  // Jogo 88: 2D vs 2G
+  {id:88, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
 ];
 // Oitavas de Final: jogos 89-96 (vencedor de X vs vencedor de Y)
 const ROUND16_BRACKET = [
@@ -286,29 +302,29 @@ function resolveMatchSlot(slot, realStandings, realThirds, adminMatchesMap) {
 // Datas dos jogos Copa 2026 (aproximadas, fuso horário de Brasília)
 const MATCH_DATES = {
   // Grupo A
-  1:'2026-06-11',2:'2026-06-11',3:'2026-06-15',4:'2026-06-15',5:'2026-06-19',6:'2026-06-19',
+  1:"2026-06-11",2:"2026-06-18",3:"2026-06-24",4:"2026-06-11",5:"2026-06-18",6:"2026-06-24",
   // Grupo B
-  7:'2026-06-12',8:'2026-06-12',9:'2026-06-16',10:'2026-06-16',11:'2026-06-20',12:'2026-06-20',
+  7:"2026-06-12",8:"2026-06-18",9:"2026-06-25",10:"2026-06-12",11:"2026-06-18",12:"2026-06-25",
   // Grupo C
-  13:'2026-06-12',14:'2026-06-12',15:'2026-06-16',16:'2026-06-16',17:'2026-06-20',18:'2026-06-20',
+  13:"2026-06-13",14:"2026-06-19",15:"2026-06-24",16:"2026-06-13",17:"2026-06-19",18:"2026-06-24",
   // Grupo D
-  19:'2026-06-13',20:'2026-06-13',21:'2026-06-17',22:'2026-06-17',23:'2026-06-21',24:'2026-06-21',
+  19:"2026-06-12",20:"2026-06-20",21:"2026-06-25",22:"2026-06-12",23:"2026-06-20",24:"2026-06-25",
   // Grupo E
-  25:'2026-06-13',26:'2026-06-13',27:'2026-06-17',28:'2026-06-17',29:'2026-06-21',30:'2026-06-21',
+  25:"2026-06-14",26:"2026-06-20",27:"2026-06-25",28:"2026-06-14",29:"2026-06-20",30:"2026-06-25",
   // Grupo F
-  31:'2026-06-14',32:'2026-06-14',33:'2026-06-18',34:'2026-06-18',35:'2026-06-22',36:'2026-06-22',
+  31:"2026-06-14",32:"2026-06-21",33:"2026-06-26",34:"2026-06-14",35:"2026-06-21",36:"2026-06-26",
   // Grupo G
-  37:'2026-06-14',38:'2026-06-14',39:'2026-06-18',40:'2026-06-18',41:'2026-06-22',42:'2026-06-22',
+  37:"2026-06-15",38:"2026-06-21",39:"2026-06-26",40:"2026-06-15",41:"2026-06-21",42:"2026-06-26",
   // Grupo H
-  43:'2026-06-15',44:'2026-06-15',45:'2026-06-19',46:'2026-06-19',47:'2026-06-23',48:'2026-06-23',
+  43:"2026-06-15",44:"2026-06-22",45:"2026-06-27",46:"2026-06-15",47:"2026-06-22",48:"2026-06-27",
   // Grupo I
-  49:'2026-06-15',50:'2026-06-15',51:'2026-06-19',52:'2026-06-19',53:'2026-06-23',54:'2026-06-23',
+  49:"2026-06-16",50:"2026-06-22",51:"2026-06-27",52:"2026-06-16",53:"2026-06-22",54:"2026-06-27",
   // Grupo J
-  55:'2026-06-16',56:'2026-06-16',57:'2026-06-20',58:'2026-06-20',59:'2026-06-24',60:'2026-06-24',
+  55:"2026-06-16",56:"2026-06-22",57:"2026-06-27",58:"2026-06-16",59:"2026-06-22",60:"2026-06-27",
   // Grupo K
-  61:'2026-06-16',62:'2026-06-16',63:'2026-06-20',64:'2026-06-20',65:'2026-06-24',66:'2026-06-24',
+  61:"2026-06-17",62:"2026-06-23",63:"2026-06-27",64:"2026-06-17",65:"2026-06-23",66:"2026-06-27",
   // Grupo L
-  67:'2026-06-17',68:'2026-06-17',69:'2026-06-21',70:'2026-06-21',71:'2026-06-25',72:'2026-06-25',
+  67:"2026-06-17",68:"2026-06-23",69:"2026-06-27",70:"2026-06-17",71:"2026-06-23",72:"2026-06-27",
 };
 
 // Datas dos jogos eliminatórios — bloqueio por data do jogo (igual à fase de grupos)
@@ -353,7 +369,7 @@ const KNOCKOUT_DATES = {
 };
 
 // ── Prazo para palpites de classificados e eliminatórias ──────────────────
-const GROUPS_DEADLINE = '2026-06-15'; // 1º jogo da 2ª rodada (Grupo A)
+const GROUPS_DEADLINE = '2026-06-18'; // 2ª rodada começa 18/06 na Copa real // 1º jogo da 2ª rodada (Grupo A)
 
 function canBetGroups() {
   const today = new Date(); today.setHours(0,0,0,0);
@@ -2432,19 +2448,20 @@ Times em português: ${ALL_TEAMS.join(', ')}.`;
 // Mapeamento de variações de nomes que Claude pode retornar
 const TEAM_NAME_MAP = {
   'USA':'Estados Unidos','United States':'Estados Unidos','EUA':'Estados Unidos',
-  'Panama':'Panamá','Bolivia':'Bolívia','New Zealand':'Nova Zelândia',
-  'Canada':'Canadá','Mexico':'México','Ecuador':'Equador','Brazil':'Brasil',
-  'Paraguay':'Paraguai','Australia':'Austrália','Germany':'Alemanha',
-  'Japan':'Japão','Cameroon':'Camarões','Saudi Arabia':'Arábia Saudita',
-  'Poland':'Polônia','South Korea':'Coreia do Sul','Korea Republic':'Coreia do Sul',
-  'Republic of Korea':'Coreia do Sul','France':'França','Morocco':'Marrocos',
-  'Belgium':'Bélgica','Croatia':'Croácia','Spain':'Espanha','Serbia':'Sérvia',
-  'Turkey':'Turquia','Turkiye':'Turquia','Netherlands':'Holanda','Holland':'Holanda',
-  'Denmark':'Dinamarca','Ukraine':'Ucrânia','Libya':'Líbia','Uruguay':'Uruguai',
-  'Colombia':'Colômbia','Iraq':'Iraque','Kazakhstan':'Cazaquistão',
-  'England':'Inglaterra','Tunisia':'Tunísia',"Côte d'Ivoire":'Costa do Marfim',
-  'Ivory Coast':'Costa do Marfim','Slovenia':'Eslovênia','Italy':'Itália',
-  'South Africa':'África do Sul','Albania':'Albânia',
+  'Mexico':'México','South Africa':'África do Sul','Korea Republic':'Coreia do Sul',
+  'South Korea':'Coreia do Sul','Czech Republic':'República Tcheca','Czechia':'República Tcheca',
+  'Canada':'Canadá','Bosnia':'Bósnia','Bosnia and Herzegovina':'Bósnia','Bosnia Herzegovina':'Bósnia',
+  'Qatar':'Catar','Switzerland':'Suíça','Brazil':'Brasil','Morocco':'Marrocos',
+  'Haiti':'Haiti','Scotland':'Escócia','Paraguay':'Paraguai','Australia':'Austrália',
+  'Turkey':'Turquia','Turkiye':'Turquia','Germany':'Alemanha','Curacao':'Curaçao',
+  "Côte d'Ivoire":'Costa do Marfim','Ivory Coast':'Costa do Marfim','Ecuador':'Equador',
+  'Netherlands':'Holanda','Holland':'Holanda','Japan':'Japão','Sweden':'Suécia',
+  'Tunisia':'Tunísia','Belgium':'Bélgica','Egypt':'Egito','Iran':'Irã','New Zealand':'Nova Zelândia',
+  'Spain':'Espanha','Cape Verde':'Cabo Verde','Saudi Arabia':'Arábia Saudita','Uruguay':'Uruguai',
+  'France':'França','Senegal':'Senegal','Iraq':'Iraque','Norway':'Noruega',
+  'Argentina':'Argentina','Algeria':'Argélia','Austria':'Áustria','Jordan':'Jordânia',
+  'Portugal':'Portugal','DR Congo':'RD Congo','Congo DR':'RD Congo','Uzbekistan':'Uzbequistão',
+  'Colombia':'Colômbia','England':'Inglaterra','Croatia':'Croácia','Ghana':'Gana','Panama':'Panamá',
 };
 
 function normalizeTeamName(name) {
@@ -3164,22 +3181,33 @@ MATCHES.forEach(m => {
   const s = [0,1,2,3]; 
   REAL_SCORES_TEST[m.num] = {s1:s[Math.floor(m.num*7%4)], s2:s[Math.floor(m.num*3%4)]};
 });
-const REAL_STANDINGS_TEST = {};
-Object.entries(GROUPS).forEach(([g,teams],gi) => {
-  REAL_STANDINGS_TEST[g] = {1:teams[gi%4],2:teams[(gi+1)%4],3:teams[(gi+2)%4],4:teams[(gi+3)%4]};
-});
+const REAL_STANDINGS_TEST = {
+  A:{1:'México',2:'Coreia do Sul',3:'África do Sul',4:'República Tcheca'},
+  B:{1:'Canadá',2:'Suíça',3:'Bósnia',4:'Catar'},
+  C:{1:'Brasil',2:'Marrocos',3:'Escócia',4:'Haiti'},
+  D:{1:'Estados Unidos',2:'Turquia',3:'Austrália',4:'Paraguai'},
+  E:{1:'Alemanha',2:'Equador',3:'Costa do Marfim',4:'Curaçao'},
+  F:{1:'Holanda',2:'Japão',3:'Suécia',4:'Tunísia'},
+  G:{1:'Bélgica',2:'Nova Zelândia',3:'Egito',4:'Irã'},
+  H:{1:'Espanha',2:'Uruguai',3:'Arábia Saudita',4:'Cabo Verde'},
+  I:{1:'França',2:'Noruega',3:'Senegal',4:'Iraque'},
+  J:{1:'Argentina',2:'Áustria',3:'Argélia',4:'Jordânia'},
+  K:{1:'Portugal',2:'Colômbia',3:'Uzbequistão',4:'RD Congo'},
+  L:{1:'Inglaterra',2:'Croácia',3:'Gana',4:'Panamá'},
+};
 const allT = ALL_TEAMS;
 // Resultados reais simulados: round32=quem passa para oitavas(16), round16=oitavas(8), etc.
 const REAL_KO_TEST = {
-  best_thirds: allT.slice(24,32),         // 8 melhores 3ºs
-  round32:     allT.slice(0,16),          // 16 que passam para oitavas
-  round16:     allT.slice(0,8),           // 8 que passam para quartas
-  quarter:     allT.slice(0,4),           // 4 semifinalistas
-  semi:        allT.slice(0,2),           // 2 finalistas
-  final:       allT.slice(0,2),           // os 2 finalistas
-  champion:    [allT[0]],                 // campeão
-  runner_up:   [allT[1]],                 // vice
-  third:       [allT[2]],                 // 3º lugar
+  best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
+  round32: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal',
+            'México','Estados Unidos','Bélgica','Uruguai','Canadá','Japão','Marrocos','Coreia do Sul'],
+  round16: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal'],
+  quarter: ['Brasil','França','Espanha','Alemanha'],
+  semi:    ['Brasil','Espanha'],
+  final:   ['Brasil','Espanha'],
+  champion:['Brasil'],
+  runner_up:['Espanha'],
+  third:   ['França'],
 };
 const REAL_SCORER_TEST = 'Mbappé';
 // Jogos eliminatórios de teste (Rodada de 32 — 16 jogos)
