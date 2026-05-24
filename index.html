@@ -84,7 +84,7 @@ body{background:var(--dk);color:var(--txt);font-family:'Inter',sans-serif;min-he
 @keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .gb{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
 .gb-btn{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
-.gb-btn.active{background:var(--gold);color:var(--dk);border-color:var(--gold);font-weight:700}
+.gb-btn.active{background:var(--gold);color:#111 !important;border-color:var(--gold);font-weight:700}
 .gb-btn:hover{border-color:var(--gold);color:var(--gold)}
 .tabs{display:flex;gap:3px;margin-bottom:1.25rem;background:var(--dk3);border-radius:8px;padding:3px}
 .tb{flex:1;padding:7px;border:none;background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;font-size:.78rem;font-weight:500}
@@ -511,6 +511,7 @@ function el(tag, attrs={}, ...children){
     if(k==='class') e.className=v;
     else if(k.startsWith('on')) e[k]=v;
     else if(k==='style') Object.assign(e.style,v);
+    else if(k==='disabled') e.disabled=!!v;
     else e.setAttribute(k,v);
   });
   children.flat().forEach(c=>{ if(c==null||c===false) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
@@ -1177,7 +1178,7 @@ function renderStandings(main){
 }
 function buildStandingsUI(main){
   main.innerHTML='';
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1º/2º exato=10pts · 1º/2º errado=5pts · 3º classificado=5pts · 4º não pontua'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1.25rem'}},'1º/2º posição exata=10pts · 1º/2º classificado posição errada=5pts · 3º colocado classificado=5pts · 4º não pontua'));
   const grid=el('div',{class:'sg'});
 
   const selectedThirds = grpPreds['_thirds'] || [];
@@ -1248,8 +1249,8 @@ function buildStandingsUI(main){
   });
 
   // Contador global de 3ºs
-  const cntDiv=el('div',{style:{textAlign:'center',fontSize:'.8rem',fontWeight:'600',marginTop:'.5rem',marginBottom:'1rem',color:thirdsCount===8?'var(--ok)':'var(--muted)'}},
-    '🥉 '+thirdsCount+'/8 melhores 3ºs selecionados'+(thirdsCount===8?' ✓':''));
+  const cntDiv=el('div',{style:{textAlign:'center',fontSize:'.78rem',color:thirdsCount===8?'var(--ok)':'var(--muted)',marginTop:'.5rem',marginBottom:'1rem'}},
+    thirdsCount+'/8 terceiros colocados selecionados'+(thirdsCount===8?' ✓':''));
   main.appendChild(cntDiv);
   main.appendChild(grid);
   updateGrpSaveBar();
