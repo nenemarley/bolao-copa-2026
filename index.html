@@ -1380,7 +1380,7 @@ function buildStandingsUI(main){
 
   // ── ABA 1: CLASSIFICADOS POR GRUPO ──────────────────────────────────────
   if(window._grpSubTab==='classified'){
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'1rem'}},'1º/2º posição exata = 10pts · Classificado posição errada = 5pts · 3º/4º não pontuam'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'1rem'}},'Posição exata 1º/2º=10pts · 3º exato=7pts · 1 posição diferença=5pts · 2 posições diferença=2pts · 4º não pontua'));
     const grid=el('div',{class:'sg'});
 
     Object.entries(GROUPS).forEach(([g,teams])=>{
@@ -1679,7 +1679,7 @@ function buildKoUI(main){
       el('div',{style:{color:'var(--muted)',fontSize:'.75rem',marginTop:'2px'}},'Prazo: '+GROUPS_DEADLINE+' · Classif. grupos → Rodada 32 → Oitavas → Campeão')
     ));
   }
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Selecione quem passa em cada fase. Acertar = 10pts · Campeão = 20pts'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 20pts · 3º lugar = 10pts'));
 
   const userThirdsPool = koUserThirds.length > 0 ? koUserThirds : koRealThirds;
 
@@ -2108,7 +2108,7 @@ function buildKoMatchesUI(main, realSt){
   }
 
   // Mostrar jogos com palpite de placar
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Placar exato=10pts · Resultado+1time=7pts · Resultado=5pts · 1time=2pts'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
   phaseMatches.sort((a,b)=>a.match_number-b.match_number).forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
     const hasResult = m.is_finished && m.real_score1!==undefined;
@@ -2499,10 +2499,13 @@ async function applyAIResults(data, log) {
         if(preds.length>0) {
           const allReal = standRows.filter(r=>r.group_id===row.group_id);
           const rm={}; allReal.forEach(r=>rm[r.position]=r.team_name);
+          const realThirdsAI2 = data.best_thirds||[];
           await dbUpsert('group_predictions',preds.map(p=>{
             let pts=0;
-            if((p.position===1||p.position===2)&&rm[p.position]===p.team_name) pts=10;
-            else if((p.position===1||p.position===2)&&[rm[1],rm[2]].includes(p.team_name)) pts=5;
+            if(p.position<=3){
+              const rp=(()=>{if(rm[1]===p.team_name)return 1;if(rm[2]===p.team_name)return 2;if(realThirdsAI2.map(t=>normalizeTeamName(t)||t).includes(p.team_name))return 3;return null;})();
+              if(rp!==null) pts=calcGrpPts(p.position,rp);
+            }
             return {...p,points:pts};
           }));
         }
@@ -2782,8 +2785,9 @@ function buildAdminUI(main){
               const rm=adminStandings[g];
               await dbUpsert('group_predictions',preds.map(p=>{
                 let pts=0;
-                if((p.position===1||p.position===2)&&rm[p.position]===p.team_name) pts=10;
-                else if((p.position===1||p.position===2)&&[rm[1],rm[2]].includes(p.team_name)) pts=5;
+                const realThirdsAdm=adminKo['best_thirds']?.team_ids||[];
+                const rp=(()=>{if(rm[1]===p.team_name)return 1;if(rm[2]===p.team_name)return 2;if(realThirdsAdm.includes(p.team_name))return 3;return null;})();
+                if(p.position<=3&&rp!==null) pts=calcGrpPts(p.position,rp);
                 return {...p,points:pts};
               }));
             }
@@ -3089,6 +3093,57 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='test'){
+    // Botão para recalcular TODOS os palpites de grupos com nova lógica
+    const recalcCard=el('div',{class:'card',style:{marginBottom:'1rem'}});
+    recalcCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},'🔄 RECALCULAR PONTUAÇÕES COM NOVA LÓGICA'));
+    recalcCard.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'.75rem'}},'Aplica a nova tabela de pontuação (3º exato=7pts, distância=5/2pts) em todos os palpites de grupos existentes no banco.'));
+    const recalcBtn=el('button',{class:'btn btn-p',onclick:async()=>{
+      if(!confirm('Recalcular TODOS os palpites de grupos de TODOS os usuários com a nova lógica?')) return;
+      recalcBtn.textContent='⏳ Recalculando...'; recalcBtn.disabled=true;
+      let updated=0;
+      try {
+        // Buscar todos os palpites de grupos
+        const allGrpPreds = await dbQ('group_predictions',{},'user_id,group_id,position,team_name,points,bolao_id');
+        const allReal = await dbQ('real_group_standings',{},'group_id,position,team_name');
+        const allKo = await dbQ('real_knockouts',{},'phase,team_ids');
+        
+        // Montar standings reais
+        const realSt={};
+        allReal.forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+        const realThirds=(allKo.find(k=>k.phase==='best_thirds')?.team_ids)||[];
+        
+        if(Object.keys(realSt).length===0){ showToast('⚠️ Defina primeiro a classificação real dos grupos','err'); recalcBtn.disabled=false; recalcBtn.textContent='Recalcular'; return; }
+        
+        // Recalcular cada palpite
+        const rows=allGrpPreds.map(p=>{
+          let pts=p.points||0;
+          if(p.group_id==='_thirds'){
+            // Melhor 3º
+            const grpOfTeam=Object.entries(GROUPS).find(([g,ts])=>ts.includes(p.team_name))?.[0];
+            const rs=realSt[grpOfTeam]||{};
+            const rp=(()=>{if(rs[1]===p.team_name)return 1;if(rs[2]===p.team_name)return 2;if(realThirds.includes(p.team_name))return 3;return null;})();
+            pts = rp===3?7:rp===2||rp===1?5:0;
+          } else if(p.position<=3){
+            const rs=realSt[p.group_id]||{};
+            const rp=(()=>{if(rs[1]===p.team_name)return 1;if(rs[2]===p.team_name)return 2;if(realThirds.includes(p.team_name))return 3;return null;})();
+            pts = rp!==null ? calcGrpPts(p.position, rp) : 0;
+          }
+          return {...p, points:pts};
+        });
+        
+        if(rows.length>0){
+          await dbUpsert('group_predictions', rows);
+          updated=rows.length;
+        }
+        showToast('✅ '+updated+' palpites recalculados com nova lógica!');
+        recalcBtn.textContent='✅ Concluído';
+      } catch(e){
+        showToast(e.message,'err');
+        recalcBtn.disabled=false; recalcBtn.textContent='Recalcular';
+      }
+    }},'🔄 Recalcular todos os palpites de grupos');
+    recalcCard.appendChild(recalcBtn);
+    main.appendChild(recalcCard);
     renderTestPage(main);
   }
 }
@@ -3433,16 +3488,26 @@ async function runTest(main) {
     });
     await SB.from('match_predictions').upsert(mUp);
 
-    // Groups
+    // Groups — usando nova lógica calcGrpPts
     const gUp = [];
+    const realThirdsTest = REAL_KO_TEST['best_thirds']||[];
     Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
       Object.entries(positions).forEach(([pos,team])=>{
-        let pts=0;
         const p=parseInt(pos);
-        if((p===1||p===2)&&REAL_STANDINGS_TEST[g][pos]===team) pts=10;
-        else if((p===1||p===2)&&[REAL_STANDINGS_TEST[g][1],REAL_STANDINGS_TEST[g][2]].includes(team)) pts=5;
-        gUp.push({user_id:u.id, group_id:g, position:parseInt(pos), team_name:team, points:pts});
+        const rst=REAL_STANDINGS_TEST[g]||{};
+        const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsTest.includes(team))return 3;return null;})();
+        const pts = p<=3 ? calcGrpPts(p, realPos) : 0;
+        gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
+    });
+    // 8 melhores 3ºs — recalcular também
+    const thirdsTest = allT.slice(24+signedUsers.indexOf(u), 24+signedUsers.indexOf(u)+8).concat(allT.slice(24)).slice(0,8);
+    thirdsTest.forEach((team,idx)=>{
+      const grpOfTeam=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
+      const rst=REAL_STANDINGS_TEST[grpOfTeam]||{};
+      const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsTest.includes(team))return 3;return null;})();
+      const pts = realPos===3?7:realPos===2||realPos===1?5:0;
+      gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
     });
     await SB.from('group_predictions').upsert(gUp);
 
@@ -3472,11 +3537,24 @@ async function runTest(main) {
   for(const u of signedUsers) {
     let expM=0, expG=0, expK=0, expS=0;
     MATCHES.forEach(m=>{ const p=userPreds[u.id].matches[m.num],r=REAL_SCORES_TEST[m.num]; expM+=calcPts(p.s1,p.s2,r.s1,r.s2); });
+    // Grupos — nova lógica calcGrpPts
+    const realThirdsV = REAL_KO_TEST['best_thirds']||[];
     Object.entries(userPreds[u.id].groups).forEach(([g,pos])=>{
-      Object.entries(pos).forEach(([p,team])=>{
-        if(REAL_STANDINGS_TEST[g][p]===team) expG+=10;
-        else if(Object.values(REAL_STANDINGS_TEST[g]).includes(team)) expG+=5;
+      Object.entries(pos).forEach(([pStr,team])=>{
+        const p=parseInt(pStr);
+        if(p>3) return; // 4º não pontua
+        const rst=REAL_STANDINGS_TEST[g]||{};
+        const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsV.includes(team))return 3;return null;})();
+        expG+=calcGrpPts(p, realPos);
       });
+    });
+    // 3ºs palpitados
+    const thirdsV=allT.slice(24+signedUsers.indexOf(u),24+signedUsers.indexOf(u)+8).concat(allT.slice(24)).slice(0,8);
+    thirdsV.forEach(team=>{
+      const grpV=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
+      const rstV=REAL_STANDINGS_TEST[grpV]||{};
+      const rpV=(()=>{if(rstV[1]===team)return 1;if(rstV[2]===team)return 2;if(realThirdsV.includes(team))return 3;return null;})();
+      expG+=rpV===3?7:rpV===2||rpV===1?5:0;
     });
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
       teams.forEach(team=>{ if(REAL_KO_TEST[phase]?.includes(team)) expK+=(phase==='champion'?20:10); });
