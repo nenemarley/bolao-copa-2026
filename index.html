@@ -513,43 +513,95 @@ async function init(){
 
 async function loadProfile(u){
   STATE.user=u;
+  console.log('[loadProfile] Carregando perfil para:', u.email);
   const [pp,all] = await Promise.all([dbQ('profiles',{id:u.id}), dbQ('profiles',{},'id,display_name,is_admin')]);
   STATE.profile = pp[0]||null;
   STATE.profiles = all||[];
+
+  // Garantir que o perfil existe e nunca é admin por padrão
+  if(!STATE.profile){
+    console.warn('[loadProfile] Perfil não encontrado — criando...');
+    const username = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'_');
+    await dbUpsert('profiles',{id:u.id, username, display_name:username, is_admin:false});
+    const [pp2] = await Promise.all([dbQ('profiles',{id:u.id})]);
+    STATE.profile = pp2[0]||{id:u.id, username, display_name:username, is_admin:false};
+    console.log('[loadProfile] Perfil criado:', STATE.profile);
+  }
+
+  // Garantir que is_admin é false para qualquer usuário não-admin
+  if(STATE.profile && STATE.profile.is_admin && u.email !== 'nene.marley@gmail.com'){
+    console.warn('[loadProfile] Usuário não-admin com is_admin=true! Corrigindo...');
+    STATE.profile.is_admin = false;
+  }
+
   await loadMyBolaos(u.id);
-  // Check pending invite from URL
-  const pendingCode = localStorage.getItem('pending_invite');
-  if(pendingCode) {
+  console.log('[loadProfile] Bolões carregados:', MY_BOLAOS.length, MY_BOLAOS.map(b=>b.name));
+
+  // Verificar convite pendente (via URL ?code=XXXX ou localStorage)
+  const urlCode = new URLSearchParams(window.location.search).get('code');
+  const pendingCode = urlCode || localStorage.getItem('pending_invite');
+  console.log('[loadProfile] Código pendente:', pendingCode);
+
+  if(pendingCode){
     localStorage.removeItem('pending_invite');
+    // Limpar URL sem recarregar
+    if(urlCode) window.history.replaceState({},'',window.location.pathname);
     try {
-      const groups = await dbQ('bolao_groups',{invite_code:pendingCode});
+      console.log('[loadProfile] Buscando bolão com código:', pendingCode);
+      const groups = await dbQ('bolao_groups',{invite_code:pendingCode.toUpperCase()});
+      console.log('[loadProfile] Bolão encontrado:', groups);
       if(groups&&groups.length>0){
         const group=groups[0];
         const existing=await dbQ('bolao_members',{bolao_id:group.id,user_id:u.id});
+        console.log('[loadProfile] Já é membro?', existing?.length>0);
         if(!existing||existing.length===0){
-          await SB.from('bolao_members').insert({bolao_id:group.id,user_id:u.id,replicate_preds:true});
+          const {error:insertErr} = await SB.from('bolao_members').insert({bolao_id:group.id,user_id:u.id,replicate_preds:true});
+          if(insertErr){
+            console.error('[loadProfile] Erro ao vincular ao bolão:', insertErr);
+            showToast('Erro ao entrar no bolão: '+insertErr.message,'err');
+          } else {
+            console.log('[loadProfile] ✅ Vinculado ao bolão:', group.name);
+            await loadMyBolaos(u.id);
+            CURRENT_BOLAO=MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
+            showToast('✅ Entrou no bolão "'+group.name+'"! Bem-vindo!');
+          }
+        } else {
+          // Já é membro — apenas selecionar esse bolão
           await loadMyBolaos(u.id);
           CURRENT_BOLAO=MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
-          showToast('✅ Entrou automaticamente no bolão "'+group.name+'"!');
+          showToast('Você já está no bolão "'+group.name+'"!');
         }
+      } else {
+        console.warn('[loadProfile] Código de convite não encontrado:', pendingCode);
+        showToast('Código de convite inválido: '+pendingCode,'err');
       }
-    } catch(e){ console.warn('Pending invite error:',e); }
+    } catch(e){
+      console.error('[loadProfile] Erro no convite:', e);
+      showToast('Erro ao processar convite: '+e.message,'err');
+    }
   }
+
   if(MY_BOLAOS.length>0 && !CURRENT_BOLAO) CURRENT_BOLAO=MY_BOLAOS[0];
+  console.log('[loadProfile] Bolão atual:', CURRENT_BOLAO?.name, '| Total bolões:', MY_BOLAOS.length);
   setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
 }
 
 async function loadMyBolaos(uid){
   try {
     const members = await dbQ('bolao_members',{user_id:uid},'bolao_id,replicate_preds');
+    console.log('[loadMyBolaos] Membros encontrados:', members?.length, members?.map(m=>m.bolao_id));
     if(!members||members.length===0){ MY_BOLAOS=[]; CURRENT_BOLAO=null; return; }
     const ids = members.map(m=>m.bolao_id);
     const groups = await dbQ('bolao_groups',{},'id,name,invite_code,created_by,description');
     MY_BOLAOS = groups.filter(g=>ids.includes(g.id)).map(g=>({
       ...g, replicate: members.find(m=>m.bolao_id===g.id)?.replicate_preds??true
     }));
+    console.log('[loadMyBolaos] Bolões do usuário:', MY_BOLAOS.map(b=>b.name));
     if(!CURRENT_BOLAO && MY_BOLAOS.length>0) CURRENT_BOLAO = MY_BOLAOS[0];
-  } catch(e){ MY_BOLAOS=[]; CURRENT_BOLAO=null; }
+  } catch(e){
+    console.error('[loadMyBolaos] Erro:', e);
+    MY_BOLAOS=[]; CURRENT_BOLAO=null;
+  }
 }
 
 async function signIn(email,pw){
@@ -948,19 +1000,36 @@ function renderBolaos(main) {
     const code = codeI.value.trim().toUpperCase();
     if(code.length!==6){ showToast('O código tem 6 caracteres','err'); return; }
     joinBtn.disabled=true; joinBtn.textContent='Buscando...';
+    console.log('[joinBolao] Tentando entrar com código:', code);
     try {
       const groups = await dbQ('bolao_groups',{invite_code:code});
+      console.log('[joinBolao] Bolão encontrado:', groups);
       if(!groups||groups.length===0) throw new Error('Código não encontrado. Verifique e tente novamente.');
       const group = groups[0];
       const existing = await dbQ('bolao_members',{bolao_id:group.id,user_id:STATE.profile.id});
-      if(existing&&existing.length>0){ showToast('Você já está neste bolão!'); joinBtn.disabled=false; joinBtn.textContent='Entrar no Bolão'; return; }
-      await SB.from('bolao_members').insert({bolao_id:group.id, user_id:STATE.profile.id, replicate_preds:true});
+      if(existing&&existing.length>0){
+        showToast('Você já está no bolão "'+group.name+'"!');
+        await loadMyBolaos(STATE.profile.id);
+        CURRENT_BOLAO=MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
+        joinBtn.disabled=false; joinBtn.textContent='Entrar no Bolão';
+        renderBolaos(main); return;
+      }
+      console.log('[joinBolao] Inserindo em bolao_members...');
+      const {error:insertErr} = await SB.from('bolao_members').insert({bolao_id:group.id, user_id:STATE.profile.id, replicate_preds:true});
+      if(insertErr){
+        console.error('[joinBolao] Erro:', insertErr);
+        throw new Error('Erro ao entrar no bolão: '+insertErr.message);
+      }
+      console.log('[joinBolao] ✅ Vinculado com sucesso!');
       await loadMyBolaos(STATE.profile.id);
       CURRENT_BOLAO = MY_BOLAOS.find(b=>b.id===group.id)||MY_BOLAOS[0];
       codeI.value='';
       renderBolaos(main);
       showToast('✅ Entrou no bolão "'+group.name+'"! Bem-vindo!');
-    } catch(e){ showToast(e.message,'err'); }
+    } catch(e){
+      console.error('[joinBolao] Erro:', e);
+      showToast(e.message,'err');
+    }
     joinBtn.disabled=false; joinBtn.textContent='Entrar no Bolão';
   }},'Entrar no Bolão');
   
@@ -3511,8 +3580,9 @@ async function runTest(main) {
   await SB.from('group_matches').upsert(KO_MATCHES_TEST);
   tlog(`  ✅ ${KO_MATCHES_TEST.length} jogos eliminatórios inseridos`, 'ok');
 
-  // STEP 6: Recalcular pontuações
+  // STEP 6: Recalcular pontuações — restaurar admin primeiro
   tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
+  if(adminSess) await SB.auth.setSession(adminSess);
   for(const u of signedUsers) {
     // Matches
     const mUp = MATCHES.map(m=>{
@@ -3624,19 +3694,25 @@ async function runTest(main) {
   testDone = true;
 
   // SEMPRE restaurar sessão do admin ao finalizar
+  tlog('\n🔄 Restaurando sessão do admin...', 'bold');
   if(adminSess) {
     await SB.auth.setSession(adminSess);
-    tlog('  ✅ Sessão do admin restaurada', 'ok');
+    // Recarregar perfil do admin (não do último usuário de teste)
+    const adminUser = adminSess.user;
+    const [adminProfile] = await Promise.all([dbQ('profiles',{id:adminUser.id})]);
+    STATE.user = adminUser;
+    STATE.profile = adminProfile[0];
+    await loadMyBolaos(adminUser.id);
+    CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code==='TESTE1')||MY_BOLAOS[0];
+    const {data:allProfs2} = await SB.from('profiles').select('id,display_name,is_admin');
+    STATE.profiles = allProfs2||[];
+    tlog('  ✅ Sessão restaurada: '+STATE.profile?.display_name+' | Bolão: '+(CURRENT_BOLAO?.name||'nenhum'), 'ok');
+  } else {
+    tlog('  ⚠️ Sessão admin não encontrada — recarregue a página', 'warn');
   }
 
-  // Reload profiles
-  const {data:allProfs} = await SB.from('profiles').select('id,display_name,is_admin');
-  STATE.profiles = allProfs||[];
-  await loadMyBolaos(STATE.profile.id);
-  CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code==='TESTE1')||MY_BOLAOS[0];
-
   renderTestPage(main);
-  showToast('✅ Teste completo! Logado como Nenê.');
+  showToast('✅ Teste completo! Logado como '+STATE.profile?.display_name+'.');
 }
 
 async function cleanupTest(main) {
