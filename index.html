@@ -1261,52 +1261,65 @@ function buildStandingsUI(main){
   // ── ABA 2: MELHORES 3ºS ─────────────────────────────────────────────────
   if(window._grpSubTab==='thirds'){
     const thirdsCount=selectedThirds.length;
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'.5rem'}},'Selecione até 8 times que passarão como melhores 3ºs colocados · Acertar = 5pts cada'));
-    main.appendChild(el('div',{style:{textAlign:'center',fontSize:'.82rem',fontWeight:'600',color:thirdsCount===8?'var(--ok)':'var(--gold)',marginBottom:'1rem'}},
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'.75rem'}},'Selecione até 8 dos 12 terceiros colocados que passarão como melhores 3ºs · Acertar = 5pts cada'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.72rem',marginBottom:'.75rem',fontStyle:'italic'}},'Os times exibidos são os 3ºs que você palpitou na aba Classificados. Preencha primeiro todos os grupos.'));
+    main.appendChild(el('div',{style:{fontSize:'.82rem',fontWeight:'600',color:thirdsCount===8?'var(--ok)':'var(--gold)',marginBottom:'1rem'}},
       thirdsCount+'/8 selecionados'+(thirdsCount===8?' ✓':'')));
 
-    // Grid com um botão por grupo — mostrando o 3º colocado palpitado pelo usuário
-    // O usuário seleciona UM time de cada grupo como possível melhor 3º
-    const grid3=el('div',{class:'sg'});
+    // Pool: apenas os 3ºs palpitados pelo usuário (posição 3 de cada grupo)
+    const poolWrap=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'8px'}});
+    let missingGroups=[];
+
     Object.entries(GROUPS).forEach(([g,teams])=>{
-      const sc=el('div',{class:'sc'});
-      sc.appendChild(el('h4',{},'GRUPO '+g));
+      const third3=grpPreds[g]?.[3]?.team||null;
+      const isReal=realThirdsReal.includes(third3);
+      const isSel=third3&&selectedThirds.includes(third3);
+      const blocked=!isSel && thirdsCount>=8;
 
-      // Times disponíveis: os que não foram usados no 1º/2º/4º deste grupo
-      const usedIn124=[1,2,4].map(p=>grpPreds[g]?.[p]?.team).filter(Boolean);
-      const selTeamInGrp=teams.find(t=>selectedThirds.includes(t))||'';
-      const rTeam3=realThirdsReal.length>0?(realThirdsReal.find(t=>teams.includes(t))||null):null;
-      const isLocked=thirdsCount>=8&&!selTeamInGrp;
-
-      const pr3=el('div',{class:'pr'});
-      pr3.appendChild(el('span',{class:'pl',style:{color:'var(--muted)'}},'3º'));
-      const sel3=el('select',{class:'ps',disabled:isLocked});
-      if(isLocked) sel3.style.opacity='0.4';
-      sel3.appendChild(el('option',{value:''},'— Selecione —'));
-      teams.forEach(t=>{
-        if(usedIn124.includes(t)) return;
-        const o=el('option',{value:t},(FLAGS[t]||'')+' '+t);
-        if(t===selTeamInGrp) o.selected=true;
-        sel3.appendChild(o);
-      });
-      sel3.onchange=()=>{
-        if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
-        teams.forEach(t=>{ const i=grpPreds['_thirds'].indexOf(t); if(i>=0) grpPreds['_thirds'].splice(i,1); });
-        if(sel3.value){
-          if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8!','err'); sel3.value=''; return; }
-          grpPreds['_thirds'].push(sel3.value);
-        }
-        grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
-      };
-      pr3.appendChild(sel3);
-      if(selTeamInGrp && rTeam3!==null && rTeam3!==undefined){
-        const p3=selTeamInGrp===rTeam3?5:0;
-        pr3.appendChild(el('span',{class:`pp ${p3>0?'p10':'p0'}`,style:{whiteSpace:'nowrap'}},p3+'p'));
+      if(!third3){
+        missingGroups.push(g);
+        // Mostrar placeholder cinza
+        const ph=el('button',{
+          class:'btn btn-sm btn-o',
+          disabled:true,
+          style:{opacity:'0.3',cursor:'not-allowed'}
+        },'G'+g+': — sem palpite');
+        poolWrap.appendChild(ph);
+        return;
       }
-      sc.appendChild(pr3);
-      grid3.appendChild(sc);
+
+      let cls='btn-o';
+      if(isSel && isReal) cls='btn-s';
+      else if(isSel && realThirdsReal.length>0 && !isReal) cls='btn-d';
+      else if(isSel) cls='btn-p';
+
+      const label=(FLAGS[third3]||'🏳')+' '+third3+(isSel&&isReal?' · 5p':'');
+
+      const b=el('button',{
+        class:`btn btn-sm ${cls}`,
+        disabled:blocked,
+        style:blocked?{opacity:'0.3',cursor:'not-allowed'}:{},
+        onclick:()=>{
+          if(!grpPreds['_thirds']) grpPreds['_thirds']=[];
+          const idx=grpPreds['_thirds'].indexOf(third3);
+          if(idx>=0){
+            grpPreds['_thirds'].splice(idx,1);
+          } else {
+            if(grpPreds['_thirds'].length>=8){ showToast('Máximo 8!','err'); return; }
+            grpPreds['_thirds'].push(third3);
+          }
+          grpDirty=true; updateGrpSaveBar(); buildStandingsUI(main);
+        }
+      },label);
+      poolWrap.appendChild(b);
     });
-    main.appendChild(grid3);
+
+    main.appendChild(poolWrap);
+
+    if(missingGroups.length>0){
+      main.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginTop:'1rem',fontStyle:'italic'}},
+        '⚠️ Falta palpitar o 3º colocado dos grupos: '+missingGroups.join(', ')+' — vá em Classificados por Grupo'));
+    }
   }
 
   updateGrpSaveBar();
@@ -1352,44 +1365,35 @@ async function saveStandings(){
 // ── Knockout ───────────────────────────────────────────────────────────────
 let koPreds={}, koReal={}, koScorer='', koDirty=false, koRealThirds=[], koUserThirds=[], koUserGrpStandings={};
 // Get teams available for a phase based on previous phase selections
-function getAvailableTeams(phase, currentPreds, realStandings, realThirds) {
-  const prevPhase = {round16:'round32', quarter:'round16', semi:'quarter', final:'semi', third:'semi'};
+function getAvailableTeams(phase, currentPreds, realStandings, userThirds) {
+  // REGRA: filtro SEMPRE pelos palpites do usuário, NUNCA pelos resultados reais do admin
+  // realStandings é passado apenas para resolveSlot (exibição) — não influencia o pool aqui
 
   if(phase === 'round32') {
-    // Usar palpites do usuário nos grupos como pool (1º e 2º de cada grupo + 8 melhores 3ºs)
-    const standings = (Object.keys(koUserGrpStandings||{}).length>=12) ? koUserGrpStandings : (realStandings||{});
+    // Pool = palpites do usuário: 1º e 2º de cada grupo + 8 melhores 3ºs escolhidos por ele
+    const standings = koUserGrpStandings || {};
     const classified = [];
-    if(Object.keys(standings).length >= 12) {
-      Object.entries(standings).forEach(([g, pos]) => {
-        if(pos[1]) classified.push(pos[1]);
-        if(pos[2]) classified.push(pos[2]);
-      });
-    }
-    const thirds = realThirds || [];
-    thirds.forEach(t => { if(!classified.includes(t)) classified.push(t); });
-    return classified.length >= 24 ? classified : ALL_TEAMS;
+    Object.entries(standings).forEach(([g, pos]) => {
+      if(pos[1]) classified.push(pos[1]);
+      if(pos[2]) classified.push(pos[2]);
+    });
+    (userThirds||[]).forEach(t => { if(!classified.includes(t)) classified.push(t); });
+    // Mostra o que o usuário preencheu — sem fallback para dados do admin
+    return classified.length >= 2 ? classified : ALL_TEAMS;
   }
 
   if(phase === 'round16') {
     const prev = currentPreds['round32'];
     if(prev && prev.length > 0) return prev.map(x=>x.team);
-    // Sem seleção na Rodada 32 → tentar usar top2 dos grupos reais
-    const classified = [];
-    if(realStandings && Object.keys(realStandings).length >= 12) {
-      Object.entries(realStandings).forEach(([g, pos]) => {
-        if(pos[1]) classified.push(pos[1]);
-        if(pos[2]) classified.push(pos[2]);
-      });
-    }
-    return classified.length >= 24 ? classified : ALL_TEAMS;
+    return []; // fase anterior vazia → sem pool
   }
 
-  // Quartas, Semi, Final: filtrar estritamente pela fase anterior
+  // Quartas, Semi, Final, 3º: cascata estrita dos palpites anteriores
+  const prevPhase = {quarter:'round16', semi:'quarter', final:'semi', third:'semi'};
   const prev = prevPhase[phase];
   if(prev && currentPreds[prev] && currentPreds[prev].length > 0) {
     return currentPreds[prev].map(x=>x.team);
   }
-  // Se fase anterior vazia, retornar array vazio (não mostrar ALL_TEAMS)
   return [];
 }
 
@@ -1438,7 +1442,8 @@ function renderKnockout(main){
       userGrpStandings[p.group_id][p.position]=p.team_name;
     });
     // Usar palpites do usuário como pool se definidos, senão usar resultados reais
-    koUserGrpStandings = Object.keys(userGrpStandings).length >= 12 ? userGrpStandings : grpReal;
+    // REGRA: usar SEMPRE os palpites do usuário — nunca grpReal (resultados reais do admin)
+    koUserGrpStandings = userGrpStandings; // pode ter menos de 12 grupos — é normal
     koDirty=false;
     buildKoUI(main);
   });
