@@ -1878,166 +1878,129 @@ async function saveKoMatches(){
   try{ await upsertWithReplicate('match_predictions',rows); koMatchDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateKoMatchSaveBar(); }
   catch(e){ showToast(e.message,'err'); }
 }
-// ── Auto-update com Claude API + Web Search ────────────────────────────────
-const AI_KEY_STORAGE = 'bolao_claude_api_key';
-
-function getApiKey() {
-  return localStorage.getItem(AI_KEY_STORAGE)||'';
-}
-
-function saveApiKey(key) {
-  localStorage.setItem(AI_KEY_STORAGE, key.trim());
-}
-
-async function callClaudeWithSearch(prompt) {
-  const apiKey = getApiKey();
-  if(!apiKey) throw new Error('API key não configurada');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version':'2023-06-01',
-      'anthropic-beta':'web-search-2025-03-05'
-    },
-    body: JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:2000,
-      tools:[{type:'web_search_20250305',name:'web_search'}],
-      messages:[{role:'user',content:prompt}]
-    })
-  });
-  if(!resp.ok) {
-    const err = await resp.json().catch(()=>({}));
-    throw new Error(err?.error?.message||'Erro na API ('+resp.status+')');
-  }
-  const data = await resp.json();
-  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-  return text;
-}
-
+// ── Fluxo copiar/colar com Claude ─────────────────────────────────────────
 async function fetchResultsFromAI(main, phase) {
-  // Verificar API key
-  let apiKey = getApiKey();
-  if(!apiKey) {
-    const key = prompt('Cole sua Claude API Key (ficará salva só neste dispositivo):');
-    if(!key||!key.trim()) return;
-    saveApiKey(key);
-    apiKey = key.trim();
-  }
-
-  // Criar painel de progresso
   let panel = document.getElementById('ai-fetch-panel');
   if(panel) panel.remove();
   panel = el('div',{id:'ai-fetch-panel',style:{background:'rgba(59,130,246,.08)',border:'1px solid rgba(59,130,246,.3)',borderRadius:'12px',padding:'1rem',marginBottom:'1rem'}});
-  const statusDiv = el('div',{style:{fontSize:'.85rem',color:'#93C5FD',fontWeight:'600',marginBottom:'.5rem'}});
-  const logDiv = el('div',{style:{fontSize:'.75rem',color:'var(--muted)',maxHeight:'200px',overflowY:'auto',fontFamily:'monospace'}});
-  const closeBtn = el('button',{class:'btn btn-o btn-sm',style:{marginTop:'8px'},onclick:()=>panel.remove()},'Fechar');
-  panel.appendChild(statusDiv);
-  panel.appendChild(logDiv);
-  panel.appendChild(closeBtn);
-  main.insertBefore(panel, main.children[2]||main.lastChild);
 
-  const log = (msg, color='var(--muted)') => {
-    const d = document.createElement('div');
-    d.style.color = color;
-    d.textContent = msg;
-    logDiv.appendChild(d);
-    logDiv.scrollTop = logDiv.scrollHeight;
-  };
-
+  const phaseLabels = {groups:'Fase de Grupos',round32:'Rodada de 32',round16:'Oitavas de Final',quarter:'Quartas de Final',semi:'Semifinal',final:'Final'};
+  const phaseLabel = phaseLabels[phase]||phase;
   const today = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
-  const phaseLabel = phase==='groups'?'fase de grupos':phase==='round32'?'Rodada de 32':phase==='round16'?'Oitavas de Final':phase==='quarter'?'Quartas de Final':phase==='semi'?'Semifinal':'Final';
 
-  try {
-    statusDiv.textContent = '🔍 Buscando resultados da Copa 2026 ('+today+')...';
-    log('→ Consultando Claude com web search...');
+  // Estado: prompt ou colar JSON
+  let mode = 'prompt';
 
-    const prompt = `Busque os resultados dos jogos da Copa do Mundo FIFA 2026 de hoje (${today}) ou os mais recentes disponíveis, especificamente da ${phaseLabel}.
+  function render() {
+    panel.innerHTML='';
+    const header = el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}});
+    header.appendChild(el('div',{style:{color:'#93C5FD',fontWeight:'700',fontSize:'.9rem'}},'🤖 Buscar resultados via Claude'));
+    header.appendChild(el('button',{class:'btn btn-o btn-sm',onclick:()=>panel.remove()},'✕'));
+    panel.appendChild(header);
 
-Para cada jogo encontrado, retorne APENAS um JSON válido neste formato (sem markdown, sem explicação):
+    if(mode==='prompt') {
+      // Gerar prompt
+      const prompt = `Busque os resultados dos jogos da Copa do Mundo FIFA 2026 de hoje (${today}), fase: ${phaseLabel}.
+
+Retorne SOMENTE um JSON válido neste formato (sem markdown, sem explicação):
 {
-  "date": "${today}",
-  "phase": "${phase}",
   "matches": [
-    {"team1": "Nome do time 1", "score1": 2, "team2": "Nome do time 2", "score2": 1, "finished": true}
+    {"team1": "Nome em português", "score1": 2, "team2": "Nome em português", "score2": 1, "finished": true}
   ],
   "standings": {
-    "A": {"1": "Time 1º lugar", "2": "Time 2º lugar", "3": "Time 3º lugar"},
-    "B": {"1": "...", "2": "...", "3": "..."}
+    "A": {"1": "1º colocado", "2": "2º colocado", "3": "3º colocado", "4": "4º colocado"}
   },
-  "best_thirds": ["Time1", "Time2", "Time3", "Time4", "Time5", "Time6", "Time7", "Time8"],
+  "best_thirds": ["Time1","Time2","Time3","Time4","Time5","Time6","Time7","Time8"],
   "knockout_classified": {
-    "round32": ["16 times que passaram para oitavas"],
-    "round16": ["8 times que passaram para quartas"],
-    "quarter": ["4 semifinalistas"],
-    "semi": ["2 finalistas"],
-    "champion": ["Campeão"]
+    "round32": ["16 times que passaram para oitavas"]
   }
 }
 
-Use os nomes dos times em português como aparecem nesta lista: ${ALL_TEAMS.join(', ')}.
-Inclua apenas os dados que já estão confirmados. Se não houver jogos hoje, busque os mais recentes.
-Retorne SOMENTE o JSON, sem texto adicional.`;
+Use estes nomes em português: ${ALL_TEAMS.join(', ')}.
+Inclua apenas dados confirmados. Campos sem dados: null.`;
 
-    const raw = await callClaudeWithSearch(prompt);
-    log('→ Resposta recebida, processando...', '#10B981');
+      panel.appendChild(el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginBottom:'.75rem'}},'1. Copie o prompt abaixo → 2. Cole no chat do Claude → 3. Copie o JSON que ele retornar → 4. Cole aqui'));
 
-    // Parsear JSON
-    let data;
-    try {
-      const clean = raw.replace(/```json|```/g,'').trim();
-      data = JSON.parse(clean);
-    } catch(e) {
-      throw new Error('Resposta não é JSON válido. Tente novamente.');
-    }
+      const promptBox = el('textarea',{style:{width:'100%',height:'140px',background:'#0a0f1e',border:'1px solid #374151',borderRadius:'8px',color:'#10B981',fontFamily:'monospace',fontSize:'.7rem',padding:'8px',resize:'none'}});
+      promptBox.value = prompt;
+      panel.appendChild(promptBox);
 
-    if(!data.matches || data.matches.length===0) {
-      statusDiv.textContent = '⚠️ Nenhum jogo encontrado para hoje.';
-      log('Nenhum jogo disponível.', '#F59E0B');
-      return;
-    }
+      const copyBtn = el('button',{class:'btn btn-p',style:{width:'100%',marginTop:'8px'},onclick:()=>{
+        navigator.clipboard.writeText(prompt).then(()=>{
+          copyBtn.textContent='✅ Copiado!';
+          setTimeout(()=>{
+            copyBtn.textContent='📋 Copiar prompt';
+            mode='paste';
+            render();
+          }, 1200);
+        }).catch(()=>{
+          promptBox.select();
+          document.execCommand('copy');
+          copyBtn.textContent='✅ Copiado! Agora cole no Claude';
+          setTimeout(()=>{ mode='paste'; render(); }, 1500);
+        });
+      }},'📋 Copiar prompt e ir para próximo passo');
+      panel.appendChild(copyBtn);
 
-    log('→ '+data.matches.length+' jogo(s) encontrado(s)', '#10B981');
+    } else {
+      // Colar JSON direto do clipboard
+      panel.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'1rem',lineHeight:'1.6'}},'Cole o JSON retornado pelo Claude e clique aplicar:'));
 
-    // Mostrar preview para confirmação
-    statusDiv.textContent = '✅ Resultados encontrados — confirme abaixo:';
-    const previewDiv = el('div',{style:{marginTop:'8px',display:'flex',flexDirection:'column',gap:'6px'}});
+      const jsonBox = el('textarea',{style:{width:'100%',height:'120px',background:'#0a0f1e',border:'1px solid #374151',borderRadius:'8px',color:'#10B981',fontFamily:'monospace',fontSize:'.7rem',padding:'8px',resize:'none'}});
+      jsonBox.placeholder = '{"matches":[...],"standings":null,...}';
+      panel.appendChild(jsonBox);
 
-    data.matches.forEach(m=>{
-      const row = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem',background:'var(--card)',borderRadius:'6px',padding:'6px 10px'}});
-      row.appendChild(el('span',{},(FLAGS[m.team1]||'🏳')+' '+m.team1));
-      row.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontSize:'1rem'}},m.score1+' — '+m.score2));
-      row.appendChild(el('span',{},(FLAGS[m.team2]||'🏳')+' '+m.team2));
-      row.appendChild(el('span',{style:{fontSize:'.7rem',color:m.finished?'var(--ok)':'#F59E0B'}},m.finished?'✓ Final':'⏳'));
-      previewDiv.appendChild(row);
-    });
-    panel.insertBefore(previewDiv, closeBtn);
+      // Botão colar do clipboard
+      const pasteBtn = el('button',{class:'btn btn-o',style:{width:'100%',marginTop:'6px'},onclick:async()=>{
+        try {
+          const text = await navigator.clipboard.readText();
+          if(text) { jsonBox.value=text; pasteBtn.textContent='✅ Colado!'; setTimeout(()=>pasteBtn.textContent='📥 Colar do clipboard',1000); }
+        } catch(e) { jsonBox.focus(); document.execCommand('paste'); }
+      }},'📥 Colar do clipboard');
+      panel.appendChild(pasteBtn);
 
-    // Botão confirmar
-    const confirmBtn = el('button',{class:'btn btn-p',style:{marginTop:'8px',marginRight:'8px'},onclick:async()=>{
-      confirmBtn.disabled=true; confirmBtn.textContent='⏳ Salvando...';
-      try {
-        await applyAIResults(data, log);
-        statusDiv.textContent = '✅ Banco atualizado com sucesso!';
-        confirmBtn.remove();
-        log('✅ Tudo salvo! Recarregando...', '#10B981');
-        setTimeout(()=>{ panel.remove(); buildAdminUI(main); }, 1500);
-      } catch(e) {
-        statusDiv.textContent = '❌ Erro ao salvar: '+e.message;
-        confirmBtn.disabled=false; confirmBtn.textContent='Tentar novamente';
-      }
-    }},'✅ Confirmar e salvar no banco');
-    panel.insertBefore(confirmBtn, closeBtn);
+      const statusDiv = el('div',{style:{fontSize:'.78rem',marginTop:'6px',minHeight:'20px'}});
+      panel.appendChild(statusDiv);
 
-  } catch(e) {
-    statusDiv.textContent = '❌ '+e.message;
-    log('Erro: '+e.message, '#EF4444');
-    if(e.message.includes('401')||e.message.includes('API key')) {
-      localStorage.removeItem(AI_KEY_STORAGE);
-      log('API key removida. Tente novamente com uma key válida.', '#F59E0B');
+      const row = el('div',{style:{display:'flex',gap:'8px',marginTop:'8px'}});
+      const backBtn = el('button',{class:'btn btn-o btn-sm',onclick:()=>{ mode='prompt'; render(); }},'← Voltar');
+      const applyBtn = el('button',{class:'btn btn-p',style:{flex:'1'},onclick:async()=>{
+        const raw = jsonBox.value.trim();
+        if(!raw){ statusDiv.textContent='⚠️ Cole o JSON primeiro'; statusDiv.style.color='#F59E0B'; return; }
+        let data;
+        try {
+          const clean = raw.replace(/```json|```/g,'').trim();
+          data = JSON.parse(clean);
+        } catch(e) {
+          statusDiv.textContent='❌ JSON inválido: '+e.message;
+          statusDiv.style.color='#EF4444';
+          return;
+        }
+        applyBtn.disabled=true; applyBtn.textContent='⏳ Aplicando...';
+        statusDiv.style.color='#10B981';
+        const logLines=[];
+        const logFn=(msg)=>{ logLines.push(msg); statusDiv.textContent=msg; };
+        try {
+          await applyAIResults(data, logFn);
+          panel.innerHTML='';
+          panel.appendChild(el('div',{style:{color:'#10B981',fontWeight:'700',marginBottom:'.5rem'}},'✅ Banco atualizado!'));
+          const logDiv=el('div',{style:{fontFamily:'monospace',fontSize:'.72rem',maxHeight:'160px',overflowY:'auto',background:'#0a0f1e',borderRadius:'6px',padding:'8px'}});
+          logLines.forEach(l=>{ const d=document.createElement('div'); d.style.color='#10B981'; d.textContent=l; logDiv.appendChild(d); });
+          panel.appendChild(logDiv);
+          panel.appendChild(el('button',{class:'btn btn-p',style:{marginTop:'8px',width:'100%'},onclick:()=>{ panel.remove(); buildAdminUI(main); }},'✅ Fechar e recarregar'));
+        } catch(e) {
+          statusDiv.textContent='❌ Erro: '+e.message;
+          statusDiv.style.color='#EF4444';
+          applyBtn.disabled=false; applyBtn.textContent='Aplicar no banco';
+        }
+      }},'✅ Aplicar no banco');
+      row.appendChild(backBtn); row.appendChild(applyBtn);
+      panel.appendChild(row);
     }
   }
+
+  render();
+  main.insertBefore(panel, main.children[2]||main.lastChild);
 }
 
 // Mapeamento de variações de nomes que Claude pode retornar
@@ -2171,26 +2134,17 @@ function buildAdminUI(main){
   main.appendChild(tabs);
 
   if(adminTab==='matches'){
-    // Busca automática com Claude AI
     const fetchBar = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem',alignItems:'center',flexWrap:'wrap'}});
     const phaseSelect = el('select',{class:'ps',style:{flex:'1',minWidth:'160px'}});
     [['groups','⚽ Fase de Grupos'],['round32','🔥 Rodada de 32'],['round16','⚔️ Oitavas'],['quarter','⚔️ Quartas'],['semi','⚔️ Semifinal'],['final','🏆 Final']].forEach(([v,l])=>{
       phaseSelect.appendChild(el('option',{value:v},l));
     });
-    const fetchBtn = el('button',{class:'btn btn-s',onclick:()=>fetchResultsFromAI(main,phaseSelect.value)},
-      '🤖 Buscar resultados com IA');
-    const cfgBtn = el('button',{class:'btn btn-o btn-sm',onclick:()=>{
-      const cur=getApiKey();
-      const key=prompt('Claude API Key'+(cur?'\n(atual: ...'+cur.slice(-8)+')':'')+':\n(deixe em branco para remover)');
-      if(key===null) return;
-      if(key.trim()) { saveApiKey(key); showToast('✅ API key salva!'); }
-      else { localStorage.removeItem(AI_KEY_STORAGE); showToast('API key removida'); }
-    }},'🔑 API Key');
+    const fetchBtn = el('button',{class:'btn btn-p',onclick:()=>fetchResultsFromAI(main,phaseSelect.value)},
+      '📋 Gerar prompt para Claude');
     fetchBar.appendChild(phaseSelect);
     fetchBar.appendChild(fetchBtn);
-    fetchBar.appendChild(cfgBtn);
     main.appendChild(fetchBar);
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Ou insira o placar manualmente abaixo. Pontuações recalculadas automaticamente.'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.75rem',marginBottom:'1rem'}},'Gere o prompt → cole no chat do Claude → copie o JSON → cole de volta aqui. Ou insira o placar manualmente abaixo.'));
     const gb=el('div',{class:'gb'});
     Object.keys(GROUPS).forEach(g=>gb.appendChild(el('button',{class:`btn btn-sm ${adminGrp===g?'btn-p':'btn-o'}`,onclick:()=>{ adminGrp=g; buildAdminUI(main); }},'Grupo '+g)));
     main.appendChild(gb);
