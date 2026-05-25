@@ -1870,12 +1870,16 @@ function buildKoUI(main){
     const bracketMap = {round32:ROUND32_BRACKET, round16:ROUND16_BRACKET, quarter:QUARTER_BRACKET, semi:SEMI_BRACKET};
     const bracket = bracketMap[ph.key];
 
-    function pickTeam(team) {
+    function pickTeam(team, opponent) {
       if(!koPreds[ph.key]) koPreds[ph.key]=[];
-      const idx=koPreds[ph.key].findIndex(x=>x.team===team);
       const isReal2=rp?.team_ids?.includes(team);
-      if(idx>=0){ koPreds[ph.key].splice(idx,1); }
-      else if(koPreds[ph.key].length<ph.count){
+      const alreadySel = koPreds[ph.key].find(x=>x.team===team);
+      if(alreadySel){
+        // Clicou no já selecionado → desselecionar
+        koPreds[ph.key]=koPreds[ph.key].filter(x=>x.team!==team);
+      } else {
+        // Selecionar este e remover o adversário do mesmo confronto automaticamente
+        if(opponent) koPreds[ph.key]=koPreds[ph.key].filter(x=>x.team!==opponent);
         koPreds[ph.key].push({team, pts:isReal2?ph.pts:0});
       }
       koDirty=true;
@@ -1949,8 +1953,8 @@ function buildKoUI(main){
         const b1=el('button',{
           class:`btn btn-sm ${cls1}`,
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.5'},
-          disabled:!t1Known||(isFull&&!sel1),
-          onclick:()=>pickTeam(t1)
+          disabled:!t1Known,
+          onclick:()=>pickTeam(t1,t2)
         },(FLAGS[t1]||'')+' '+t1+(sel1&&real1?' ✓':''));
 
         // VS
@@ -1961,8 +1965,8 @@ function buildKoUI(main){
         const b2=el('button',{
           class:`btn btn-sm ${cls2}`,
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.5'},
-          disabled:!t2Known||(isFull&&!sel2),
-          onclick:()=>pickTeam(t2)
+          disabled:!t2Known,
+          onclick:()=>pickTeam(t2,t1)
         },(FLAGS[t2]||'')+' '+t2+(sel2&&real2?' ✓':''));
 
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
@@ -3271,9 +3275,16 @@ function buildAdminUI(main){
       const currR32 = adminKo['round32']?.team_ids||[];
       round32Card.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'600',color:currR32.length===16?'var(--ok)':'var(--muted)',marginBottom:'.75rem'}},currR32.length+'/16 definidos'+(currR32.length===16?' ✓':'')));
 
-      async function toggleR32(team){
+      async function toggleR32(team, opponent){
         const currNow=adminKo['round32']?.team_ids||[];
-        const next=currNow.includes(team)?currNow.filter(t=>t!==team):[...currNow,team];
+        let next;
+        if(currNow.includes(team)){
+          next = currNow.filter(t=>t!==team);
+        } else {
+          // Remover adversário do mesmo confronto se já estava selecionado
+          next = opponent ? currNow.filter(t=>t!==opponent) : [...currNow];
+          next.push(team);
+        }
         if(next.length>16){showToast('Máximo 16 times!','err');return;}
         try{
           await dbUpsert('real_knockouts',{phase:'round32',team_ids:next});
@@ -3303,14 +3314,14 @@ function buildAdminUI(main){
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
         const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
-          disabled:!t1Known||(isFull32&&!sel1),
-          onclick:()=>toggleR32(t1)},
+          disabled:!t1Known,
+          onclick:()=>toggleR32(t1,t2)},
           (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
         const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
-          disabled:!t2Known||(isFull32&&!sel2),
-          onclick:()=>toggleR32(t2)},
+          disabled:!t2Known,
+          onclick:()=>toggleR32(t2,t1)},
           (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         r32Wrap.appendChild(row);
@@ -3387,13 +3398,16 @@ function buildAdminUI(main){
         }catch(e){ showToast(e.message,'err'); }
       }
 
-      async function toggleAdminTeam(team) {
+      async function toggleAdminTeam(team, opponent) {
         const curr=(adminKo[ph.key]?.team_ids||[]);
-        const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
-        const maxSel=ph.count;
-        if(next.length>maxSel){
-          if(maxSel===1){ next.length=0; next.push(team); }
-          else { showToast('Máximo '+maxSel+' times!','err'); return; }
+        let next;
+        if(curr.includes(team)){
+          // Desselecionar
+          next = curr.filter(t=>t!==team);
+        } else {
+          // Selecionar e remover adversário do confronto automaticamente
+          next = curr.filter(t=>t!==opponent);
+          next.push(team);
         }
         await saveAdminPhase(next);
       }
@@ -3434,14 +3448,14 @@ function buildAdminUI(main){
           const cls2=sel2?'btn-s':'btn-o';
           const b1=el('button',{class:'btn btn-sm '+cls1,
             style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
-            disabled:!t1Known||(isFull2&&!sel1),
-            onclick:()=>toggleAdminTeam(t1)},
+            disabled:!t1Known,
+            onclick:()=>toggleAdminTeam(t1,t2)},
             (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
           const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
           const b2=el('button',{class:'btn btn-sm '+cls2,
             style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
-            disabled:!t2Known||(isFull2&&!sel2),
-            onclick:()=>toggleAdminTeam(t2)},
+            disabled:!t2Known,
+            onclick:()=>toggleAdminTeam(t2,t1)},
             (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
           row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
           matchesWrap.appendChild(row);
@@ -3898,54 +3912,61 @@ async function runTest(main) {
   const realScorer = realKoMap['top_scorer']?.[0]||'';
 
   for(const u of signedUsers) {
-    // Jogos: calcular com resultados reais do banco
-    const mUp = MATCHES.map(m=>{
-      const p=userPreds[u.id].matches[m.num];
-      const r=realMatchMap[m.num]||{s1:0,s2:0};
-      return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
-    });
-    // Usar SB_TEST com sessão do usuário para respeitar RLS
-    const calcSess = u._session;
-    const calcSB = calcSess ? SB_TEST : SB;
-    if(calcSess) await SB_TEST.auth.setSession({access_token:calcSess.access_token,refresh_token:calcSess.refresh_token});
+    try {
+      // Jogos — admin tem política admin_insert/update_match_preds
+      const mUp = MATCHES.map(m=>{
+        const p=userPreds[u.id].matches[m.num];
+        const r=realMatchMap[m.num]||{s1:0,s2:0};
+        return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
+      });
+      const {error:mErr} = await SB.from('match_predictions').upsert(mUp);
+      if(mErr) throw new Error('match_predictions: '+mErr.message);
 
-    await calcSB.from('match_predictions').upsert(mUp);
-
-    // Grupos: calcular com standings reais do banco
-    const gUp = [];
-    Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
-      Object.entries(positions).forEach(([pos,team])=>{
-        const p=parseInt(pos);
-        const rst=realStMap[g]||{};
+      // Grupos — admin tem política admin_insert/update_group_preds
+      const gUp = [];
+      Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
+        Object.entries(positions).forEach(([pos,team])=>{
+          const p=parseInt(pos);
+          const rst=realStMap[g]||{};
+          const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
+          const pts = p<=3 ? calcGrpPts(p, realPos) : 0;
+          gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
+        });
+      });
+      (userPreds[u.id].thirds||[]).forEach((team,idx)=>{
+        const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
+        const rst=realStMap[grp]||{};
         const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
-        const pts = p<=3 ? calcGrpPts(p, realPos) : 0;
-        gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
+        const pts = realPos===3?7:realPos===2||realPos===1?5:0;
+        gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
-    });
-    (userPreds[u.id].thirds||[]).forEach((team,idx)=>{
-      const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
-      const rst=realStMap[grp]||{};
-      const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
-      const pts = realPos===3?7:realPos===2||realPos===1?5:0;
-      gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
-    });
-    await calcSB.from('group_predictions').upsert(gUp);
+      const {error:gErr} = await SB.from('group_predictions').upsert(gUp);
+      if(gErr) throw new Error('group_predictions: '+gErr.message);
 
-    const kRows = [];
-    Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
-      teams.forEach(team=>{
-        const isReal = realKoMap[phase]?.includes(team);
-        const pts = isReal ? (phase==='final'||phase==='champion'?20:10) : 0;
-        kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
+      // Fases KO — admin tem política admin_insert/update_ko_preds
+      const kRows = [];
+      Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
+        teams.forEach(team=>{
+          const isReal = realKoMap[phase]?.includes(team);
+          const pts = isReal ? (phase==='final'||phase==='champion'?20:10) : 0;
+          kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
+        });
       });
-    });
-    await calcSB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
-    if(kRows.length>0) await calcSB.from('knockout_predictions').insert(kRows);
+      await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      if(kRows.length>0){
+        const {error:kErr} = await SB.from('knockout_predictions').insert(kRows);
+        if(kErr) throw new Error('knockout_predictions: '+kErr.message);
+      }
 
-    const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
-    await calcSB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts, bolao_id:testBolao?.id});
+      // Artilheiro — admin tem política admin_insert/update_scorer_preds
+      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
+      const {error:sErr} = await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
+      if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
 
-    tlog(`  ✅ ${u.name} recalculado`, 'ok');
+      tlog(`  ✅ ${u.name} recalculado`, 'ok');
+    } catch(e) {
+      tlog(`  ❌ ${u.name}: ${e.message}`, 'err');
+    }
   }
 
   // STEP 6: Validação — comparar esperado (calculado localmente) vs obtido (banco)
