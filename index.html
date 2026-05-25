@@ -2513,7 +2513,7 @@ Times em português: ${ALL_TEAMS.join(', ')}.`;
           const logDiv=el('div',{style:{fontFamily:'monospace',fontSize:'.72rem',maxHeight:'160px',overflowY:'auto',background:'#0a0f1e',borderRadius:'6px',padding:'8px'}});
           logLines.forEach(l=>{ const d=document.createElement('div'); d.style.color='#10B981'; d.textContent=l; logDiv.appendChild(d); });
           panel.appendChild(logDiv);
-          panel.appendChild(el('button',{class:'btn btn-p',style:{marginTop:'8px',width:'100%'},onclick:()=>{ panel.remove(); buildAdminUI(main); }},'✅ Fechar e recarregar'));
+          panel.appendChild(el('button',{class:'btn btn-p',style:{marginTop:'8px',width:'100%'},onclick:()=>{ panel.remove(); adminMatches={}; adminStandings={}; adminKo={}; renderAdmin(main); }},'✅ Fechar e recarregar'));
         } catch(e) {
           statusDiv.textContent='❌ Erro: '+e.message;
           statusDiv.style.color='#EF4444';
@@ -3505,38 +3505,26 @@ async function runTest(main) {
       tlog('  ❌ '+u.name+': '+e.message, 'err');
     }
   }
-  // Logout do SB_TEST para limpar sessão de teste
-  await SB_TEST.auth.signOut();
+  tlog('  → '+signedUsers.length+'/5 usuários criados', 'info');
 
-  // Restaurar sessão admin ANTES de vincular ao bolão
-  if(adminSess) await SB.auth.setSession(adminSess);
-
-  // Vincular todos os usuários ao bolão como admin
+  // Vincular todos os usuários ao bolão (sessão admin já está ativa no SB principal)
   if(testBolao) {
+    tlog('  → Vinculando ao bolão...', 'info');
     let vinculados = 0;
     for(const u of signedUsers) {
       const {error:memberErr} = await SB.from('bolao_members')
         .upsert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true});
       if(memberErr){
-        tlog(`  ⚠️ Erro ao vincular ${u.name}: ${memberErr.message}`, 'warn');
-        // Tentar INSERT direto (caso upsert falhe por RLS)
-        const {error:insertErr} = await SB.from('bolao_members')
-          .insert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true})
-          .onConflict ? undefined : null;
-        if(insertErr) tlog(`  ❌ INSERT também falhou para ${u.name}: ${insertErr.message}`, 'err');
-        else { vinculados++; tlog(`  ✅ ${u.name} vinculado via INSERT`, 'ok'); }
+        tlog('  ❌ Erro ao vincular '+u.name+': '+memberErr.message, 'err');
       } else {
         vinculados++;
+        tlog('  ✅ '+u.name+' vinculado ao bolão', 'ok');
       }
     }
-    tlog(`  ✅ ${vinculados}/${signedUsers.length} usuários vinculados ao bolão de teste`, 'ok');
-    if(vinculados < signedUsers.length){
-      tlog('  ⚠️ Alguns usuários não foram vinculados — verifique a política RLS de bolao_members', 'warn');
-      tlog('  → Execute no Supabase SQL: CREATE POLICY "admin_insert_members" ON bolao_members FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));', 'warn');
-    }
+    tlog('  → '+vinculados+'/'+signedUsers.length+' usuários vinculados', vinculados===signedUsers.length?'ok':'warn');
   }
 
-  tlog(`  → ${signedUsers.length}/5 usuários prontos`, 'info');
+  tlog('  → Total: '+signedUsers.length+'/5 usuários prontos', 'info');
 
   // STEP 2: Palpites de jogos
   tlog('\n⚽ PASSO 2: Palpites dos jogos...', 'bold');
@@ -3637,9 +3625,8 @@ async function runTest(main) {
   await SB.from('group_matches').upsert(KO_MATCHES_TEST);
   tlog(`  ✅ ${KO_MATCHES_TEST.length} jogos eliminatórios inseridos`, 'ok');
 
-  // STEP 6: Recalcular pontuações — restaurar admin primeiro
+  // STEP 6: Recalcular pontuações
   tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
-  if(adminSess) await SB.auth.setSession(adminSess);
   for(const u of signedUsers) {
     // Matches
     const mUp = MATCHES.map(m=>{
@@ -3750,38 +3737,16 @@ async function runTest(main) {
   testRunning = false;
   testDone = true;
 
-  // SEMPRE restaurar sessão do admin ao finalizar
-  tlog('\n🔄 Restaurando sessão do admin...', 'bold');
-  if(adminSess || adminRefreshToken) {
-    try {
-      // Usar refresh_token para garantir sessão válida
-      if(adminRefreshToken) {
-        const {data:refreshed} = await SB.auth.refreshSession({refresh_token:adminRefreshToken});
-        if(refreshed?.session) {
-          await SB.auth.setSession(refreshed.session);
-          tlog('  → Sessão admin renovada via refresh_token', 'info');
-        } else {
-          await SB.auth.setSession(adminSess);
-        }
-      } else {
-        await SB.auth.setSession(adminSess);
-      }
-    } catch(e) {
-      tlog('  ⚠️ Erro ao renovar sessão: '+e.message+' — tentando setSession...', 'warn');
-      await SB.auth.setSession(adminSess);
-    }
-    // Recarregar perfil do admin (não do último usuário de teste)
-    const adminUser = adminSess.user;
-    const [adminProfile] = await Promise.all([dbQ('profiles',{id:adminUser.id})]);
+  // SEMPRE restaurar STATE com dados do admin ao finalizar
+  tlog('\n🔄 Finalizando...', 'bold');
+  const adminUser = adminSess?.user;
+  if(adminUser) {
+    const [adminProfile] = [await dbQ('profiles',{id:adminUser.id})];
     STATE.user = adminUser;
     STATE.profile = adminProfile[0];
     await loadMyBolaos(adminUser.id);
     CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code==='TESTE1')||MY_BOLAOS[0];
-    const {data:allProfs2} = await SB.from('profiles').select('id,display_name,is_admin');
-    STATE.profiles = allProfs2||[];
-    tlog('  ✅ Sessão restaurada: '+STATE.profile?.display_name+' | Bolão: '+(CURRENT_BOLAO?.name||'nenhum'), 'ok');
-  } else {
-    tlog('  ⚠️ Sessão admin não encontrada — recarregue a página', 'warn');
+    tlog('  ✅ Estado restaurado: '+STATE.profile?.display_name+' | Bolão: '+(CURRENT_BOLAO?.name||'nenhum'), 'ok');
   }
 
   // Forçar reload completo do estado para garantir que ranking funciona
