@@ -201,12 +201,10 @@ const PHASES = [
   {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
   {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
   {key:"semi",     label:"Semifinal",         count:2,  pts:10},
-  {key:"final",    label:"Finalistas",        count:2,  pts:10},
+  {key:"final",    label:"🏆 Campeão",          count:1,  pts:20},
   {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
-// champion = quem foi selecionado dentre os 2 finalistas (1 escolha, 20pts)
-// runner_up = o outro finalista, automático, 10pts já contados na fase "final"
-// third = 1 dos 2 perdedores da semi, 10pts
+// final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
 
 // ── Chaveamento completo FIFA 2026 (fixo por número de jogo) ─────────────────
 // Rodada de 32: jogos 73-88
@@ -1418,11 +1416,11 @@ function syncKoPredsWithGrpPreds(){
   }
   // Cascata: limpar fases seguintes
   const nextMap={
-    round32:['round16','quarter','semi','final','champion','runner_up','third'],
-    round16:['quarter','semi','final','champion','runner_up','third'],
-    quarter:['semi','final','champion','runner_up','third'],
-    semi:['final','champion','runner_up','third'],
-    final:['champion','runner_up']
+    round32:['round16','quarter','semi','final','third'],
+    round16:['quarter','semi','final','third'],
+    quarter:['semi','final','third'],
+    semi:['final','third'],
+    final:[]
   };
   ['round32','round16','quarter','semi','final'].forEach(phase=>{
     if(!koPreds[phase]) return;
@@ -1815,91 +1813,54 @@ function buildKoUI(main){
 
     // Fase "final": seleciona 2 finalistas → 1 deles será campeão
     if(ph.key==='final'){
+      // final = 1 time: o campeão. Pool = os 2 da semi.
+      // Acertar o campeão = 20pts. O vice (o outro da semi) = 10pts automático.
+      const realChamp = koReal['final']?.team_ids?.[0] || koReal['champion']?.team_ids?.[0];
+      const semiTeams = (koReal['semi']?.team_ids||[]);
+      const champSel = (koPreds['final']||[])[0]?.team;
       avail.forEach(team=>{
-        const isSel = sel.find(x=>x.team===team);
-        const isReal = rp?.team_ids?.includes(team);
-        const isChamp = koReal['champion']?.team_ids?.includes(team);
-        const isVice  = koReal['runner_up']?.team_ids?.includes(team);
-        // Cor: verde se acertou finalista, vermelho se errou (resultado real definido)
+        const isSel = champSel===team;
+        const isRealCh = realChamp && team===realChamp;
         let cls='btn-o';
-        if(isSel && isReal) cls='btn-s';
-        else if(isSel && rp && !isReal) cls='btn-d';
+        if(isSel && isRealCh) cls='btn-s';
+        else if(isSel && realChamp && !isRealCh) cls='btn-d';
         else if(isSel) cls='btn-p';
-        // Bloqueio: não pode selecionar mais de 2
-        const blocked = !isSel && isFull;
+        const blocked = !isSel && !!champSel;
         const b = el('button',{
           class:`btn btn-sm ${cls}`,
           disabled: blocked,
           style: blocked?{opacity:'0.35',cursor:'not-allowed'}:{},
           onclick:()=>{
-            if(!koPreds['final']) koPreds['final']=[];
-            const idx=koPreds['final'].findIndex(x=>x.team===team);
-            if(idx>=0){ koPreds['final'].splice(idx,1); }
-            else if(koPreds['final'].length<2){
-              koPreds['final'].push({team, pts:isReal?10:0});
-            }
-            // Cascade: limpar campeão e vice se não são mais finalistas
-            const fins=(koPreds['final']||[]).map(x=>x.team);
-            if(koPreds['champion']) koPreds['champion']=koPreds['champion'].filter(x=>fins.includes(x.team));
+            koPreds['final'] = isSel ? [] : [{team, pts:isRealCh?20:0}];
+            // Vice automático
+            const vicePick = avail.find(t=>t!==team);
+            const realVice = koReal['runner_up']?.team_ids?.[0] || semiTeams.find(t=>t!==realChamp);
+            if(vicePick) koPreds['runner_up']=[{team:vicePick, pts:realVice&&vicePick===realVice?10:0}];
             koDirty=true; buildKoUI(main);
           }
-        },(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·10p':''));
+        },(FLAGS[team]||'')+' '+team+(isSel&&isRealCh?' ·20p':''));
         btns.appendChild(b);
       });
       card.appendChild(btns);
-
-      // Dentro do card de finalistas: subseção campeão
-      const finalPicks = (koPreds['final']||[]).map(x=>x.team);
-      if(finalPicks.length>0){
-        card.appendChild(el('div',{style:{borderTop:'1px solid var(--bdr)',margin:'.75rem 0 .5rem'}}));
-        card.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--gold)',fontWeight:'700',marginBottom:'.4rem'}},'🏆 QUEM É O CAMPEÃO? (20pts)'));
-        const champSel = (koPreds['champion']||[])[0]?.team;
-        const realChamp = koReal['champion']?.team_ids?.[0];
-        const champBtns = el('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-        finalPicks.forEach(team=>{
-          const isCh = champSel===team;
-          const isRealCh = realChamp && team===realChamp;
-          let cls='btn-o';
-          if(isCh && isRealCh) cls='btn-s';
-          else if(isCh && realChamp && !isRealCh) cls='btn-d';
-          else if(isCh) cls='btn-p';
-          const blocked2 = !isCh && !!champSel;
-          const b2=el('button',{
-            class:`btn btn-sm ${cls}`,
-            disabled:blocked2,
-            style:blocked2?{opacity:'0.35',cursor:'not-allowed'}:{},
-            onclick:()=>{
-              koPreds['champion']= isCh ? [] : [{team, pts:isRealCh?20:0}];
-              koDirty=true; buildKoUI(main);
-            }
-          },(FLAGS[team]||'')+' '+team+(isCh&&isRealCh?' ·20p':''));
-          champBtns.appendChild(b2);
-        });
-        card.appendChild(champBtns);
-
-        // Vice automático (demonstrativo)
-        const champPick = (koPreds['champion']||[])[0]?.team;
-        const vicePick = finalPicks.find(t=>t!==champPick);
-        if(vicePick){
-          const realVice = koReal['runner_up']?.team_ids?.[0];
-          const viceOk = realVice && vicePick===realVice;
-          const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)'}});
-          const vBadge=el('span',{style:{
-            display:'inline-flex',alignItems:'center',gap:'4px',
-            background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',
-            border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),
-            borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'
-          }},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
-          viceDiv.appendChild(el('span',{style:{marginRight:'6px'}},'🥈 Vice (auto):'));
-          viceDiv.appendChild(vBadge);
-          if(realVice && !viceOk && champPick){
-            viceDiv.appendChild(el('span',{style:{marginLeft:'6px',color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
-          }
-          card.appendChild(viceDiv);
-        }
+      // Vice automático (demonstrativo)
+      const vicePick = avail.find(t=>t!==champSel);
+      if(champSel && vicePick){
+        const realVice = koReal['runner_up']?.team_ids?.[0] || semiTeams.find(t=>t!==realChamp);
+        const viceOk = realVice && vicePick===realVice;
+        const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)'}});
+        const vBadge=el('span',{style:{
+          display:'inline-flex',alignItems:'center',gap:'4px',
+          background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',
+          border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),
+          borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'
+        }},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
+        viceDiv.appendChild(el('span',{style:{marginRight:'6px'}},'🥈 Vice (auto):'));
+        viceDiv.appendChild(vBadge);
+        if(realVice && !viceOk) viceDiv.appendChild(el('span',{style:{marginLeft:'6px',color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
+        card.appendChild(viceDiv);
       }
       main.appendChild(card);
-      return; // pula o appendChild genérico abaixo
+      return;
     }
 
     // Fases normais (round32, round16, quarter, semi)
@@ -1925,10 +1886,10 @@ function buildKoUI(main){
           koDirty=true;
           // Cascade: limpar fases seguintes
           const nextMap={
-            round32:['round16','quarter','semi','final','champion','runner_up','third'],
-            round16:['quarter','semi','final','champion','runner_up','third'],
-            quarter:['semi','final','champion','runner_up','third'],
-            semi:['final','champion','runner_up','third'],
+            round32:['round16','quarter','semi','final','third'],
+            round16:['quarter','semi','final','third'],
+            quarter:['semi','final','third'],
+            semi:['final','third'],
           };
           (nextMap[ph.key]||[]).forEach(np=>{
             const av2=getAvailableTeams(np,koPreds,grpReal,userThirdsPool);
@@ -2017,12 +1978,12 @@ function buildKoUI(main){
 
 async function saveKo(){
   try{
-    // Auto-calcular vice (finalista que não é campeão)
-    const finalPicks = (koPreds['final']||[]).map(x=>x.team);
-    const champPick  = (koPreds['champion']||[])[0]?.team;
-    const viceTeam   = finalPicks.find(t=>t!==champPick);
+    // Auto-calcular vice (o outro da semi que não é o campeão)
+    const champPick = (koPreds['final']||[])[0]?.team;
+    const semiPicks = (koPreds['semi']||[]).map(x=>x.team);
+    const viceTeam  = semiPicks.find(t=>t!==champPick);
     if(viceTeam){
-      const realVice = koReal['runner_up']?.team_ids?.[0];
+      const realVice = koReal['runner_up']?.team_ids?.[0] || (koReal['semi']?.team_ids||[]).find(t=>t!==(koReal['final']?.team_ids?.[0]));
       koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?10:0}];
     }
     const rows=[];
@@ -2030,7 +1991,7 @@ async function saveKo(){
       const rp=koReal[phase];
       teams.forEach(({team})=>{
         let pts=0;
-        if(rp?.team_ids?.includes(team)) pts=phase==='champion'?20:10;
+        if(rp?.team_ids?.includes(team)) pts=phase==='final'?20:10;
         rows.push({user_id:STATE.profile.id,phase,team_name:team,points:pts});
       });
     });
@@ -2648,14 +2609,63 @@ async function applyAIResults(data, log) {
 
   // 4. Salvar classificados das fases eliminatórias
   if(data.knockout_classified) {
-    for(const [phase, teams] of Object.entries(data.knockout_classified)) {
+    const koClass = data.knockout_classified;
+    // Normalizar todos os times
+    const norm = obj => {
+      if(Array.isArray(obj)) return obj.map(t=>normalizeTeamName(t)).filter(Boolean);
+      return obj;
+    };
+    // Derivar champion e runner_up a partir de final e semi se não fornecidos
+    const finalTeams = norm(koClass.final||[]);
+    const semiTeams  = norm(koClass.semi||[]);
+    if(finalTeams.length===1 && !koClass.champion) {
+      koClass.champion  = [finalTeams[0]];
+      koClass.runner_up = [semiTeams.find(t=>t!==finalTeams[0])].filter(Boolean);
+    }
+    for(const [phase, teams] of Object.entries(koClass)) {
       if(!teams||teams.length===0) continue;
-      const normTeams = teams.map(t=>normalizeTeamName(t)).filter(Boolean);
+      const normTeams = norm(teams);
+      // final no banco salva o campeão; o participante usa 'final' para os 2 finalistas
+      // mas para cálculo de pontos usamos champion(20pts) e runner_up(10pts)
       await dbUpsert('real_knockouts',{phase,team_ids:normTeams});
-      const pts = phase==='champion'?20:10;
+      const pts = (phase==='final'||phase==='champion')?20:10;
       const preds = await dbQ('knockout_predictions',{phase});
       if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:normTeams.includes(p.team_name)?pts:0})));
-      log('✅ '+phase+': '+normTeams.length+' times classificados', '#10B981');
+      log('✅ '+phase+': '+normTeams.join(', '), '#10B981');
+    }
+  }
+
+  // 5. Salvar jogos eliminatórios (ko_matches) — IDs reais do bracket (73-104)
+  if(data.ko_matches && data.ko_matches.length>0) {
+    const koRows = [];
+    for(const m of data.ko_matches) {
+      if(!m.finished) continue;
+      const t1 = normalizeTeamName(m.team1)||m.team1;
+      const t2 = normalizeTeamName(m.team2)||m.team2;
+      // Determinar group_id a partir do número do jogo
+      let gid = 'KO_round32';
+      if(m.num>=89&&m.num<=96) gid='KO_round16';
+      else if(m.num>=97&&m.num<=100) gid='KO_quarter';
+      else if(m.num>=101&&m.num<=102) gid='KO_semi';
+      else if(m.num===103) gid='KO_third';
+      else if(m.num===104) gid='KO_final';
+      koRows.push({match_number:m.num,team1_name:t1,team2_name:t2,group_id:gid,real_score1:m.score1,real_score2:m.score2,is_finished:true});
+      adminMatches[m.num]={match_number:m.num,team1_name:t1,team2_name:t2,group_id:gid,real_score1:m.score1,real_score2:m.score2,is_finished:true};
+    }
+    if(koRows.length>0){
+      await dbUpsert('group_matches', koRows);
+      // Recalcular palpites de jogos eliminatórios
+      const koPreds = await dbQ('match_predictions',{});
+      const koPredsElim = koPreds.filter(p=>p.match_number>=73);
+      if(koPredsElim.length>0){
+        const updated = [];
+        for(const row of koRows){
+          const preds = koPredsElim.filter(p=>p.match_number===row.match_number);
+          preds.forEach(p=>updated.push({...p,points:calcPts(p.predicted_score1,p.predicted_score2,row.real_score1,row.real_score2)}));
+        }
+        if(updated.length>0) await dbUpsert('match_predictions', updated);
+      }
+      log('✅ '+koRows.length+' jogos eliminatórios salvos (IDs '+koRows[0].match_number+'-'+koRows[koRows.length-1].match_number+')', '#10B981');
     }
   }
 }
@@ -2663,7 +2673,7 @@ async function applyAIResults(data, log) {
 
 // Cascata admin: ao mudar qualquer fase, limpa as posteriores e recalcula pontos
 async function cascadeAdminKo(fromPhase){
-  const order = ['round32','round16','quarter','semi','final','champion','runner_up','third'];
+  const order = ['round32','round16','quarter','semi','final','third'];
   const pts_map = {champion:20};
   const startIdx = order.indexOf(fromPhase);
   if(startIdx<0) return;
@@ -2705,7 +2715,7 @@ async function syncAdminKoWithStandings(changedGroup){
       await dbUpsert('real_knockouts',{phase:'round32',team_ids:newR32});
       adminKo['round32'].team_ids=newR32;
       // Cascata: limpar fases seguintes
-      const phases=['round16','quarter','semi','final','champion','runner_up','third'];
+      const phases=['round16','quarter','semi','final','third'];
       for(const ph of phases){
         if(!adminKo[ph]?.team_ids?.length) continue;
         const prevPool = ph==='round16'?newR32:(adminKo[phases[phases.indexOf(ph)-1]]?.team_ids||[]);
@@ -3169,27 +3179,47 @@ function buildAdminUI(main){
       if(ph.key==='round32') return; // round32 é gerenciado por "quem passa" pelos usuários
       const rp=adminKo[ph.key];
       const card=el('div',{class:'card'});
-      const phMaxDisplay = (ph.key==='champion'||ph.key==='runner_up'||ph.key==='third') ? 1 : ph.count;
-      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},ph.label+' ('+(rp?.team_ids||[]).length+'/'+phMaxDisplay+')'));
+      // Limite real de seleção por fase (independente do ph.count que pode ser herdado errado)
+      const phMaxDisplay = ph.count; // count já correto em PHASES
+      const currCount = Math.min((rp?.team_ids||[]).length, phMaxDisplay);
+      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},ph.label+' ('+currCount+'/'+phMaxDisplay+')'));
       const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
-      const prevMap = {round16:'round32',quarter:'round16',semi:'quarter',final:'semi',champion:'final',runner_up:'final',third:'semi'};
+      const prevMap = {round16:'round32',quarter:'round16',semi:'quarter',final:'semi',third:'semi'};
       let adminAvailTeams = ALL_TEAMS;
-      if(prevMap[ph.key] && adminKo[prevMap[ph.key]]?.team_ids?.length>0) {
+      // Pool vem dos resultados reais dos jogos da fase anterior:
+      // semi = vencedores de KO_quarter | final = vencedores de KO_semi (só 1 passa) | third = perdedores de KO_semi
+      const koPhaseForResults = {semi:'KO_quarter', final:'KO_semi', third:'KO_semi'};
+      if(koPhaseForResults[ph.key]) {
+        const srcPhase = koPhaseForResults[ph.key];
+        const phMatches = Object.values(adminMatches).filter(m=>m.group_id===srcPhase&&m.is_finished);
+        if(phMatches.length>0){
+          const winners=[], losers=[];
+          phMatches.forEach(m=>{
+            if(m.real_score1>m.real_score2){ winners.push(m.team1_name); losers.push(m.team2_name); }
+            else if(m.real_score2>m.real_score1){ winners.push(m.team2_name); losers.push(m.team1_name); }
+            else { winners.push(m.team1_name); losers.push(m.team2_name); } // empate: conta team1 como vencedor
+          });
+          if(ph.key==='third') adminAvailTeams = losers;
+          else adminAvailTeams = winners;
+        } else {
+          // Jogos ainda não cadastrados — fallback para fase anterior do adminKo
+          adminAvailTeams = adminKo[prevMap[ph.key]]?.team_ids||[];
+        }
+      } else if(prevMap[ph.key] && adminKo[prevMap[ph.key]]?.team_ids?.length>0) {
         adminAvailTeams = adminKo[prevMap[ph.key]].team_ids;
       } else if(ph.key==='round16') {
-        // round32 ainda não definido — mostrar aviso
         adminAvailTeams = [];
       }
       if(adminAvailTeams.length===0){
         card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.82rem',fontStyle:'italic'}},
-          '⬆️ Defina primeiro quem passou pela fase anterior'));
+          '⬆️ Defina primeiro os resultados dos jogos da fase anterior'));
         main.appendChild(card);
         return;
       }
       adminAvailTeams.forEach(team=>{
         const isR=(rp?.team_ids||[]).includes(team);
-        // Limites por fase: champion=1, runner_up=1, third=1, final=2, demais=ph.count
-        const maxSel = (ph.key==='champion'||ph.key==='runner_up'||ph.key==='third') ? 1 : ph.count;
+        // Limites reais por fase
+        const maxSel = ph.count; // count já correto em PHASES
         const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
           const curr=(adminKo[ph.key]?.team_ids||[]);
           const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
@@ -3203,11 +3233,27 @@ function buildAdminUI(main){
           }
           try{
             await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
-            const pts=ph.key==='champion'?20:10;
+            const pts=ph.key==='final'?20:10; // final=campeão=20pts
             const preds=await dbQ('knockout_predictions',{phase:ph.key});
             if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?pts:0})));
             if(!adminKo[ph.key])adminKo[ph.key]={phase:ph.key,team_ids:[]};
             adminKo[ph.key].team_ids=next;
+            // Se salvou 'final' (campeão), derivar champion e runner_up automaticamente
+            if(ph.key==='final' && next.length===1){
+              const champ=next[0];
+              const semiTeams=adminKo['semi']?.team_ids||[];
+              const vice=semiTeams.find(t=>t!==champ)||'';
+              await dbUpsert('real_knockouts',{phase:'champion',team_ids:[champ]});
+              if(vice) await dbUpsert('real_knockouts',{phase:'runner_up',team_ids:[vice]});
+              // Recalcular pontos de champion (20pts) e runner_up (10pts)
+              const cpreds=await dbQ('knockout_predictions',{phase:'champion'});
+              if(cpreds.length>0) await dbUpsert('knockout_predictions',cpreds.map(p=>({...p,points:p.team_name===champ?20:0})));
+              const vpreds=await dbQ('knockout_predictions',{phase:'runner_up'});
+              if(vpreds.length>0) await dbUpsert('knockout_predictions',vpreds.map(p=>({...p,points:p.team_name===vice?10:0})));
+              if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
+              adminKo['champion'].team_ids=[champ];
+              if(vice){if(!adminKo['runner_up']) adminKo['runner_up']={phase:'runner_up',team_ids:[]}; adminKo['runner_up'].team_ids=[vice];}
+            }
             // Cascata: limpar fases posteriores
             await cascadeAdminKo(ph.key);
             showToast('✅ Atualizado!'); buildAdminUI(main);
@@ -3217,6 +3263,7 @@ function buildAdminUI(main){
       });
       card.appendChild(btns); main.appendChild(card);
     });
+
   }
 
   if(adminTab==='scorer'){
@@ -3325,14 +3372,12 @@ const allT = ALL_TEAMS;
 // Resultados reais simulados: round32=quem passa para oitavas(16), round16=oitavas(8), etc.
 const REAL_KO_TEST = {
   best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
-  round32: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal',
-            'México','Estados Unidos','Bélgica','Uruguai','Canadá','Japão','Marrocos','Coreia do Sul'],
-  round16: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal'],
-  quarter: ['Brasil','França','Espanha','Alemanha'],
-  semi:    ['Brasil','Espanha'],
-  final:   ['Brasil','Espanha'],
-  champion:['Brasil'],
-  runner_up:['Espanha'],
+  round32: ['Coreia do Sul','Alemanha','Holanda','Brasil','França','Equador','México','Inglaterra',
+            'Estados Unidos','Bélgica','Colômbia','Espanha','Canadá','Argentina','Portugal','Turquia'],
+  round16: ['França','Holanda','Brasil','Inglaterra','Espanha','Estados Unidos','Argentina','Portugal'],
+  quarter: ['França','Espanha','Brasil','Argentina'],
+  semi:    ['Espanha','Brasil'],
+  final:   ['Brasil'],
   third:   ['França'],
 };
 const REAL_SCORER_TEST = 'Mbappé';
@@ -3442,56 +3487,57 @@ const TEST_RESULTS_JSON = {
   },
   best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
   knockout_classified: {
-    round32: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal',
-              'México','Estados Unidos','Bélgica','Uruguai','Canadá','Japão','Marrocos','Coreia do Sul'],
-    round16: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal'],
-    quarter: ['Brasil','França','Espanha','Alemanha'],
-    semi:    ['Brasil','Espanha'],
-    final:   ['Brasil','Espanha'],
-    champion:['Brasil'],
-    runner_up:['Espanha'],
+    round32: ['Coreia do Sul','Alemanha','Holanda','Brasil','França','Equador','México','Inglaterra',
+              'Estados Unidos','Bélgica','Colômbia','Espanha','Canadá','Argentina','Portugal','Turquia'],
+    round16: ['França','Holanda','Brasil','Inglaterra','Espanha','Estados Unidos','Argentina','Portugal'],
+    quarter: ['França','Espanha','Brasil','Argentina'],
+    semi:    ['Espanha','Brasil'],
+    final:   ['Brasil'],
     third:   ['França'],
   },
+  // Jogos eliminatórios — IDs reais do bracket FIFA (73-104)
+  ko_matches: [
+    // Rodada de 32 (73-88)
+    {num:73,team1:'Coreia do Sul',score1:2,team2:'Suíça',score2:1,finished:true},
+    {num:74,team1:'Alemanha',score1:2,team2:'Escócia',score2:1,finished:true},
+    {num:75,team1:'Holanda',score1:2,team2:'Marrocos',score2:1,finished:true},
+    {num:76,team1:'Brasil',score1:2,team2:'Japão',score2:1,finished:true},
+    {num:77,team1:'França',score1:2,team2:'Austrália',score2:1,finished:true},
+    {num:78,team1:'Equador',score1:2,team2:'Noruega',score2:1,finished:true},
+    {num:79,team1:'México',score1:2,team2:'Suécia',score2:1,finished:true},
+    {num:80,team1:'Inglaterra',score1:2,team2:'Gana',score2:1,finished:true},
+    {num:81,team1:'Estados Unidos',score1:2,team2:'Suíça',score2:1,finished:true},
+    {num:82,team1:'Bélgica',score1:2,team2:'Argélia',score2:1,finished:true},
+    {num:83,team1:'Colômbia',score1:2,team2:'Croácia',score2:1,finished:true},
+    {num:84,team1:'Espanha',score1:2,team2:'Áustria',score2:1,finished:true},
+    {num:85,team1:'Canadá',score1:2,team2:'Costa do Marfim',score2:1,finished:true},
+    {num:86,team1:'Argentina',score1:2,team2:'Uruguai',score2:1,finished:true},
+    {num:87,team1:'Portugal',score1:2,team2:'Gana',score2:1,finished:true},
+    {num:88,team1:'Turquia',score1:2,team2:'Nova Zelândia',score2:1,finished:true},
+    // Oitavas de Final (89-96)
+    {num:89,team1:'Alemanha',score1:1,team2:'França',score2:2,finished:true},
+    {num:90,team1:'Coreia do Sul',score1:1,team2:'Holanda',score2:2,finished:true},
+    {num:91,team1:'Brasil',score1:2,team2:'Equador',score2:1,finished:true},
+    {num:92,team1:'México',score1:1,team2:'Inglaterra',score2:2,finished:true},
+    {num:93,team1:'Colômbia',score1:1,team2:'Espanha',score2:2,finished:true},
+    {num:94,team1:'Estados Unidos',score1:2,team2:'Bélgica',score2:1,finished:true},
+    {num:95,team1:'Argentina',score1:2,team2:'Turquia',score2:1,finished:true},
+    {num:96,team1:'Canadá',score1:1,team2:'Portugal',score2:2,finished:true},
+    // Quartas de Final (97-100)
+    {num:97,team1:'França',score1:2,team2:'Holanda',score2:1,finished:true},
+    {num:98,team1:'Espanha',score1:2,team2:'Estados Unidos',score2:1,finished:true},
+    {num:99,team1:'Brasil',score1:2,team2:'Inglaterra',score2:1,finished:true},
+    {num:100,team1:'Argentina',score1:2,team2:'Portugal',score2:1,finished:true},
+    // Semifinais (101-102)
+    {num:101,team1:'França',score1:1,team2:'Espanha',score2:2,finished:true},
+    {num:102,team1:'Brasil',score1:2,team2:'Argentina',score2:1,finished:true},
+    // 3º Lugar (103)
+    {num:103,team1:'França',score1:2,team2:'Argentina',score2:1,finished:true},
+    // Final (104)
+    {num:104,team1:'Espanha',score1:1,team2:'Brasil',score2:2,finished:true},
+  ],
 };
-// Jogos eliminatórios de teste (Rodada de 32 — 16 jogos)
-const KO_MATCHES_TEST = [];
-for(let i=0;i<16;i++){
-  KO_MATCHES_TEST.push({
-    match_number: 1001+i,
-    team1_name: allT[i*2],
-    team2_name: allT[i*2+1],
-    group_id: 'KO_round32',
-    real_score1: i%2===0?2:1,
-    real_score2: i%2===0?0:2,
-    is_finished: true
-  });
-}
-// Oitavas (8 jogos)
-for(let i=0;i<8;i++){
-  KO_MATCHES_TEST.push({
-    match_number: 1017+i,
-    team1_name: allT[i*2],
-    team2_name: allT[i*2+1],
-    group_id: 'KO_round16',
-    real_score1: 2, real_score2: 0, is_finished: true
-  });
-}
-// Quartas (4 jogos)
-for(let i=0;i<4;i++){
-  KO_MATCHES_TEST.push({
-    match_number: 1025+i,
-    team1_name: allT[i*2],
-    team2_name: allT[i*2+1],
-    group_id: 'KO_quarter',
-    real_score1: 1, real_score2: 0, is_finished: true
-  });
-}
-// Semi (2 jogos)
-KO_MATCHES_TEST.push({match_number:1029,team1_name:allT[0],team2_name:allT[2],group_id:'KO_semi',real_score1:2,real_score2:1,is_finished:true});
-KO_MATCHES_TEST.push({match_number:1030,team1_name:allT[1],team2_name:allT[3],group_id:'KO_semi',real_score1:1,real_score2:0,is_finished:true});
-// Final e 3º lugar
-KO_MATCHES_TEST.push({match_number:1031,team1_name:allT[0],team2_name:allT[1],group_id:'KO_final',real_score1:2,real_score2:1,is_finished:true});
-KO_MATCHES_TEST.push({match_number:1032,team1_name:allT[2],team2_name:allT[3],group_id:'KO_third',real_score1:1,real_score2:0,is_finished:true});
+// KO_MATCHES_TEST removido — jogos eliminatórios agora incluídos no TEST_RESULTS_JSON.ko_matches (IDs 73-104)
 
 let testLog = [];
 let testRunning = false;
