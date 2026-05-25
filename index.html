@@ -3790,47 +3790,31 @@ async function cleanupTest(main) {
   testLog = [];
   renderTestPage(main);
   tlog('🗑 Iniciando limpeza...', 'warn');
+  tlog('  → Sessão atual: '+(STATE.profile?.display_name||'?'), 'info');
 
-  // Guardar sessão admin ANTES de qualquer operação
-  const {data:{session:cleanAdminSess}} = await SB.auth.getSession();
-  tlog('  → Sessão admin capturada: '+(cleanAdminSess?.user?.email||'NENHUMA'), 'info');
-
-  // Buscar usuários de teste por email (mais confiável que username)
-  const testEmails = TEST_USERS_DATA.map(u=>u.email);
-  
-  // Buscar IDs via auth.users (como admin)
-  const {data:authUsers} = await SB.from('profiles').select('id,username');
-  
-  // Buscar por username exato E por username com prefixo "teste."
+  // STEP 1: Encontrar IDs dos usuários de teste
+  tlog('  → Buscando usuários de teste...', 'info');
   const testUsernames = TEST_USERS_DATA.map(u=>u.username);
   const testUsernamesAlt = TEST_USERS_DATA.map(u=>'teste.'+u.username);
   const allUsernames = [...testUsernames, ...testUsernamesAlt];
-  
-  // Pegar todos os membros do bolão de teste
-  const testBolaoQ = await dbQ('bolao_groups',{invite_code:'TESTE1'});
-  let testBolaoId = testBolaoQ?.[0]?.id;
-  
-  let allTestIds = new Set();
-  
-  // IDs por username (inclui variantes com prefixo teste.)
-  (authUsers||[]).forEach(p=>{
-    if(allUsernames.includes(p.username)) allTestIds.add(p.id);
-  });
-  
-  // Garantir que estamos como admin para deletar
-  if(cleanAdminSess) await SB.auth.setSession(cleanAdminSess);
-  
-  // IDs por bolão (pega todos membros exceto admin)
+  const {data:allProfiles} = await SB.from('profiles').select('id,username');
+  tlog('  → Profiles no banco: '+(allProfiles?.length||0), 'info');
+  const allTestIds = new Set();
+  (allProfiles||[]).forEach(p=>{ if(allUsernames.includes(p.username)) allTestIds.add(p.id); });
+
+  // Também pegar pelo bolão de teste
+  const {data:testBolaoRows} = await SB.from('bolao_groups').select('id').eq('invite_code','TESTE1');
+  const testBolaoId = testBolaoRows?.[0]?.id;
+  tlog('  → Bolão de teste: '+(testBolaoId||'não encontrado'), 'info');
   if(testBolaoId) {
     const {data:members} = await SB.from('bolao_members').select('user_id').eq('bolao_id',testBolaoId);
-    (members||[]).forEach(m=>{
-      if(m.user_id !== STATE.profile?.id) allTestIds.add(m.user_id);
-    });
+    (members||[]).forEach(m=>{ if(m.user_id !== STATE.profile?.id) allTestIds.add(m.user_id); });
   }
 
   const ids = [...allTestIds];
-  tlog(`  → Encontrados ${ids.length} usuários de teste`, 'info');
+  tlog('  → Encontrados '+ids.length+' usuários de teste', 'info');
 
+  // STEP 2: Deletar dados de cada usuário
   if(ids.length > 0) {
     for(const id of ids) {
       await SB.from('match_predictions').delete().eq('user_id',id);
@@ -3838,33 +3822,30 @@ async function cleanupTest(main) {
       await SB.from('knockout_predictions').delete().eq('user_id',id);
       await SB.from('scorer_predictions').delete().eq('user_id',id);
       await SB.from('bolao_members').delete().eq('user_id',id);
-      await SB.from('profiles').delete().eq('id',id);
+      const {error:delErr} = await SB.from('profiles').delete().eq('id',id);
+      if(delErr) tlog('  ⚠️ Erro profile '+id+': '+delErr.message, 'warn');
     }
-    // Deletar do auth.users via admin API (se disponível)
-    for(const u of TEST_USERS_DATA) {
-      try { await SB.auth.admin?.deleteUser(ids.find(id=>id)); } catch(e){}
-    }
-    tlog(`  ✅ ${ids.length} usuários de teste removidos`, 'ok');
+    tlog('  ✅ '+ids.length+' usuários removidos', 'ok');
   } else {
     tlog('  ℹ️ Nenhum usuário de teste encontrado', 'info');
   }
 
-  // Limpar dados do admin (Nenê)
+  // STEP 3: Limpar palpites do admin
   if(STATE.profile?.id) {
-    await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id);
-    await SB.from('group_predictions').delete().eq('user_id',STATE.profile.id);
     await SB.from('match_predictions').delete().eq('user_id',STATE.profile.id);
+    await SB.from('group_predictions').delete().eq('user_id',STATE.profile.id);
+    await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id);
     await SB.from('scorer_predictions').delete().eq('user_id',STATE.profile.id);
     tlog('  ✅ Palpites do admin limpos', 'ok');
   }
 
-  // Limpar resultados reais
+  // STEP 4: Limpar resultados reais
   await SB.from('group_matches').delete().neq('match_number',0);
   await SB.from('real_group_standings').delete().neq('group_id','Z');
   await SB.from('real_knockouts').delete().neq('phase','Z');
   tlog('  ✅ Resultados reais removidos', 'ok');
 
-  // Remover bolão de teste
+  // STEP 5: Remover bolão de teste
   if(testBolaoId) {
     await SB.from('bolao_members').delete().eq('bolao_id',testBolaoId);
     await SB.from('bolao_groups').delete().eq('id',testBolaoId);
