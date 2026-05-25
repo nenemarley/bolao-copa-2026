@@ -168,7 +168,15 @@ function _showDebugPanel() {
 const { createClient } = supabase;
 const SB = createClient(
   'https://lffpsgzytcylaudxljjr.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZnBzZ3p5dGN5bGF1ZHhsampyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMjIyMzQsImV4cCI6MjA5NDg5ODIzNH0.yjg83Qz6Rc21f4tyCHfSjMYi0JKL4mykOVVAcO0FYFA'
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZnBzZ3p5dGN5bGF1ZHhsampyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMjIyMzQsImV4cCI6MjA5NDg5ODIzNH0.yjg83Qz6Rc21f4tyCHfSjMYi0JKL4mykOVVAcO0FYFA',
+  { auth: { detectSessionInUrl: false, persistSession: true, autoRefreshToken: true } }
+);
+
+// Cliente secundário para testes — não interfere na sessão principal
+const SB_TEST = createClient(
+  'https://lffpsgzytcylaudxljjr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZnBzZ3p5dGN5bGF1ZHhsampyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMjIyMzQsImV4cCI6MjA5NDg5ODIzNH0.yjg83Qz6Rc21f4tyCHfSjMYi0JKL4mykOVVAcO0FYFA',
+  { auth: { detectSessionInUrl: false, persistSession: false, autoRefreshToken: false, storageKey: 'sb-test-session' } }
 );
 
 // ── Copa 2026 Data ─────────────────────────────────────────────────────────
@@ -3478,27 +3486,27 @@ async function runTest(main) {
     tlog('  ❌ Erro ao criar bolão: '+e.message, 'err');
   }
 
-  // STEP 1: Criar usuários
+  // STEP 1: Criar usuários usando cliente separado (não afeta sessão principal)
   tlog('\n📋 PASSO 1: Criando usuários de teste...', 'bold');
   const signedUsers = [];
   for(const u of TEST_USERS_DATA) {
     try {
-      // Tenta signup
-      await SB.auth.signUp({email:u.email, password:u.pw});
-      // Sign in
-      const {data, error} = await SB.auth.signInWithPassword({email:u.email, password:u.pw});
+      // Usar SB_TEST para não afetar sessão do admin no SB principal
+      await SB_TEST.auth.signUp({email:u.email, password:u.pw});
+      const {data, error} = await SB_TEST.auth.signInWithPassword({email:u.email, password:u.pw});
       if(error) throw error;
       const uid = data.user.id;
-      const token = data.session.access_token;
-      // Create profile (enquanto ainda logado como o usuário)
-      await SB.from('profiles').upsert({id:uid, username:u.username, display_name:u.name});
-      signedUsers.push({...u, id:uid, token});
+      // Criar profile usando o token do usuário de teste via SB_TEST
+      await SB_TEST.from('profiles').upsert({id:uid, username:u.username, display_name:u.name, is_admin:false});
+      signedUsers.push({...u, id:uid});
       testUserIds.push(uid);
-      tlog(`  ✅ ${u.name} pronto`, 'ok');
+      tlog('  ✅ '+u.name+' criado (id: '+uid.substring(0,8)+'...)', 'ok');
     } catch(e) {
-      tlog(`  ❌ ${u.name}: ${e.message}`, 'err');
+      tlog('  ❌ '+u.name+': '+e.message, 'err');
     }
   }
+  // Logout do SB_TEST para limpar sessão de teste
+  await SB_TEST.auth.signOut();
 
   // Restaurar sessão admin ANTES de vincular ao bolão
   if(adminSess) await SB.auth.setSession(adminSess);
