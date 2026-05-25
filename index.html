@@ -3390,6 +3390,19 @@ function renderTestPage(main) {
   if(testLog.length===0) logBox.appendChild(el('span',{style:{color:'var(--muted)'}},'Aguardando execução...'));
   else logBox.innerHTML = testLog.join('<br>');
   logCard.appendChild(logBox);
+
+  // Botão copiar log
+  if(testLog.length>0){
+    const copyBtn = el('button',{class:'btn btn-o',style:{width:'100%',marginTop:'8px',fontSize:'.78rem'},onclick:()=>{
+      const text = testLog.map(l=>l.replace(/<[^>]+>/g,'')).join('\n');
+      navigator.clipboard.writeText(text).then(()=>{
+        copyBtn.textContent='✅ Copiado!';
+        setTimeout(()=>copyBtn.textContent='📋 Copiar log',1500);
+      }).catch(()=>{ copyBtn.textContent='Erro ao copiar'; });
+    }},'📋 Copiar log');
+    logCard.appendChild(copyBtn);
+  }
+
   main.appendChild(logCard);
 
   // Validation results table
