@@ -201,7 +201,7 @@ const PHASES = [
   {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
   {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
   {key:"semi",     label:"Semifinal",         count:2,  pts:10},
-  {key:"final",    label:"🏆 Campeão",          count:1,  pts:20},
+  {key:"final",    label:"Final (Campeão)",     count:1,  pts:20},
   {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
 // final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
@@ -1665,11 +1665,9 @@ async function saveStandings(){
 let koPreds={}, koReal={}, koScorer='', koDirty=false, koRealThirds=[], koUserThirds=[], koUserGrpStandings={};
 // Get teams available for a phase based on previous phase selections
 function getAvailableTeams(phase, currentPreds, realStandings, userThirds) {
-  // REGRA: filtro SEMPRE pelos palpites do usuário, NUNCA pelos resultados reais do admin
-  // realStandings é passado apenas para resolveSlot (exibição) — não influencia o pool aqui
+  // REGRA: SEMPRE palpites do usuário, NUNCA resultados reais como fallback
 
   if(phase === 'round32') {
-    // Pool = palpites do usuário: 1º e 2º de cada grupo + 8 melhores 3ºs escolhidos por ele
     const standings = koUserGrpStandings || {};
     const classified = [];
     Object.entries(standings).forEach(([g, pos]) => {
@@ -1677,22 +1675,19 @@ function getAvailableTeams(phase, currentPreds, realStandings, userThirds) {
       if(pos[2]) classified.push(pos[2]);
     });
     (userThirds||[]).forEach(t => { if(!classified.includes(t)) classified.push(t); });
-    // Mostra o que o usuário preencheu — sem fallback para dados do admin
-    return classified.length >= 2 ? classified : ALL_TEAMS;
+    // Se não preencheu grupos → retorna [] (sem fallback para ALL_TEAMS)
+    return classified;
   }
 
   if(phase === 'round16') {
-    const prev = currentPreds['round32'];
-    if(prev && prev.length > 0) return prev.map(x=>x.team);
-    return []; // fase anterior vazia → sem pool
+    const prev = currentPreds['round32']||[];
+    return prev.map(x=>x.team);
   }
 
-  // Quartas, Semi, Final, 3º: cascata estrita dos palpites anteriores
+  // quarter, semi, final, third: cascata dos palpites
   const prevPhase = {quarter:'round16', semi:'quarter', final:'semi', third:'semi'};
   const prev = prevPhase[phase];
-  if(prev && currentPreds[prev] && currentPreds[prev].length > 0) {
-    return currentPreds[prev].map(x=>x.team);
-  }
+  if(prev && currentPreds[prev]) return currentPreds[prev].map(x=>x.team);
   return [];
 }
 
@@ -1777,7 +1772,10 @@ function buildKoUI(main){
   }
   main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 20pts · 3º lugar = 10pts'));
 
-  const userThirdsPool = koUserThirds.length > 0 ? koUserThirds : koRealThirds;
+  // REGRA: confrontos do participante usam SEMPRE os palpites do usuário
+  // Se não preencheu os 8 melhores 3ºs ainda, os slots de 3º ficam como "3º (A/B/...)"
+  // até ele preencher — NUNCA substituir pelos resultados reais
+  const userThirdsPool = koUserThirds.length > 0 ? koUserThirds : [];
 
   // ── Fases principais (round32 → semi → final) ──
   const mainPhases = PHASES.filter(ph=>ph.key!=='third');
@@ -1795,18 +1793,35 @@ function buildKoUI(main){
     titleRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull?'var(--ok)':'var(--muted)',fontWeight:'600'}},sel.length+'/'+ph.count+(isFull?' ✓':'')));
     card.appendChild(titleRow);
 
-    // Subtítulo especial para round32
-    if(ph.key==='round32'){
-      card.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'São 32 classificados. Escolha 16 que passam para as Oitavas.'));
-    }
-
-    // Se fase anterior não preenchida, mostrar mensagem
-    if(avail.length===0 && ph.key!=='round32'){
-      const prevLabels={round16:'Rodada de 32',quarter:'Oitavas de Final',semi:'Quartas de Final',final:'Semifinal'};
-      card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.8rem',fontStyle:'italic'}},
-        '⬆️ Selecione os times da '+( prevLabels[ph.key]||'fase anterior')+' primeiro'));
+    // Mensagem de etapa faltante — sem fallback para dados reais
+    const prevLabels = {
+      round32: 'Classificação dos Grupos e 8 Melhores 3ºs',
+      round16: 'Rodada de 32',
+      quarter: 'Oitavas de Final',
+      semi:    'Quartas de Final',
+      final:   'Semifinal',
+      third:   'Semifinal',
+    };
+    // round32: faltam grupos/3ºs se pool vazio
+    // demais: falta a fase anterior
+    if(avail.length===0){
+      const missing = prevLabels[ph.key]||'fase anterior';
+      const msgDiv = el('div',{style:{
+        background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',
+        borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',
+        display:'flex',alignItems:'center',gap:'8px'
+      }});
+      msgDiv.appendChild(el('span',{},'⚠️'));
+      msgDiv.appendChild(el('span',{},
+        ph.key==='round32'
+          ? 'Preencha primeiro a Classificação dos Grupos e os 8 Melhores 3ºs.'
+          : 'Preencha primeiro: '+missing+'.'));
+      card.appendChild(msgDiv);
       main.appendChild(card);
       return;
+    }
+    if(ph.key==='round32'){
+      card.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'São 32 classificados. Escolha 16 que passam para as Oitavas.'));
     }
 
     const btns = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
@@ -1834,7 +1849,7 @@ function buildKoUI(main){
             koPreds['final'] = isSel ? [] : [{team, pts:isRealCh?20:0}];
             // Vice automático
             const vicePick = avail.find(t=>t!==team);
-            const realVice = koReal['runner_up']?.team_ids?.[0] || semiTeams.find(t=>t!==realChamp);
+            const realVice = koReal['runner_up']?.team_ids?.[0]; // resultado real do vice
             if(vicePick) koPreds['runner_up']=[{team:vicePick, pts:realVice&&vicePick===realVice?10:0}];
             koDirty=true; buildKoUI(main);
           }
@@ -1845,7 +1860,7 @@ function buildKoUI(main){
       // Vice automático (demonstrativo)
       const vicePick = avail.find(t=>t!==champSel);
       if(champSel && vicePick){
-        const realVice = koReal['runner_up']?.team_ids?.[0] || semiTeams.find(t=>t!==realChamp);
+        const realVice = koReal['runner_up']?.team_ids?.[0]; // resultado real do vice
         const viceOk = realVice && vicePick===realVice;
         const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)'}});
         const vBadge=el('span',{style:{
@@ -1863,44 +1878,124 @@ function buildKoUI(main){
       return;
     }
 
-    // Fases normais (round32, round16, quarter, semi)
-    avail.forEach(team=>{
-      const isSel = sel.find(x=>x.team===team);
-      const isReal = rp?.team_ids?.includes(team);
-      let cls='btn-o';
-      if(isSel && isReal) cls='btn-s';
-      else if(isSel && rp && !isReal) cls='btn-d';
-      else if(isSel) cls='btn-p';
-      const blocked = !isSel && isFull;
-      const b=el('button',{
-        class:`btn btn-sm ${cls}`,
-        disabled:blocked,
-        style:blocked?{opacity:'0.35',cursor:'not-allowed'}:{},
-        onclick:()=>{
-          if(!koPreds[ph.key]) koPreds[ph.key]=[];
-          const idx=koPreds[ph.key].findIndex(x=>x.team===team);
-          if(idx>=0){ koPreds[ph.key].splice(idx,1); }
-          else if(koPreds[ph.key].length<ph.count){
-            koPreds[ph.key].push({team, pts:isReal?ph.pts:0});
-          }
-          koDirty=true;
-          // Cascade: limpar fases seguintes
-          const nextMap={
-            round32:['round16','quarter','semi','final','third'],
-            round16:['quarter','semi','final','third'],
-            quarter:['semi','final','third'],
-            semi:['final','third'],
-          };
-          (nextMap[ph.key]||[]).forEach(np=>{
-            const av2=getAvailableTeams(np,koPreds,grpReal,userThirdsPool);
-            if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>av2.includes(x.team));
-          });
-          buildKoUI(main);
+    // Fases com bracket (round32, round16, quarter, semi) — mostrar confrontos
+    const bracketMap = {round32:ROUND32_BRACKET, round16:ROUND16_BRACKET, quarter:QUARTER_BRACKET, semi:SEMI_BRACKET};
+    const bracket = bracketMap[ph.key];
+
+    function pickTeam(team) {
+      if(!koPreds[ph.key]) koPreds[ph.key]=[];
+      const idx=koPreds[ph.key].findIndex(x=>x.team===team);
+      const isReal2=rp?.team_ids?.includes(team);
+      if(idx>=0){ koPreds[ph.key].splice(idx,1); }
+      else if(koPreds[ph.key].length<ph.count){
+        koPreds[ph.key].push({team, pts:isReal2?ph.pts:0});
+      }
+      koDirty=true;
+      const nextMap={round32:['round16','quarter','semi','final','third'],round16:['quarter','semi','final','third'],quarter:['semi','final','third'],semi:['final','third']};
+      (nextMap[ph.key]||[]).forEach(np=>{
+        const av2=getAvailableTeams(np,koPreds,grpReal,userThirdsPool);
+        if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>av2.includes(x.team));
+      });
+      buildKoUI(main);
+    }
+
+    if(bracket) {
+      // Resolver times de cada confronto a partir dos palpites do usuário
+      const userSt = koUserGrpStandings||{};
+      const userThirds = userThirdsPool||[];
+      // Para fases W/L, usar os palpites do usuário como "resultados"
+      const userMatchWinners = {}; // matchId -> team vencedor (baseado em koPreds)
+      // round32: vencedor = quem o usuário escolheu em koPreds['round32']
+      // Montar mapa de vencedores por jogo a partir dos palpites
+      const r32picks = (koPreds['round32']||[]).map(x=>x.team);
+      ROUND32_BRACKET.forEach(m=>{
+        const t1=resolveMatchSlot(m.slot1,userSt,userThirds,{});
+        const t2=resolveMatchSlot(m.slot2,userSt,userThirds,{});
+        const winner=r32picks.find(t=>t===t1||t===t2);
+        if(winner) userMatchWinners[m.id]={winner,t1,t2};
+        else userMatchWinners[m.id]={winner:null,t1,t2};
+      });
+      const r16picks = (koPreds['round16']||[]).map(x=>x.team);
+      ROUND16_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+        const winner=r16picks.find(t=>t===t1||t===t2);
+        userMatchWinners[m.id]={winner:winner||null,t1,t2};
+      });
+      const qpicks = (koPreds['quarter']||[]).map(x=>x.team);
+      QUARTER_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+        const winner=qpicks.find(t=>t===t1||t===t2);
+        userMatchWinners[m.id]={winner:winner||null,t1,t2};
+      });
+      const spicks = (koPreds['semi']||[]).map(x=>x.team);
+      SEMI_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+        userMatchWinners[m.id]={winner:spicks.find(t=>t===t1||t===t2)||null,t1,t2};
+      });
+
+      // Renderizar confrontos
+      const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
+      bracket.forEach(m=>{
+        let t1,t2;
+        if(ph.key==='round32'){
+          t1=resolveMatchSlot(m.slot1,userSt,userThirds,{});
+          t2=resolveMatchSlot(m.slot2,userSt,userThirds,{});
+        } else {
+          t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+          t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
         }
-      },(FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
-      btns.appendChild(b);
-    });
-    card.appendChild(btns);
+        const sel1=sel.find(x=>x.team===t1);
+        const sel2=sel.find(x=>x.team===t2);
+        const real1=rp?.team_ids?.includes(t1);
+        const real2=rp?.team_ids?.includes(t2);
+        const t1Known=!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º');
+        const t2Known=!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º');
+
+        const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+
+        // Time 1
+        const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
+        const b1=el('button',{
+          class:`btn btn-sm ${cls1}`,
+          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.5'},
+          disabled:!t1Known||(isFull&&!sel1),
+          onclick:()=>pickTeam(t1)
+        },(FLAGS[t1]||'')+' '+t1+(sel1&&real1?' ✓':''));
+
+        // VS
+        const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
+
+        // Time 2
+        const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
+        const b2=el('button',{
+          class:`btn btn-sm ${cls2}`,
+          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.5'},
+          disabled:!t2Known||(isFull&&!sel2),
+          onclick:()=>pickTeam(t2)
+        },(FLAGS[t2]||'')+' '+t2+(sel2&&real2?' ✓':''));
+
+        row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
+        matchesWrap.appendChild(row);
+      });
+      card.appendChild(matchesWrap);
+    } else {
+      // Fallback: lista de botões (para fases sem bracket mapeado)
+      avail.forEach(team=>{
+        const isSel=sel.find(x=>x.team===team);
+        const isReal=rp?.team_ids?.includes(team);
+        let cls='btn-o';
+        if(isSel&&isReal) cls='btn-s';
+        else if(isSel&&rp&&!isReal) cls='btn-d';
+        else if(isSel) cls='btn-p';
+        const b=el('button',{class:`btn btn-sm ${cls}`,disabled:!isSel&&isFull,onclick:()=>pickTeam(team)},
+          (FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
+        btns.appendChild(b);
+      });
+      card.appendChild(btns);
+    }
     main.appendChild(card);
   });
 
@@ -1915,15 +2010,23 @@ function buildKoUI(main){
     const thirdSel = koPreds['third']||[];
     const isFull3 = thirdSel.length>=1;
 
-    if(thirdPool.length>0 || thirdSel.length>0){
-      const card3=el('div',{class:'card'});
-      const tRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'.5rem'}});
-      tRow.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem'}},'🥉 Disputa de 3º/4º Lugar'));
-      tRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull3?'var(--ok)':'var(--muted)',fontWeight:'600'}},thirdSel.length+'/1'+(isFull3?' ✓':'')));
-      card3.appendChild(tRow);
-      card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha 1 time entre os 2 perdedores da Semifinal. Acertar = 10pts.'));
-      const btns3=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
-      const pool3 = thirdPool.length>0 ? thirdPool : thirdSel.map(x=>x.team);
+    const card3=el('div',{class:'card'});
+    const tRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'.5rem'}});
+    tRow.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem'}},'🥉 Disputa de 3º/4º Lugar'));
+    tRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull3?'var(--ok)':'var(--muted)',fontWeight:'600'}},thirdSel.length+'/1'+(isFull3?' ✓':'')));
+    card3.appendChild(tRow);
+    if(thirdPool.length===0){
+      // Semi ou Final não preenchidos — sem fallback para dados reais
+      const missingStep = semiSel.length===0 ? 'Semifinal' : finalSel.length===0 ? 'Final (Campeão)' : 'Semifinal e Final';
+      const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
+      msgDiv3.appendChild(el('span',{},'⚠️'));
+      msgDiv3.appendChild(el('span',{},'Preencha primeiro: '+missingStep+'.'));
+      card3.appendChild(msgDiv3);
+      main.appendChild(card3);
+    } else {
+    card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha 1 time entre os 2 perdedores da Semifinal. Acertar = 10pts.'));
+    const btns3=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
+    const pool3 = thirdPool;
       pool3.forEach(team=>{
         const isSel3=thirdSel.find(x=>x.team===team);
         const isReal3=rp3?.team_ids?.includes(team);
@@ -1983,7 +2086,8 @@ async function saveKo(){
     const semiPicks = (koPreds['semi']||[]).map(x=>x.team);
     const viceTeam  = semiPicks.find(t=>t!==champPick);
     if(viceTeam){
-      const realVice = koReal['runner_up']?.team_ids?.[0] || (koReal['semi']?.team_ids||[]).find(t=>t!==(koReal['final']?.team_ids?.[0]));
+      // pts do vice: verificar contra resultado real (koReal['runner_up'])
+      const realVice = koReal['runner_up']?.team_ids?.[0];
       koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?10:0}];
     }
     const rows=[];
@@ -3151,28 +3255,53 @@ function buildAdminUI(main){
     if(r32Pool.length===0){ round32Card.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.85rem'}},'⚠️ Defina primeiro a classificação dos grupos e os 8 melhores 3ºs.')); }
     else {
       const currR32 = adminKo['round32']?.team_ids||[];
-      round32Card.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'600',color:currR32.length===16?'var(--ok)':'var(--muted)',marginBottom:'.5rem'}},currR32.length+'/16 definidos'+(currR32.length===16?' ✓':'')));
-      const r32Btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
-      r32Pool.forEach(team=>{
-        const isR=currR32.includes(team);
-        const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
-          const currNow=adminKo['round32']?.team_ids||[];
-          const next=currNow.includes(team)?currNow.filter(t=>t!==team):[...currNow,team];
-          if(next.length>16){showToast('Máximo 16 times!','err');return;}
-          try{
-            await dbUpsert('real_knockouts',{phase:'round32',team_ids:next});
-            const preds=await dbQ('knockout_predictions',{phase:'round32'});
-            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?10:0})));
-            if(!adminKo['round32'])adminKo['round32']={phase:'round32',team_ids:[]};
-            adminKo['round32'].team_ids=next;
-            // Cascata: limpar fases posteriores que têm times fora do novo pool
-            await cascadeAdminKo('round32');
-            showToast('✅ Rodada de 32 atualizada!'); buildAdminUI(main);
-          }catch(e){showToast(e.message,'err');}
-        }},`${FLAGS[team]||''} ${team}`);
-        r32Btns.appendChild(b);
+      round32Card.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'600',color:currR32.length===16?'var(--ok)':'var(--muted)',marginBottom:'.75rem'}},currR32.length+'/16 definidos'+(currR32.length===16?' ✓':'')));
+
+      async function toggleR32(team){
+        const currNow=adminKo['round32']?.team_ids||[];
+        const next=currNow.includes(team)?currNow.filter(t=>t!==team):[...currNow,team];
+        if(next.length>16){showToast('Máximo 16 times!','err');return;}
+        try{
+          await dbUpsert('real_knockouts',{phase:'round32',team_ids:next});
+          const preds=await dbQ('knockout_predictions',{phase:'round32'});
+          if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?10:0})));
+          if(!adminKo['round32'])adminKo['round32']={phase:'round32',team_ids:[]};
+          adminKo['round32'].team_ids=next;
+          await cascadeAdminKo('round32');
+          showToast('✅ Rodada de 32 atualizada!'); buildAdminUI(main);
+        }catch(e){showToast(e.message,'err');}
+      }
+
+      // Mostrar confrontos do bracket da Rodada de 32
+      const r32Wrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
+      const realThirdsR32=adminKo['best_thirds']?.team_ids||[];
+      const adminMatchesMapR32={};
+      Object.values(adminMatches).forEach(m=>{ adminMatchesMapR32[m.match_number]=m; });
+
+      ROUND32_BRACKET.forEach(m=>{
+        const t1=resolveMatchSlot(m.slot1,adminStandings,realThirdsR32,adminMatchesMapR32);
+        const t2=resolveMatchSlot(m.slot2,adminStandings,realThirdsR32,adminMatchesMapR32);
+        const t1Known=t1&&!t1.includes('º do Grupo')&&!t1.includes('3º (');
+        const t2Known=t2&&!t2.includes('º do Grupo')&&!t2.includes('3º (');
+        const sel1=currR32.includes(t1), sel2=currR32.includes(t2);
+        const isFull32=currR32.length>=16;
+
+        const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+        const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
+          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
+          disabled:!t1Known||(isFull32&&!sel1),
+          onclick:()=>toggleR32(t1)},
+          (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
+        const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
+        const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),
+          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
+          disabled:!t2Known||(isFull32&&!sel2),
+          onclick:()=>toggleR32(t2)},
+          (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
+        row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
+        r32Wrap.appendChild(row);
       });
-      round32Card.appendChild(r32Btns);
+      round32Card.appendChild(r32Wrap);
     }
     main.appendChild(round32Card);
     PHASES.forEach(ph=>{
@@ -3216,52 +3345,104 @@ function buildAdminUI(main){
         main.appendChild(card);
         return;
       }
-      adminAvailTeams.forEach(team=>{
-        const isR=(rp?.team_ids||[]).includes(team);
-        // Limites reais por fase
-        const maxSel = ph.count; // count já correto em PHASES
-        const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
-          const curr=(adminKo[ph.key]?.team_ids||[]);
-          const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
-          if(next.length>maxSel){
-            // Para fases de 1 seleção: substituir em vez de bloquear
-            if(maxSel===1){
-              next.length=0; next.push(team);
-            } else {
-              showToast('Máximo '+maxSel+' times para esta fase!','err'); return;
-            }
+      // Função de salvar fase admin
+      async function saveAdminPhase(next) {
+        try{
+          await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
+          const pts=ph.key==='final'?20:10;
+          const preds=await dbQ('knockout_predictions',{phase:ph.key});
+          if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?pts:0})));
+          if(!adminKo[ph.key])adminKo[ph.key]={phase:ph.key,team_ids:[]};
+          adminKo[ph.key].team_ids=next;
+          if(ph.key==='final' && next.length===1){
+            const champ=next[0];
+            const semiTeams=adminKo['semi']?.team_ids||[];
+            const vice=semiTeams.find(t=>t!==champ)||'';
+            await dbUpsert('real_knockouts',{phase:'champion',team_ids:[champ]});
+            if(vice) await dbUpsert('real_knockouts',{phase:'runner_up',team_ids:[vice]});
+            const cpreds=await dbQ('knockout_predictions',{phase:'champion'});
+            if(cpreds.length>0) await dbUpsert('knockout_predictions',cpreds.map(p=>({...p,points:p.team_name===champ?20:0})));
+            const vpreds=await dbQ('knockout_predictions',{phase:'runner_up'});
+            if(vpreds.length>0) await dbUpsert('knockout_predictions',vpreds.map(p=>({...p,points:p.team_name===vice?10:0})));
+            if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
+            adminKo['champion'].team_ids=[champ];
+            if(vice){if(!adminKo['runner_up'])adminKo['runner_up']={phase:'runner_up',team_ids:[]}; adminKo['runner_up'].team_ids=[vice];}
           }
-          try{
-            await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
-            const pts=ph.key==='final'?20:10; // final=campeão=20pts
-            const preds=await dbQ('knockout_predictions',{phase:ph.key});
-            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?pts:0})));
-            if(!adminKo[ph.key])adminKo[ph.key]={phase:ph.key,team_ids:[]};
-            adminKo[ph.key].team_ids=next;
-            // Se salvou 'final' (campeão), derivar champion e runner_up automaticamente
-            if(ph.key==='final' && next.length===1){
-              const champ=next[0];
-              const semiTeams=adminKo['semi']?.team_ids||[];
-              const vice=semiTeams.find(t=>t!==champ)||'';
-              await dbUpsert('real_knockouts',{phase:'champion',team_ids:[champ]});
-              if(vice) await dbUpsert('real_knockouts',{phase:'runner_up',team_ids:[vice]});
-              // Recalcular pontos de champion (20pts) e runner_up (10pts)
-              const cpreds=await dbQ('knockout_predictions',{phase:'champion'});
-              if(cpreds.length>0) await dbUpsert('knockout_predictions',cpreds.map(p=>({...p,points:p.team_name===champ?20:0})));
-              const vpreds=await dbQ('knockout_predictions',{phase:'runner_up'});
-              if(vpreds.length>0) await dbUpsert('knockout_predictions',vpreds.map(p=>({...p,points:p.team_name===vice?10:0})));
-              if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
-              adminKo['champion'].team_ids=[champ];
-              if(vice){if(!adminKo['runner_up']) adminKo['runner_up']={phase:'runner_up',team_ids:[]}; adminKo['runner_up'].team_ids=[vice];}
-            }
-            // Cascata: limpar fases posteriores
-            await cascadeAdminKo(ph.key);
-            showToast('✅ Atualizado!'); buildAdminUI(main);
-          }catch(e){ showToast(e.message,'err'); }
-        }},`${FLAGS[team]||''} ${team}`);
-        btns.appendChild(b);
+          await cascadeAdminKo(ph.key);
+          showToast('✅ Atualizado!'); buildAdminUI(main);
+        }catch(e){ showToast(e.message,'err'); }
+      }
+
+      async function toggleAdminTeam(team) {
+        const curr=(adminKo[ph.key]?.team_ids||[]);
+        const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
+        const maxSel=ph.count;
+        if(next.length>maxSel){
+          if(maxSel===1){ next.length=0; next.push(team); }
+          else { showToast('Máximo '+maxSel+' times!','err'); return; }
+        }
+        await saveAdminPhase(next);
+      }
+
+      // Usar UI de confrontos para round16, quarter, semi, final, third
+      const adminBracketMap = {round16:ROUND16_BRACKET, quarter:QUARTER_BRACKET, semi:SEMI_BRACKET};
+      const adminBracket = adminBracketMap[ph.key];
+
+      // Montar mapa de vencedores reais por jogo (a partir dos resultados cadastrados)
+      const adminWinMap = {};
+      Object.values(adminMatches).forEach(m=>{
+        if(!m.is_finished) return;
+        if(m.real_score1>m.real_score2) adminWinMap[m.match_number]={winner:m.team1_name,loser:m.team2_name};
+        else if(m.real_score2>m.real_score1) adminWinMap[m.match_number]={winner:m.team2_name,loser:m.team1_name};
       });
-      card.appendChild(btns); main.appendChild(card);
+
+      if(adminBracket) {
+        const matchesWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
+        adminBracket.forEach(m=>{
+          // Resolver os dois times deste confronto
+          let t1,t2;
+          const w1=adminWinMap[m.slot1.matchId], w2=adminWinMap[m.slot2.matchId];
+          if(ph.key==='third'){
+            t1=adminWinMap[m.slot1.matchId]?.loser||'Perd. J'+m.slot1.matchId;
+            t2=adminWinMap[m.slot2.matchId]?.loser||'Perd. J'+m.slot2.matchId;
+          } else {
+            t1=w1?.winner||'Venc. J'+m.slot1.matchId;
+            t2=w2?.winner||'Venc. J'+m.slot2.matchId;
+          }
+          const t1Known=!t1.startsWith('Venc.')&&!t1.startsWith('Perd.');
+          const t2Known=!t2.startsWith('Venc.')&&!t2.startsWith('Perd.');
+          const currR=(rp?.team_ids||[]);
+          const sel1=currR.includes(t1), sel2=currR.includes(t2);
+          const isFull2=currR.length>=ph.count;
+
+          const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+          const cls1=sel1?'btn-s':'btn-o';
+          const cls2=sel2?'btn-s':'btn-o';
+          const b1=el('button',{class:'btn btn-sm '+cls1,
+            style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
+            disabled:!t1Known||(isFull2&&!sel1),
+            onclick:()=>toggleAdminTeam(t1)},
+            (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
+          const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
+          const b2=el('button',{class:'btn btn-sm '+cls2,
+            style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
+            disabled:!t2Known||(isFull2&&!sel2),
+            onclick:()=>toggleAdminTeam(t2)},
+            (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
+          row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
+          matchesWrap.appendChild(row);
+        });
+        card.appendChild(matchesWrap);
+      } else {
+        // Fases sem bracket (fallback — lista de botões)
+        adminAvailTeams.forEach(team=>{
+          const isR=(rp?.team_ids||[]).includes(team);
+          const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:()=>toggleAdminTeam(team)},`${FLAGS[team]||''} ${team}`);
+          btns.appendChild(b);
+        });
+        card.appendChild(btns);
+      }
+      main.appendChild(card);
     });
 
   }
@@ -3349,195 +3530,7 @@ const TEST_USERS_DATA = [
 ];
 
 // Resultados reais simulados fixos para validação
-const REAL_SCORES_TEST = {};
-MATCHES.forEach(m => {
-  const s = [0,1,2,3]; 
-  REAL_SCORES_TEST[m.num] = {s1:s[Math.floor(m.num*7%4)], s2:s[Math.floor(m.num*3%4)]};
-});
-const REAL_STANDINGS_TEST = {
-  A:{1:'México',2:'Coreia do Sul',3:'África do Sul',4:'República Tcheca'},
-  B:{1:'Canadá',2:'Suíça',3:'Bósnia',4:'Catar'},
-  C:{1:'Brasil',2:'Marrocos',3:'Escócia',4:'Haiti'},
-  D:{1:'Estados Unidos',2:'Turquia',3:'Austrália',4:'Paraguai'},
-  E:{1:'Alemanha',2:'Equador',3:'Costa do Marfim',4:'Curaçao'},
-  F:{1:'Holanda',2:'Japão',3:'Suécia',4:'Tunísia'},
-  G:{1:'Bélgica',2:'Nova Zelândia',3:'Egito',4:'Irã'},
-  H:{1:'Espanha',2:'Uruguai',3:'Arábia Saudita',4:'Cabo Verde'},
-  I:{1:'França',2:'Noruega',3:'Senegal',4:'Iraque'},
-  J:{1:'Argentina',2:'Áustria',3:'Argélia',4:'Jordânia'},
-  K:{1:'Portugal',2:'Colômbia',3:'Uzbequistão',4:'RD Congo'},
-  L:{1:'Inglaterra',2:'Croácia',3:'Gana',4:'Panamá'},
-};
-const allT = ALL_TEAMS;
-// Resultados reais simulados: round32=quem passa para oitavas(16), round16=oitavas(8), etc.
-const REAL_KO_TEST = {
-  best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
-  round32: ['Coreia do Sul','Alemanha','Holanda','Brasil','França','Equador','México','Inglaterra',
-            'Estados Unidos','Bélgica','Colômbia','Espanha','Canadá','Argentina','Portugal','Turquia'],
-  round16: ['França','Holanda','Brasil','Inglaterra','Espanha','Estados Unidos','Argentina','Portugal'],
-  quarter: ['França','Espanha','Brasil','Argentina'],
-  semi:    ['Espanha','Brasil'],
-  final:   ['Brasil'],
-  third:   ['França'],
-};
-const REAL_SCORER_TEST = 'Mbappé';
-
-// JSON completo de resultados reais usado pelo PASSO 5 do teste
-// Gerado para casar com REAL_STANDINGS_TEST e REAL_KO_TEST acima
-const TEST_RESULTS_JSON = {
-  matches: [
-    // Grupo A
-    {num:1,team1:'México',score1:3,team2:'África do Sul',score2:0,finished:true},
-    {num:2,team1:'México',score1:2,team2:'Coreia do Sul',score2:1,finished:true},
-    {num:3,team1:'México',score1:3,team2:'República Tcheca',score2:0,finished:true},
-    {num:4,team1:'África do Sul',score1:1,team2:'Coreia do Sul',score2:2,finished:true},
-    {num:5,team1:'África do Sul',score1:2,team2:'República Tcheca',score2:1,finished:true},
-    {num:6,team1:'Coreia do Sul',score1:3,team2:'República Tcheca',score2:0,finished:true},
-    // Grupo B
-    {num:7,team1:'Canadá',score1:3,team2:'Bósnia',score2:0,finished:true},
-    {num:8,team1:'Canadá',score1:3,team2:'Catar',score2:0,finished:true},
-    {num:9,team1:'Canadá',score1:2,team2:'Suíça',score2:1,finished:true},
-    {num:10,team1:'Bósnia',score1:2,team2:'Catar',score2:1,finished:true},
-    {num:11,team1:'Bósnia',score1:1,team2:'Suíça',score2:2,finished:true},
-    {num:12,team1:'Catar',score1:0,team2:'Suíça',score2:3,finished:true},
-    // Grupo C
-    {num:13,team1:'Brasil',score1:2,team2:'Marrocos',score2:1,finished:true},
-    {num:14,team1:'Brasil',score1:3,team2:'Haiti',score2:0,finished:true},
-    {num:15,team1:'Brasil',score1:3,team2:'Escócia',score2:0,finished:true},
-    {num:16,team1:'Marrocos',score1:3,team2:'Haiti',score2:0,finished:true},
-    {num:17,team1:'Marrocos',score1:2,team2:'Escócia',score2:1,finished:true},
-    {num:18,team1:'Haiti',score1:1,team2:'Escócia',score2:2,finished:true},
-    // Grupo D
-    {num:19,team1:'Estados Unidos',score1:3,team2:'Paraguai',score2:0,finished:true},
-    {num:20,team1:'Estados Unidos',score1:3,team2:'Austrália',score2:0,finished:true},
-    {num:21,team1:'Estados Unidos',score1:2,team2:'Turquia',score2:1,finished:true},
-    {num:22,team1:'Paraguai',score1:1,team2:'Austrália',score2:2,finished:true},
-    {num:23,team1:'Paraguai',score1:0,team2:'Turquia',score2:3,finished:true},
-    {num:24,team1:'Austrália',score1:1,team2:'Turquia',score2:2,finished:true},
-    // Grupo E
-    {num:25,team1:'Alemanha',score1:3,team2:'Curaçao',score2:0,finished:true},
-    {num:26,team1:'Alemanha',score1:3,team2:'Costa do Marfim',score2:0,finished:true},
-    {num:27,team1:'Alemanha',score1:2,team2:'Equador',score2:1,finished:true},
-    {num:28,team1:'Curaçao',score1:1,team2:'Costa do Marfim',score2:2,finished:true},
-    {num:29,team1:'Curaçao',score1:0,team2:'Equador',score2:3,finished:true},
-    {num:30,team1:'Costa do Marfim',score1:1,team2:'Equador',score2:2,finished:true},
-    // Grupo F
-    {num:31,team1:'Holanda',score1:2,team2:'Japão',score2:1,finished:true},
-    {num:32,team1:'Holanda',score1:3,team2:'Suécia',score2:0,finished:true},
-    {num:33,team1:'Holanda',score1:3,team2:'Tunísia',score2:0,finished:true},
-    {num:34,team1:'Japão',score1:2,team2:'Suécia',score2:1,finished:true},
-    {num:35,team1:'Japão',score1:3,team2:'Tunísia',score2:0,finished:true},
-    {num:36,team1:'Suécia',score1:2,team2:'Tunísia',score2:1,finished:true},
-    // Grupo G
-    {num:37,team1:'Bélgica',score1:3,team2:'Egito',score2:0,finished:true},
-    {num:38,team1:'Bélgica',score1:3,team2:'Irã',score2:0,finished:true},
-    {num:39,team1:'Bélgica',score1:2,team2:'Nova Zelândia',score2:1,finished:true},
-    {num:40,team1:'Egito',score1:2,team2:'Irã',score2:1,finished:true},
-    {num:41,team1:'Egito',score1:1,team2:'Nova Zelândia',score2:2,finished:true},
-    {num:42,team1:'Irã',score1:0,team2:'Nova Zelândia',score2:3,finished:true},
-    // Grupo H
-    {num:43,team1:'Espanha',score1:3,team2:'Cabo Verde',score2:0,finished:true},
-    {num:44,team1:'Espanha',score1:3,team2:'Arábia Saudita',score2:0,finished:true},
-    {num:45,team1:'Espanha',score1:2,team2:'Uruguai',score2:1,finished:true},
-    {num:46,team1:'Cabo Verde',score1:1,team2:'Arábia Saudita',score2:2,finished:true},
-    {num:47,team1:'Cabo Verde',score1:0,team2:'Uruguai',score2:3,finished:true},
-    {num:48,team1:'Arábia Saudita',score1:1,team2:'Uruguai',score2:2,finished:true},
-    // Grupo I
-    {num:49,team1:'França',score1:3,team2:'Senegal',score2:0,finished:true},
-    {num:50,team1:'França',score1:3,team2:'Iraque',score2:0,finished:true},
-    {num:51,team1:'França',score1:2,team2:'Noruega',score2:1,finished:true},
-    {num:52,team1:'Senegal',score1:2,team2:'Iraque',score2:1,finished:true},
-    {num:53,team1:'Senegal',score1:1,team2:'Noruega',score2:2,finished:true},
-    {num:54,team1:'Iraque',score1:0,team2:'Noruega',score2:3,finished:true},
-    // Grupo J
-    {num:55,team1:'Argentina',score1:3,team2:'Argélia',score2:0,finished:true},
-    {num:56,team1:'Argentina',score1:2,team2:'Áustria',score2:1,finished:true},
-    {num:57,team1:'Argentina',score1:3,team2:'Jordânia',score2:0,finished:true},
-    {num:58,team1:'Argélia',score1:1,team2:'Áustria',score2:2,finished:true},
-    {num:59,team1:'Argélia',score1:2,team2:'Jordânia',score2:1,finished:true},
-    {num:60,team1:'Áustria',score1:3,team2:'Jordânia',score2:0,finished:true},
-    // Grupo K
-    {num:61,team1:'Portugal',score1:3,team2:'RD Congo',score2:0,finished:true},
-    {num:62,team1:'Portugal',score1:3,team2:'Uzbequistão',score2:0,finished:true},
-    {num:63,team1:'Portugal',score1:2,team2:'Colômbia',score2:1,finished:true},
-    {num:64,team1:'RD Congo',score1:1,team2:'Uzbequistão',score2:2,finished:true},
-    {num:65,team1:'RD Congo',score1:0,team2:'Colômbia',score2:3,finished:true},
-    {num:66,team1:'Uzbequistão',score1:1,team2:'Colômbia',score2:2,finished:true},
-    // Grupo L
-    {num:67,team1:'Inglaterra',score1:2,team2:'Croácia',score2:1,finished:true},
-    {num:68,team1:'Inglaterra',score1:3,team2:'Gana',score2:0,finished:true},
-    {num:69,team1:'Inglaterra',score1:3,team2:'Panamá',score2:0,finished:true},
-    {num:70,team1:'Croácia',score1:2,team2:'Gana',score2:1,finished:true},
-    {num:71,team1:'Croácia',score1:3,team2:'Panamá',score2:0,finished:true},
-    {num:72,team1:'Gana',score1:2,team2:'Panamá',score2:1,finished:true},
-  ],
-  standings: {
-    A:{1:'México',2:'Coreia do Sul',3:'África do Sul',4:'República Tcheca'},
-    B:{1:'Canadá',2:'Suíça',3:'Bósnia',4:'Catar'},
-    C:{1:'Brasil',2:'Marrocos',3:'Escócia',4:'Haiti'},
-    D:{1:'Estados Unidos',2:'Turquia',3:'Austrália',4:'Paraguai'},
-    E:{1:'Alemanha',2:'Equador',3:'Costa do Marfim',4:'Curaçao'},
-    F:{1:'Holanda',2:'Japão',3:'Suécia',4:'Tunísia'},
-    G:{1:'Bélgica',2:'Nova Zelândia',3:'Egito',4:'Irã'},
-    H:{1:'Espanha',2:'Uruguai',3:'Arábia Saudita',4:'Cabo Verde'},
-    I:{1:'França',2:'Noruega',3:'Senegal',4:'Iraque'},
-    J:{1:'Argentina',2:'Áustria',3:'Argélia',4:'Jordânia'},
-    K:{1:'Portugal',2:'Colômbia',3:'Uzbequistão',4:'RD Congo'},
-    L:{1:'Inglaterra',2:'Croácia',3:'Gana',4:'Panamá'},
-  },
-  best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
-  knockout_classified: {
-    round32: ['Coreia do Sul','Alemanha','Holanda','Brasil','França','Equador','México','Inglaterra',
-              'Estados Unidos','Bélgica','Colômbia','Espanha','Canadá','Argentina','Portugal','Turquia'],
-    round16: ['França','Holanda','Brasil','Inglaterra','Espanha','Estados Unidos','Argentina','Portugal'],
-    quarter: ['França','Espanha','Brasil','Argentina'],
-    semi:    ['Espanha','Brasil'],
-    final:   ['Brasil'],
-    third:   ['França'],
-  },
-  // Jogos eliminatórios — IDs reais do bracket FIFA (73-104)
-  ko_matches: [
-    // Rodada de 32 (73-88)
-    {num:73,team1:'Coreia do Sul',score1:2,team2:'Suíça',score2:1,finished:true},
-    {num:74,team1:'Alemanha',score1:2,team2:'Escócia',score2:1,finished:true},
-    {num:75,team1:'Holanda',score1:2,team2:'Marrocos',score2:1,finished:true},
-    {num:76,team1:'Brasil',score1:2,team2:'Japão',score2:1,finished:true},
-    {num:77,team1:'França',score1:2,team2:'Austrália',score2:1,finished:true},
-    {num:78,team1:'Equador',score1:2,team2:'Noruega',score2:1,finished:true},
-    {num:79,team1:'México',score1:2,team2:'Suécia',score2:1,finished:true},
-    {num:80,team1:'Inglaterra',score1:2,team2:'Gana',score2:1,finished:true},
-    {num:81,team1:'Estados Unidos',score1:2,team2:'Suíça',score2:1,finished:true},
-    {num:82,team1:'Bélgica',score1:2,team2:'Argélia',score2:1,finished:true},
-    {num:83,team1:'Colômbia',score1:2,team2:'Croácia',score2:1,finished:true},
-    {num:84,team1:'Espanha',score1:2,team2:'Áustria',score2:1,finished:true},
-    {num:85,team1:'Canadá',score1:2,team2:'Costa do Marfim',score2:1,finished:true},
-    {num:86,team1:'Argentina',score1:2,team2:'Uruguai',score2:1,finished:true},
-    {num:87,team1:'Portugal',score1:2,team2:'Gana',score2:1,finished:true},
-    {num:88,team1:'Turquia',score1:2,team2:'Nova Zelândia',score2:1,finished:true},
-    // Oitavas de Final (89-96)
-    {num:89,team1:'Alemanha',score1:1,team2:'França',score2:2,finished:true},
-    {num:90,team1:'Coreia do Sul',score1:1,team2:'Holanda',score2:2,finished:true},
-    {num:91,team1:'Brasil',score1:2,team2:'Equador',score2:1,finished:true},
-    {num:92,team1:'México',score1:1,team2:'Inglaterra',score2:2,finished:true},
-    {num:93,team1:'Colômbia',score1:1,team2:'Espanha',score2:2,finished:true},
-    {num:94,team1:'Estados Unidos',score1:2,team2:'Bélgica',score2:1,finished:true},
-    {num:95,team1:'Argentina',score1:2,team2:'Turquia',score2:1,finished:true},
-    {num:96,team1:'Canadá',score1:1,team2:'Portugal',score2:2,finished:true},
-    // Quartas de Final (97-100)
-    {num:97,team1:'França',score1:2,team2:'Holanda',score2:1,finished:true},
-    {num:98,team1:'Espanha',score1:2,team2:'Estados Unidos',score2:1,finished:true},
-    {num:99,team1:'Brasil',score1:2,team2:'Inglaterra',score2:1,finished:true},
-    {num:100,team1:'Argentina',score1:2,team2:'Portugal',score2:1,finished:true},
-    // Semifinais (101-102)
-    {num:101,team1:'França',score1:1,team2:'Espanha',score2:2,finished:true},
-    {num:102,team1:'Brasil',score1:2,team2:'Argentina',score2:1,finished:true},
-    // 3º Lugar (103)
-    {num:103,team1:'França',score1:2,team2:'Argentina',score2:1,finished:true},
-    // Final (104)
-    {num:104,team1:'Espanha',score1:1,team2:'Brasil',score2:2,finished:true},
-  ],
-};
-// KO_MATCHES_TEST removido — jogos eliminatórios agora incluídos no TEST_RESULTS_JSON.ko_matches (IDs 73-104)
+// Constantes de teste hardcoded removidas — teste agora usa resultados reais do banco
 
 let testLog = [];
 let testRunning = false;
@@ -3766,143 +3759,191 @@ async function runTest(main) {
     else tlog(`  ✅ ${u.name}: 48 posições de grupo`, 'ok');
   }
 
-  // STEP 4: Palpites eliminatórias (nova estrutura com round32)
+  // STEP 4: Palpites eliminatórias — seguindo a mesma lógica cascata do participante
   tlog('\n🔥 PASSO 4: Palpites das fases...', 'bold');
   const scorerOptions = ['Mbappé','Vinicius Jr','Haaland','Lewandowski','Salah'];
-  // Palpites de 8 melhores 3ºs (group_predictions com group_id='_thirds')
+
+  // Carregar resultados reais do banco para usar como base dos palpites e recálculo
+  const realKoDb = await dbQ('real_knockouts',{},'phase,team_ids');
+  const realStDb = await dbQ('real_group_standings',{},'group_id,position,team_name');
+  const realMatchDb = await SB.from('group_matches').select('*');
+
+  // Montar estruturas de lookup
+  const realKoMap = {}; // phase -> team_ids[]
+  realKoDb.forEach(r=>{ realKoMap[r.phase]=r.team_ids||[]; });
+  const realStMap = {}; // group_id -> {1:team, 2:team, ...}
+  realStDb.forEach(r=>{ if(!realStMap[r.group_id])realStMap[r.group_id]={}; realStMap[r.group_id][r.position]=r.team_name; });
+  const realMatchMap = {}; // match_number -> {real_score1, real_score2}
+  (realMatchDb.data||[]).forEach(m=>{ realMatchMap[m.match_number]={s1:m.real_score1??0, s2:m.real_score2??0}; });
+  const realThirds = realKoMap['best_thirds']||[];
+
+  // Pool de times disponíveis por fase (baseado nos resultados reais)
+  const realPool = {
+    round32: realKoMap['round32']||[],
+    round16: realKoMap['round16']||[],
+    quarter: realKoMap['quarter']||[],
+    semi:    realKoMap['semi']||[],
+    final:   realKoMap['final']||[], // 1 time: o campeão real
+    third:   realKoMap['third']||[], // 1 time: o 3º real
+  };
+  // 8 melhores 3ºs reais
+  const realThirdsPool = realThirds;
+
+  // Validar que o banco tem dados reais antes de continuar
+  const hasRealData = Object.keys(realKoMap).length>0 && Object.keys(realStMap).length>0 && Object.keys(realMatchMap).length>0;
+  if(!hasRealData) {
+    tlog('  ❌ ERRO: Banco sem resultados reais! Aplique o JSON de resultados antes de rodar o teste.', 'err');
+    tlog('  → Fases KO: '+Object.keys(realKoMap).length+' | Grupos: '+Object.keys(realStMap).length+' | Jogos: '+Object.keys(realMatchMap).length, 'warn');
+    testRunning=false; renderTestPage(main); return;
+  }
+  tlog('  ✅ Resultados reais carregados: '+Object.keys(realKoMap).length+' fases, '+Object.keys(realStMap).length+' grupos, '+Object.keys(realMatchMap).length+' jogos', 'ok');
+
+  // Palpites de 8 melhores 3ºs — cada usuário escolhe 8 com offset para gerar variedade
+  // Todos os 3ºs disponíveis (3ºs de todos os grupos, 12 no total)
+  const allThirds = Object.entries(GROUPS).map(([g,teams])=>teams[2]); // 3º de cada grupo
   for(const [ui, u] of signedUsers.entries()) {
     const thirdsRows = [];
-    allT.slice(24+ui, 24+ui+8).concat(allT.slice(24)).slice(0,8).forEach((team,idx)=>{
+    // Usuário 0: acerta todos (pega os 8 reais exatos)
+    // Usuários 1-4: rotacionam o pool com offset, acertando parcialmente
+    let pool3;
+    if(realThirdsPool.length>=8 && ui===0) {
+      pool3 = realThirdsPool.slice(0,8); // acerta todos
+    } else {
+      // Mistura: alguns do pool real, alguns de fora (offset cria variedade)
+      const rotated = allThirds.slice(ui*2).concat(allThirds).slice(0,8);
+      pool3 = rotated;
+    }
+    pool3.forEach((team,idx)=>{
       thirdsRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:0, bolao_id:testBolao?.id});
     });
+    userPreds[u.id].thirds = pool3;
     await SB.from('group_predictions').upsert(thirdsRows);
   }
-  tlog('  ✅ Palpites de 8 melhores 3ºs inseridos', 'ok');
+  tlog('  ✅ Palpites de 8 melhores 3ºs inseridos (com variedade)', 'ok');
 
   for(const [ui, u] of signedUsers.entries()) {
     const rows = [];
-    // Nova estrutura de fases
+    // Para cada fase, cada usuário palpita N times do pool real (com offset para variedade)
+    // Isso garante que alguns acertam e outros erram — testando a pontuação corretamente
     const phaseDef = [
-      {phase:'round32', count:16},
-      {phase:'round16', count:8},
-      {phase:'quarter', count:4},
-      {phase:'semi',    count:2},
-      {phase:'final',   count:2},
-      {phase:'champion',count:1},
-      {phase:'runner_up',count:1},
-      {phase:'third',   count:1},
+      {phase:'round32', pool: realPool.round32, count:16},
+      {phase:'round16', pool: realPool.round16, count:8},
+      {phase:'quarter', pool: realPool.quarter, count:4},
+      {phase:'semi',    pool: realPool.semi,    count:2},
+      {phase:'final',   pool: realPool.final,   count:1}, // 1 = campeão
+      {phase:'third',   pool: realPool.third,   count:1}, // 1 = 3º lugar
     ];
-    phaseDef.forEach(({phase,count}) => {
-      const picked = ALL_TEAMS.slice(ui, ui+count).concat(ALL_TEAMS).slice(0,count);
+    phaseDef.forEach(({phase,pool,count}) => {
+      // Se pool real disponível: usuário 0 acerta todos, outros têm offset (acertam parcialmente)
+      const src = pool.length>=count ? pool : pool; // se pool vazio, não usa ALL_TEAMS (já barrado acima)
+      const offset = ui===0 ? 0 : ui; // usuário 0 sempre acerta tudo
+      const picked = src.slice(offset%src.length).concat(src).slice(0,count);
       userPreds[u.id].knockout[phase]=picked;
       picked.forEach(team => rows.push({user_id:u.id, phase, team_name:team, points:0, bolao_id:testBolao?.id}));
     });
+    // runner_up automático: o outro da semi que não é o final
+    const champPick = userPreds[u.id].knockout['final']?.[0];
+    const semiPicks = userPreds[u.id].knockout['semi']||[];
+    const vicePick = semiPicks.find(t=>t!==champPick);
+    if(vicePick){
+      userPreds[u.id].knockout['runner_up']=[vicePick];
+      rows.push({user_id:u.id, phase:'runner_up', team_name:vicePick, points:0, bolao_id:testBolao?.id});
+    }
     const scorer = scorerOptions[ui];
     userPreds[u.id].scorer = scorer;
     await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
     if(rows.length>0) await SB.from('knockout_predictions').insert(rows);
     await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
-    tlog(`  ✅ ${u.name}: fases + artilheiro "${scorer}"`, 'ok');
+    tlog(`  ✅ ${u.name}: fases (offset=${ui}) + artilheiro "${scorer}"`, 'ok');
   }
 
-  // STEP 5: Resultados reais via applyAIResults (mesmo JSON usado pelo admin)
-  tlog('\n🔧 PASSO 5: Inserindo resultados reais via JSON...', 'bold');
-  // Carregar adminMatches para o applyAIResults funcionar corretamente
-  const amRes = await SB.from('group_matches').select('*');
-  adminMatches = {};
-  (amRes.data||[]).forEach(m=>{ adminMatches[m.match_number]=m; });
-  try {
-    await applyAIResults(TEST_RESULTS_JSON, (msg,type)=>{
-      const color = type==='ok'?'#10B981':type==='err'?'#EF4444':type==='warn'?'#F59E0B':'#60A5FA';
-      tlog('  '+msg, type||'info');
-    });
-    tlog('  ✅ Resultados reais aplicados via JSON', 'ok');
-  } catch(e) {
-    tlog('  ❌ Erro ao aplicar JSON: '+e.message, 'err');
-  }
+  // STEP 5: Recalcular pontuações usando resultados reais do banco
+  tlog('\n🔢 PASSO 5: Recalculando pontuações com resultados reais do banco...', 'bold');
+  const realScorer = realKoMap['top_scorer']?.[0]||'';
 
-  // STEP 6: Recalcular pontuações
-  tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
   for(const u of signedUsers) {
-    // Matches
+    // Jogos: calcular com resultados reais do banco
     const mUp = MATCHES.map(m=>{
-      const p=userPreds[u.id].matches[m.num], r=REAL_SCORES_TEST[m.num];
-      return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2)};
+      const p=userPreds[u.id].matches[m.num];
+      const r=realMatchMap[m.num]||{s1:0,s2:0};
+      return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
     });
     await SB.from('match_predictions').upsert(mUp);
 
-    // Groups — usando nova lógica calcGrpPts
+    // Grupos: calcular com standings reais do banco
     const gUp = [];
-    const realThirdsTest = REAL_KO_TEST['best_thirds']||[];
     Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
       Object.entries(positions).forEach(([pos,team])=>{
         const p=parseInt(pos);
-        const rst=REAL_STANDINGS_TEST[g]||{};
-        const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsTest.includes(team))return 3;return null;})();
+        const rst=realStMap[g]||{};
+        const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
         const pts = p<=3 ? calcGrpPts(p, realPos) : 0;
         gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
     });
-    // 8 melhores 3ºs — recalcular também
-    const thirdsTest = allT.slice(24+signedUsers.indexOf(u), 24+signedUsers.indexOf(u)+8).concat(allT.slice(24)).slice(0,8);
-    thirdsTest.forEach((team,idx)=>{
-      const grpOfTeam=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
-      const rst=REAL_STANDINGS_TEST[grpOfTeam]||{};
-      const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsTest.includes(team))return 3;return null;})();
+    // 8 melhores 3ºs
+    (userPreds[u.id].thirds||[]).forEach((team,idx)=>{
+      const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
+      const rst=realStMap[grp]||{};
+      const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
       const pts = realPos===3?7:realPos===2||realPos===1?5:0;
       gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
     });
     await SB.from('group_predictions').upsert(gUp);
 
-    // Knockout (nova estrutura com round32)
+    // Fases eliminatórias: calcular com realKoMap do banco
     const kRows = [];
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
       teams.forEach(team=>{
-        const isReal = REAL_KO_TEST[phase]?.includes(team);
-        kRows.push({user_id:u.id, phase, team_name:team, points:isReal?(phase==='champion'?20:10):0, bolao_id:testBolao?.id});
+        const isReal = realKoMap[phase]?.includes(team);
+        const pts = isReal ? (phase==='final'||phase==='champion'?20:10) : 0;
+        kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
     });
     await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
     if(kRows.length>0) await SB.from('knockout_predictions').insert(kRows);
 
-    // Scorer
-    const spts = userPreds[u.id].scorer===REAL_SCORER_TEST?10:0;
-    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
+    // Artilheiro
+    const spts = realScorer && u.scorer===realScorer ? 10 : 0;
+    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts, bolao_id:testBolao?.id});
 
     tlog(`  ✅ ${u.name} recalculado`, 'ok');
   }
 
-  // STEP 7: Validação
-  tlog('\n✅ PASSO 7: Validando pontuações...', 'bold');
+  // STEP 6: Validação — comparar esperado (calculado localmente) vs obtido (banco)
+  tlog('\n✅ PASSO 6: Validando pontuações...', 'bold');
   const results = [];
   let allPassed = true;
 
   for(const u of signedUsers) {
     let expM=0, expG=0, expK=0, expS=0;
-    MATCHES.forEach(m=>{ const p=userPreds[u.id].matches[m.num],r=REAL_SCORES_TEST[m.num]; expM+=calcPts(p.s1,p.s2,r.s1,r.s2); });
-    // Grupos — nova lógica calcGrpPts
-    const realThirdsV = REAL_KO_TEST['best_thirds']||[];
+    // Jogos
+    MATCHES.forEach(m=>{
+      const p=userPreds[u.id].matches[m.num], r=realMatchMap[m.num]||{s1:0,s2:0};
+      expM+=calcPts(p.s1,p.s2,r.s1,r.s2);
+    });
+    // Grupos
     Object.entries(userPreds[u.id].groups).forEach(([g,pos])=>{
       Object.entries(pos).forEach(([pStr,team])=>{
-        const p=parseInt(pStr);
-        if(p>3) return; // 4º não pontua
-        const rst=REAL_STANDINGS_TEST[g]||{};
-        const realPos=(()=>{if(rst[1]===team)return 1;if(rst[2]===team)return 2;if(realThirdsV.includes(team))return 3;return null;})();
+        const p=parseInt(pStr); if(p>3) return;
+        const rst=realStMap[g]||{};
+        const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
         expG+=calcGrpPts(p, realPos);
       });
     });
-    // 3ºs palpitados
-    const thirdsV=allT.slice(24+signedUsers.indexOf(u),24+signedUsers.indexOf(u)+8).concat(allT.slice(24)).slice(0,8);
-    thirdsV.forEach(team=>{
-      const grpV=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
-      const rstV=REAL_STANDINGS_TEST[grpV]||{};
-      const rpV=(()=>{if(rstV[1]===team)return 1;if(rstV[2]===team)return 2;if(realThirdsV.includes(team))return 3;return null;})();
-      expG+=rpV===3?7:rpV===2||rpV===1?5:0;
+    // 3ºs
+    (userPreds[u.id].thirds||[]).forEach(team=>{
+      const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
+      const rst=realStMap[grp]||{};
+      const rp=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
+      expG+=rp===3?7:rp===2||rp===1?5:0;
     });
+    // Fases KO
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
-      teams.forEach(team=>{ if(REAL_KO_TEST[phase]?.includes(team)) expK+=(phase==='champion'?20:10); });
+      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?20:10); });
     });
-    expS = userPreds[u.id].scorer===REAL_SCORER_TEST?10:0;
+    // Artilheiro
+    expS = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
     const expT = expM+expG+expK+expS;
 
     const [mp,gp,kp,sp] = await Promise.all([
@@ -3925,7 +3966,8 @@ async function runTest(main) {
   tlog('\n═══════════════════════════════════════', 'info');
   tlog(allPassed?'🎉 TODOS OS TESTES PASSARAM!':'⚠️ ATENÇÃO: FALHAS ENCONTRADAS', allPassed?'ok':'err');
   tlog('═══════════════════════════════════════', 'info');
-  tlog(`Campeão real: ${REAL_KO_TEST.champion[0]} | Artilheiro: ${REAL_SCORER_TEST}`, 'info');
+  if(realScorer) tlog('Artilheiro real no banco: '+realScorer, 'info');
+  tlog('Campeão real no banco: '+(realKoMap['final']?.[0]||realKoMap['champion']?.[0]||'?'), 'info');
   tlog('\nAgora vá para 🏆 Ranking para ver as pontuações!', 'warn');
   tlog('Use 🗑 Limpar Tudo quando quiser remover os dados de teste.', 'warn');
 
@@ -4008,11 +4050,7 @@ async function cleanupTest(main) {
     tlog('  ✅ Palpites do admin limpos', 'ok');
   }
 
-  // STEP 4: Limpar resultados reais
-  await SB.from('group_matches').delete().neq('match_number',0);
-  await SB.from('real_group_standings').delete().neq('group_id','Z');
-  await SB.from('real_knockouts').delete().neq('phase','Z');
-  tlog('  ✅ Resultados reais removidos', 'ok');
+  // STEP 4: Resultados reais NÃO são tocados pelo teste — nada a restaurar
 
   // STEP 5: Remover bolão de teste
   if(testBolaoId) {
