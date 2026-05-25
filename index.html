@@ -1836,6 +1836,7 @@ function buildKoUI(main){
         if(!team) return;
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
         const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
+        const ptsLabel = realChamp ? (isRealCh ? ' ·20p ✓' : (isSel ? ' ·0p ✗' : '')) : (isSel ? ' ✓' : '');
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
           onclick:()=>{
             // Toggle: clicou no selecionado → deseleciona; clicou no outro → troca
@@ -1850,7 +1851,7 @@ function buildKoUI(main){
             }
             koDirty=true; buildKoUI(main);
           }
-        },(FLAGS[team]||'')+' '+team+(isSel&&isRealCh?' ✓':'')+(isSel&&!realChamp?' ✓':''));
+        },(FLAGS[team]||'')+' '+team+(isSel?ptsLabel:''));
         if(matchRow.children.length>0) matchRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
         matchRow.appendChild(b);
       });
@@ -1955,24 +1956,26 @@ function buildKoUI(main){
 
         // Time 1
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
+        const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p ✓' : (sel1 ? ' ·0p ✗' : '')) : (sel1?' ✓':'');
         const b1=el('button',{
           class:`btn btn-sm ${cls1}`,
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.5'},
           disabled:!t1Known,
           onclick:()=>pickTeam(t1,t2)
-        },(FLAGS[t1]||'')+' '+t1+(sel1&&real1?' ✓':''));
+        },(FLAGS[t1]||'')+' '+t1+(sel1?pts1:''));
 
         // VS
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
 
         // Time 2
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
+        const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p ✓' : (sel2 ? ' ·0p ✗' : '')) : (sel2?' ✓':'');
         const b2=el('button',{
           class:`btn btn-sm ${cls2}`,
           style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.5'},
           disabled:!t2Known,
           onclick:()=>pickTeam(t2,t1)
-        },(FLAGS[t2]||'')+' '+t2+(sel2&&real2?' ✓':''));
+        },(FLAGS[t2]||'')+' '+t2+(sel2?pts2:''));
 
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         matchesWrap.appendChild(row);
@@ -2031,12 +2034,13 @@ function buildKoUI(main){
       const isSel3=thirdSel.find(x=>x.team===team);
       const isReal3=rp3?.team_ids?.includes(team);
       const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
+      const pts3 = rp3 ? (isReal3 ? ' ·10p ✓' : (isSel3 ? ' ·0p ✗' : '')) : (isSel3 ? ' ✓' : '');
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
         onclick:()=>{
           koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
           koDirty=true; buildKoUI(main);
         }
-      },(FLAGS[team]||'')+' '+team+(isSel3&&isReal3?' ✓':''));
+      },(FLAGS[team]||'')+' '+team+(isSel3?pts3:''));
       if(matchRow3.children.length>0) matchRow3.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
       matchRow3.appendChild(b3);
     });
@@ -3464,8 +3468,26 @@ function buildAdminUI(main){
           matchesWrap.appendChild(row);
         });
         card.appendChild(matchesWrap);
+      } else if(ph.key==='final' || ph.key==='third') {
+        // Final e 3º lugar: confronto de 2 times (pool de adminAvailTeams)
+        const ta=adminAvailTeams[0], tb=adminAvailTeams[1];
+        const currR2=(rp?.team_ids||[]);
+        const matchWrap=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+        [ta,tb].forEach((team,idx)=>{
+          if(!team) return;
+          const isSel=currR2.includes(team);
+          const cls=isSel?'btn-s':'btn-o';
+          const opp=idx===0?tb:ta;
+          const b=el('button',{class:'btn btn-sm '+cls,
+            style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
+            onclick:()=>toggleAdminTeam(team,opp)},
+            (FLAGS[team]||'')+' '+team+(isSel?' ✓':''));
+          if(matchWrap.children.length>0) matchWrap.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
+          matchWrap.appendChild(b);
+        });
+        card.appendChild(matchWrap);
       } else {
-        // Fases sem bracket (fallback — lista de botões)
+        // Fallback — lista de botões para fases sem bracket
         adminAvailTeams.forEach(team=>{
           const isR=(rp?.team_ids||[]).includes(team);
           const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:()=>toggleAdminTeam(team)},`${FLAGS[team]||''} ${team}`);
