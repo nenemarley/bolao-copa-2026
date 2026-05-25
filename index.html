@@ -3904,7 +3904,12 @@ async function runTest(main) {
       const r=realMatchMap[m.num]||{s1:0,s2:0};
       return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
     });
-    await SB.from('match_predictions').upsert(mUp);
+    // Usar SB_TEST com sessão do usuário para respeitar RLS
+    const calcSess = u._session;
+    const calcSB = calcSess ? SB_TEST : SB;
+    if(calcSess) await SB_TEST.auth.setSession({access_token:calcSess.access_token,refresh_token:calcSess.refresh_token});
+
+    await calcSB.from('match_predictions').upsert(mUp);
 
     // Grupos: calcular com standings reais do banco
     const gUp = [];
@@ -3917,7 +3922,6 @@ async function runTest(main) {
         gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
     });
-    // 8 melhores 3ºs
     (userPreds[u.id].thirds||[]).forEach((team,idx)=>{
       const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
       const rst=realStMap[grp]||{};
@@ -3925,9 +3929,8 @@ async function runTest(main) {
       const pts = realPos===3?7:realPos===2||realPos===1?5:0;
       gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
     });
-    await SB.from('group_predictions').upsert(gUp);
+    await calcSB.from('group_predictions').upsert(gUp);
 
-    // Fases eliminatórias: calcular com realKoMap do banco
     const kRows = [];
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
       teams.forEach(team=>{
@@ -3936,12 +3939,11 @@ async function runTest(main) {
         kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
     });
-    await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
-    if(kRows.length>0) await SB.from('knockout_predictions').insert(kRows);
+    await calcSB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+    if(kRows.length>0) await calcSB.from('knockout_predictions').insert(kRows);
 
-    // Artilheiro
-    const spts = realScorer && u.scorer===realScorer ? 10 : 0;
-    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts, bolao_id:testBolao?.id});
+    const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
+    await calcSB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts, bolao_id:testBolao?.id});
 
     tlog(`  ✅ ${u.name} recalculado`, 'ok');
   }
@@ -4077,14 +4079,8 @@ async function cleanupTest(main) {
     tlog('  ℹ️ Nenhum usuário de teste encontrado', 'info');
   }
 
-  // STEP 3: Limpar palpites do admin
-  if(STATE.profile?.id) {
-    await SB.from('match_predictions').delete().eq('user_id',STATE.profile.id);
-    await SB.from('group_predictions').delete().eq('user_id',STATE.profile.id);
-    await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id);
-    await SB.from('scorer_predictions').delete().eq('user_id',STATE.profile.id);
-    tlog('  ✅ Palpites do admin limpos', 'ok');
-  }
+  // STEP 3: Admin (Nenê) não é tocado — apenas usuários de teste são removidos
+  tlog('  ℹ️ Admin preservado: '+STATE.profile?.display_name, 'info');
 
   // STEP 4: Resultados reais NÃO são tocados pelo teste — nada a restaurar
 
