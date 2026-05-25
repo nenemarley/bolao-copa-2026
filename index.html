@@ -3419,8 +3419,11 @@ async function runTest(main) {
   tlog('🧪 INICIANDO TESTE COMPLETO', 'bold');
   tlog('═══════════════════════════════════════', 'info');
 
-  // Guardar sessão admin
+  // Guardar sessão admin (tokens + user para restaurar depois)
   const {data:{session:adminSess}} = await SB.auth.getSession();
+  const adminEmail = adminSess?.user?.email;
+  const adminRefreshToken = adminSess?.refresh_token;
+  tlog('  → Admin capturado: '+adminEmail, 'info');
   
   // Criar bolão de teste se não existir
   tlog('\n🎯 Criando bolão de teste...', 'bold');
@@ -3695,8 +3698,24 @@ async function runTest(main) {
 
   // SEMPRE restaurar sessão do admin ao finalizar
   tlog('\n🔄 Restaurando sessão do admin...', 'bold');
-  if(adminSess) {
-    await SB.auth.setSession(adminSess);
+  if(adminSess || adminRefreshToken) {
+    try {
+      // Usar refresh_token para garantir sessão válida
+      if(adminRefreshToken) {
+        const {data:refreshed} = await SB.auth.refreshSession({refresh_token:adminRefreshToken});
+        if(refreshed?.session) {
+          await SB.auth.setSession(refreshed.session);
+          tlog('  → Sessão admin renovada via refresh_token', 'info');
+        } else {
+          await SB.auth.setSession(adminSess);
+        }
+      } else {
+        await SB.auth.setSession(adminSess);
+      }
+    } catch(e) {
+      tlog('  ⚠️ Erro ao renovar sessão: '+e.message+' — tentando setSession...', 'warn');
+      await SB.auth.setSession(adminSess);
+    }
     // Recarregar perfil do admin (não do último usuário de teste)
     const adminUser = adminSess.user;
     const [adminProfile] = await Promise.all([dbQ('profiles',{id:adminUser.id})]);
@@ -3711,8 +3730,13 @@ async function runTest(main) {
     tlog('  ⚠️ Sessão admin não encontrada — recarregue a página', 'warn');
   }
 
+  // Forçar reload completo do estado para garantir que ranking funciona
+  const {data:freshProfs} = await SB.from('profiles').select('id,display_name,is_admin,username');
+  STATE.profiles = freshProfs||[];
+  tlog('  → STATE.profiles recarregado: '+STATE.profiles.length+' perfis', 'info');
+  
   renderTestPage(main);
-  showToast('✅ Teste completo! Logado como '+STATE.profile?.display_name+'.');
+  showToast('✅ Teste completo! Logado como '+STATE.profile?.display_name+'. Vá para 🏆 Ranking!');
 }
 
 async function cleanupTest(main) {
@@ -3720,6 +3744,10 @@ async function cleanupTest(main) {
   testLog = [];
   renderTestPage(main);
   tlog('🗑 Iniciando limpeza...', 'warn');
+
+  // Guardar sessão admin ANTES de qualquer operação
+  const {data:{session:cleanAdminSess}} = await SB.auth.getSession();
+  tlog('  → Sessão admin capturada: '+(cleanAdminSess?.user?.email||'NENHUMA'), 'info');
 
   // Buscar usuários de teste por email (mais confiável que username)
   const testEmails = TEST_USERS_DATA.map(u=>u.email);
@@ -3738,10 +3766,13 @@ async function cleanupTest(main) {
   
   let allTestIds = new Set();
   
-  // IDs por username
+  // IDs por username (inclui variantes com prefixo teste.)
   (authUsers||[]).forEach(p=>{
     if(allUsernames.includes(p.username)) allTestIds.add(p.id);
   });
+  
+  // Garantir que estamos como admin para deletar
+  if(cleanAdminSess) await SB.auth.setSession(cleanAdminSess);
   
   // IDs por bolão (pega todos membros exceto admin)
   if(testBolaoId) {
