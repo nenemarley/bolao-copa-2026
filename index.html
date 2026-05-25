@@ -1051,7 +1051,9 @@ function renderDashboard(main){
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
-  const mFilter = bolaoId?{bolao_id:bolaoId}:{};
+  // Busca palpites de todos os membros do bolão (sem filtrar por bolao_id
+  // pois palpites antigos podem não ter bolao_id preenchido)
+  const mFilter = {};
   Promise.all([
     dbQ('match_predictions',mFilter,'user_id,points'),
     dbQ('group_predictions',mFilter,'user_id,points'),
@@ -2309,7 +2311,7 @@ IMPORTANTE sobre classificação:
 - Se hoje for a 3ª rodada de algum grupo, inclua a classificação final desse grupo
 - Os 8 melhores 3ºs só são conhecidos após TODOS os 12 grupos encerrarem
 
-Retorne SOMENTE este JSON (sem markdown):
+Retorne SOMENTE o JSON abaixo — sem explicações, sem markdown, sem código Python, só o JSON puro começando com { e terminando com }:
 {
   "matches": [
     {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 1, "finished": true}
@@ -2332,7 +2334,7 @@ IMPORTANTE: Cada jogo que terminar classifica 1 time para as Oitavas de Final.
 - Em "knockout_classified.round32" coloque SOMENTE os times que já venceram seus jogos
 - Se nem todos os 16 jogos terminaram, liste só os vencedores confirmados até agora
 
-Retorne SOMENTE este JSON (sem markdown):
+Retorne SOMENTE o JSON abaixo — sem explicações, sem markdown, sem código Python, só o JSON puro começando com { e terminando com }:
 {
   "matches": [
     {"team1": "Nome pt-BR", "score1": 2, "team2": "Nome pt-BR", "score2": 0, "finished": true}
@@ -2353,7 +2355,7 @@ IMPORTANTE: Cada jogo classifica 1 time para as Quartas de Final.
 - Liste todos os jogos das Oitavas com resultados
 - Em "knockout_classified.round16" coloque SOMENTE os vencedores confirmados
 
-Retorne SOMENTE este JSON (sem markdown):
+Retorne SOMENTE o JSON abaixo — sem explicações, sem markdown, sem código Python, só o JSON puro começando com { e terminando com }:
 {
   "matches": [
     {"team1": "Nome pt-BR", "score1": 1, "team2": "Nome pt-BR", "score2": 0, "finished": true}
@@ -2455,7 +2457,9 @@ Times em português: ${ALL_TEAMS.join(', ')}.`;
 
     } else {
       // Colar JSON direto do clipboard
-      panel.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'1rem',lineHeight:'1.6'}},'Cole o JSON retornado pelo Claude e clique aplicar:'));
+      panel.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.5rem',lineHeight:'1.6'}},'Cole o JSON retornado pelo Claude e clique aplicar:'));
+      panel.appendChild(el('div',{style:{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:'8px',padding:'8px 10px',fontSize:'.75rem',color:'#FCA5A5',marginBottom:'.75rem'}},
+        '⚠️ Cole SOMENTE o JSON (começa com { e termina com }). NÃO cole o prompt nem código Python.'));
 
       const jsonBox = el('textarea',{style:{width:'100%',height:'120px',background:'#0a0f1e',border:'1px solid #374151',borderRadius:'8px',color:'#10B981',fontFamily:'monospace',fontSize:'.7rem',padding:'8px',resize:'none'}});
       jsonBox.placeholder = '{"matches":[...],"standings":null,...}';
