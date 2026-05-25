@@ -1051,8 +1051,6 @@ function renderDashboard(main){
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
-  // Busca palpites de todos os membros do bolão (sem filtrar por bolao_id
-  // pois palpites antigos podem não ter bolao_id preenchido)
   const mFilter = {};
   Promise.all([
     dbQ('match_predictions',mFilter,'user_id,points'),
@@ -1060,9 +1058,14 @@ function renderDashboard(main){
     dbQ('knockout_predictions',mFilter,'user_id,points'),
     dbQ('scorer_predictions',mFilter,'user_id,points'),
     bolaoId ? dbQ('bolao_members',{bolao_id:bolaoId},'user_id') : Promise.resolve([]),
-  ]).then(([mp,gp,kp,sp,members])=>{
+    // Sempre recarregar profiles frescos do banco (para incluir usuários criados depois do login)
+    dbQ('profiles',{},'id,display_name,is_admin,username'),
+  ]).then(([mp,gp,kp,sp,members,freshProfiles])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
+
+    // Atualizar STATE.profiles com dados frescos
+    if(freshProfiles && freshProfiles.length>0) STATE.profiles = freshProfiles;
 
     // Filtrar só os membros do bolão atual
     const memberIds = new Set((members||[]).map(m=>m.user_id));
@@ -2549,25 +2552,47 @@ function normalizeTeamName(name) {
 async function applyAIResults(data, log) {
   // 1. Salvar resultados dos jogos da fase de grupos
   if(data.matches && data.matches.length>0) {
+    // Construir mapa de jogos: buscar do banco OU usar MATCHES constante
+    let matchMap = {}; // key: "team1|team2" → match_number, group_id
+    // Primeiro tentar do adminMatches (carregado previamente)
+    Object.values(adminMatches).forEach(am=>{
+      matchMap[(am.team1_name+'|'+am.team2_name).toLowerCase()] = am;
+      matchMap[(am.team2_name+'|'+am.team1_name).toLowerCase()] = {...am, _reversed:true};
+    });
+    // Se adminMatches vazio, usar MATCHES constante
+    if(Object.keys(matchMap).length===0) {
+      MATCHES.forEach(m=>{
+        const entry = {match_number:m.num, team1_name:m.t1, team2_name:m.t2, group_id:m.group};
+        matchMap[(m.t1+'|'+m.t2).toLowerCase()] = entry;
+        matchMap[(m.t2+'|'+m.t1).toLowerCase()] = {...entry, _reversed:true};
+      });
+      log('ℹ️ Usando mapa de jogos da constante MATCHES', '#60A5FA');
+    }
+
+    const matchRows = [];
     for(const m of data.matches) {
       if(!m.finished) continue;
-      // Normalizar nomes (Claude pode retornar em inglês ou variações)
-      const t1 = normalizeTeamName(m.team1);
-      const t2 = normalizeTeamName(m.team2);
-      if(!t1){ log('⚠️ Time não reconhecido: "'+m.team1+'" — ignorado', '#F59E0B'); continue; }
-      if(!t2){ log('⚠️ Time não reconhecido: "'+m.team2+'" — ignorado', '#F59E0B'); continue; }
-      const matchEntry = Object.values(adminMatches).find(am=>
-        (am.team1_name===t1 && am.team2_name===t2) ||
-        (am.team1_name===t2 && am.team2_name===t1)
-      );
-      if(!matchEntry){ log('⚠️ Jogo não encontrado: '+t1+' × '+t2, '#F59E0B'); continue; }
-      const s1 = matchEntry.team1_name===t1 ? m.score1 : m.score2;
-      const s2 = matchEntry.team1_name===t1 ? m.score2 : m.score1;
-      await dbUpsert('group_matches',{match_number:matchEntry.match_number,real_score1:s1,real_score2:s2,is_finished:true,team1_name:matchEntry.team1_name,team2_name:matchEntry.team2_name,group_id:matchEntry.group_id});
-      const preds = await dbQ('match_predictions',{match_number:matchEntry.match_number});
-      if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,s1,s2)})));
-      adminMatches[matchEntry.match_number]={...matchEntry,real_score1:s1,real_score2:s2,is_finished:true};
-      log('✅ '+matchEntry.team1_name+' '+s1+'-'+s2+' '+matchEntry.team2_name, '#10B981');
+      const t1 = normalizeTeamName(m.team1)||m.team1;
+      const t2 = normalizeTeamName(m.team2)||m.team2;
+      const key = (t1+'|'+t2).toLowerCase();
+      const entry = matchMap[key];
+      if(!entry){ log('⚠️ Jogo não encontrado: '+t1+' × '+t2, '#F59E0B'); continue; }
+      const s1 = entry._reversed ? m.score2 : m.score1;
+      const s2 = entry._reversed ? m.score1 : m.score2;
+      matchRows.push({match_number:entry.match_number, real_score1:s1, real_score2:s2, is_finished:true, team1_name:entry.team1_name, team2_name:entry.team2_name, group_id:entry.group_id});
+      adminMatches[entry.match_number] = {...entry, real_score1:s1, real_score2:s2, is_finished:true};
+    }
+    if(matchRows.length>0) {
+      await dbUpsert('group_matches', matchRows);
+      // Recalcular pontos de match_predictions em batch
+      const allPreds = await dbQ('match_predictions',{});
+      const updatedPreds = [];
+      for(const row of matchRows) {
+        const preds = allPreds.filter(p=>p.match_number===row.match_number);
+        preds.forEach(p=>updatedPreds.push({...p, points:calcPts(p.predicted_score1,p.predicted_score2,row.real_score1,row.real_score2)}));
+      }
+      if(updatedPreds.length>0) await dbUpsert('match_predictions', updatedPreds);
+      log('✅ '+matchRows.length+' jogos salvos!', '#10B981');
     }
   }
 
@@ -3480,10 +3505,27 @@ async function runTest(main) {
 
   // Vincular todos os usuários ao bolão como admin
   if(testBolao) {
+    let vinculados = 0;
     for(const u of signedUsers) {
-      await SB.from('bolao_members').upsert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true});
+      const {error:memberErr} = await SB.from('bolao_members')
+        .upsert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true});
+      if(memberErr){
+        tlog(`  ⚠️ Erro ao vincular ${u.name}: ${memberErr.message}`, 'warn');
+        // Tentar INSERT direto (caso upsert falhe por RLS)
+        const {error:insertErr} = await SB.from('bolao_members')
+          .insert({bolao_id:testBolao.id, user_id:u.id, replicate_preds:true})
+          .onConflict ? undefined : null;
+        if(insertErr) tlog(`  ❌ INSERT também falhou para ${u.name}: ${insertErr.message}`, 'err');
+        else { vinculados++; tlog(`  ✅ ${u.name} vinculado via INSERT`, 'ok'); }
+      } else {
+        vinculados++;
+      }
     }
-    tlog(`  ✅ ${signedUsers.length} usuários vinculados ao bolão de teste`, 'ok');
+    tlog(`  ✅ ${vinculados}/${signedUsers.length} usuários vinculados ao bolão de teste`, 'ok');
+    if(vinculados < signedUsers.length){
+      tlog('  ⚠️ Alguns usuários não foram vinculados — verifique a política RLS de bolao_members', 'warn');
+      tlog('  → Execute no Supabase SQL: CREATE POLICY "admin_insert_members" ON bolao_members FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));', 'warn');
+    }
   }
 
   tlog(`  → ${signedUsers.length}/5 usuários prontos`, 'info');
