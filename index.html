@@ -3032,8 +3032,17 @@ function buildAdminUI(main){
       const t1=t1s.value,t2=t2s.value;
       if(!t1||!t2){showToast('Selecione os dois times','err');return;}
       if(t1===t2){showToast('Os dois times não podem ser iguais','err');return;}
-      const koNums=Object.keys(adminMatches).map(Number).filter(n=>n>=1000);
-      const nextNum=koNums.length>0?Math.max(...koNums)+1:1001;
+      // Usar o próximo ID livre do bracket desta fase (IDs reais 73-104)
+      const bracketIds=(PHASE_BRACKETS[phKey]||[]).map(m=>m.id);
+      const usedIds=Object.keys(adminMatches).map(Number);
+      const freeInBracket=bracketIds.filter(id=>!usedIds.includes(id));
+      let nextNum;
+      if(freeInBracket.length>0){
+        nextNum=freeInBracket[0]; // usa ID correto do bracket (73-104)
+      } else {
+        const koNums=usedIds.filter(n=>n>=73);
+        nextNum=koNums.length>0?Math.max(...koNums)+1:1001;
+      }
       try{
         await dbUpsert('group_matches',{match_number:nextNum,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false,real_score1:null,real_score2:null});
         adminMatches[nextNum]={match_number:nextNum,team1_name:t1,team2_name:t2,group_id:phKey,is_finished:false};
@@ -3160,7 +3169,8 @@ function buildAdminUI(main){
       if(ph.key==='round32') return; // round32 é gerenciado por "quem passa" pelos usuários
       const rp=adminKo[ph.key];
       const card=el('div',{class:'card'});
-      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},ph.label+' ('+(rp?.team_ids||[]).length+'/'+ph.count+')'));
+      const phMaxDisplay = (ph.key==='champion'||ph.key==='runner_up'||ph.key==='third') ? 1 : ph.count;
+      card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},ph.label+' ('+(rp?.team_ids||[]).length+'/'+phMaxDisplay+')'));
       const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
       const prevMap = {round16:'round32',quarter:'round16',semi:'quarter',final:'semi',champion:'final',runner_up:'final',third:'semi'};
       let adminAvailTeams = ALL_TEAMS;
@@ -3178,9 +3188,19 @@ function buildAdminUI(main){
       }
       adminAvailTeams.forEach(team=>{
         const isR=(rp?.team_ids||[]).includes(team);
+        // Limites por fase: champion=1, runner_up=1, third=1, final=2, demais=ph.count
+        const maxSel = (ph.key==='champion'||ph.key==='runner_up'||ph.key==='third') ? 1 : ph.count;
         const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),onclick:async()=>{
           const curr=(adminKo[ph.key]?.team_ids||[]);
           const next=curr.includes(team)?curr.filter(t=>t!==team):[...curr,team];
+          if(next.length>maxSel){
+            // Para fases de 1 seleção: substituir em vez de bloquear
+            if(maxSel===1){
+              next.length=0; next.push(team);
+            } else {
+              showToast('Máximo '+maxSel+' times para esta fase!','err'); return;
+            }
+          }
           try{
             await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
             const pts=ph.key==='champion'?20:10;
@@ -3316,6 +3336,123 @@ const REAL_KO_TEST = {
   third:   ['França'],
 };
 const REAL_SCORER_TEST = 'Mbappé';
+
+// JSON completo de resultados reais usado pelo PASSO 5 do teste
+// Gerado para casar com REAL_STANDINGS_TEST e REAL_KO_TEST acima
+const TEST_RESULTS_JSON = {
+  matches: [
+    // Grupo A
+    {num:1,team1:'México',score1:3,team2:'África do Sul',score2:0,finished:true},
+    {num:2,team1:'México',score1:2,team2:'Coreia do Sul',score2:1,finished:true},
+    {num:3,team1:'México',score1:3,team2:'República Tcheca',score2:0,finished:true},
+    {num:4,team1:'África do Sul',score1:1,team2:'Coreia do Sul',score2:2,finished:true},
+    {num:5,team1:'África do Sul',score1:2,team2:'República Tcheca',score2:1,finished:true},
+    {num:6,team1:'Coreia do Sul',score1:3,team2:'República Tcheca',score2:0,finished:true},
+    // Grupo B
+    {num:7,team1:'Canadá',score1:3,team2:'Bósnia',score2:0,finished:true},
+    {num:8,team1:'Canadá',score1:3,team2:'Catar',score2:0,finished:true},
+    {num:9,team1:'Canadá',score1:2,team2:'Suíça',score2:1,finished:true},
+    {num:10,team1:'Bósnia',score1:2,team2:'Catar',score2:1,finished:true},
+    {num:11,team1:'Bósnia',score1:1,team2:'Suíça',score2:2,finished:true},
+    {num:12,team1:'Catar',score1:0,team2:'Suíça',score2:3,finished:true},
+    // Grupo C
+    {num:13,team1:'Brasil',score1:2,team2:'Marrocos',score2:1,finished:true},
+    {num:14,team1:'Brasil',score1:3,team2:'Haiti',score2:0,finished:true},
+    {num:15,team1:'Brasil',score1:3,team2:'Escócia',score2:0,finished:true},
+    {num:16,team1:'Marrocos',score1:3,team2:'Haiti',score2:0,finished:true},
+    {num:17,team1:'Marrocos',score1:2,team2:'Escócia',score2:1,finished:true},
+    {num:18,team1:'Haiti',score1:1,team2:'Escócia',score2:2,finished:true},
+    // Grupo D
+    {num:19,team1:'Estados Unidos',score1:3,team2:'Paraguai',score2:0,finished:true},
+    {num:20,team1:'Estados Unidos',score1:3,team2:'Austrália',score2:0,finished:true},
+    {num:21,team1:'Estados Unidos',score1:2,team2:'Turquia',score2:1,finished:true},
+    {num:22,team1:'Paraguai',score1:1,team2:'Austrália',score2:2,finished:true},
+    {num:23,team1:'Paraguai',score1:0,team2:'Turquia',score2:3,finished:true},
+    {num:24,team1:'Austrália',score1:1,team2:'Turquia',score2:2,finished:true},
+    // Grupo E
+    {num:25,team1:'Alemanha',score1:3,team2:'Curaçao',score2:0,finished:true},
+    {num:26,team1:'Alemanha',score1:3,team2:'Costa do Marfim',score2:0,finished:true},
+    {num:27,team1:'Alemanha',score1:2,team2:'Equador',score2:1,finished:true},
+    {num:28,team1:'Curaçao',score1:1,team2:'Costa do Marfim',score2:2,finished:true},
+    {num:29,team1:'Curaçao',score1:0,team2:'Equador',score2:3,finished:true},
+    {num:30,team1:'Costa do Marfim',score1:1,team2:'Equador',score2:2,finished:true},
+    // Grupo F
+    {num:31,team1:'Holanda',score1:2,team2:'Japão',score2:1,finished:true},
+    {num:32,team1:'Holanda',score1:3,team2:'Suécia',score2:0,finished:true},
+    {num:33,team1:'Holanda',score1:3,team2:'Tunísia',score2:0,finished:true},
+    {num:34,team1:'Japão',score1:2,team2:'Suécia',score2:1,finished:true},
+    {num:35,team1:'Japão',score1:3,team2:'Tunísia',score2:0,finished:true},
+    {num:36,team1:'Suécia',score1:2,team2:'Tunísia',score2:1,finished:true},
+    // Grupo G
+    {num:37,team1:'Bélgica',score1:3,team2:'Egito',score2:0,finished:true},
+    {num:38,team1:'Bélgica',score1:3,team2:'Irã',score2:0,finished:true},
+    {num:39,team1:'Bélgica',score1:2,team2:'Nova Zelândia',score2:1,finished:true},
+    {num:40,team1:'Egito',score1:2,team2:'Irã',score2:1,finished:true},
+    {num:41,team1:'Egito',score1:1,team2:'Nova Zelândia',score2:2,finished:true},
+    {num:42,team1:'Irã',score1:0,team2:'Nova Zelândia',score2:3,finished:true},
+    // Grupo H
+    {num:43,team1:'Espanha',score1:3,team2:'Cabo Verde',score2:0,finished:true},
+    {num:44,team1:'Espanha',score1:3,team2:'Arábia Saudita',score2:0,finished:true},
+    {num:45,team1:'Espanha',score1:2,team2:'Uruguai',score2:1,finished:true},
+    {num:46,team1:'Cabo Verde',score1:1,team2:'Arábia Saudita',score2:2,finished:true},
+    {num:47,team1:'Cabo Verde',score1:0,team2:'Uruguai',score2:3,finished:true},
+    {num:48,team1:'Arábia Saudita',score1:1,team2:'Uruguai',score2:2,finished:true},
+    // Grupo I
+    {num:49,team1:'França',score1:3,team2:'Senegal',score2:0,finished:true},
+    {num:50,team1:'França',score1:3,team2:'Iraque',score2:0,finished:true},
+    {num:51,team1:'França',score1:2,team2:'Noruega',score2:1,finished:true},
+    {num:52,team1:'Senegal',score1:2,team2:'Iraque',score2:1,finished:true},
+    {num:53,team1:'Senegal',score1:1,team2:'Noruega',score2:2,finished:true},
+    {num:54,team1:'Iraque',score1:0,team2:'Noruega',score2:3,finished:true},
+    // Grupo J
+    {num:55,team1:'Argentina',score1:3,team2:'Argélia',score2:0,finished:true},
+    {num:56,team1:'Argentina',score1:2,team2:'Áustria',score2:1,finished:true},
+    {num:57,team1:'Argentina',score1:3,team2:'Jordânia',score2:0,finished:true},
+    {num:58,team1:'Argélia',score1:1,team2:'Áustria',score2:2,finished:true},
+    {num:59,team1:'Argélia',score1:2,team2:'Jordânia',score2:1,finished:true},
+    {num:60,team1:'Áustria',score1:3,team2:'Jordânia',score2:0,finished:true},
+    // Grupo K
+    {num:61,team1:'Portugal',score1:3,team2:'RD Congo',score2:0,finished:true},
+    {num:62,team1:'Portugal',score1:3,team2:'Uzbequistão',score2:0,finished:true},
+    {num:63,team1:'Portugal',score1:2,team2:'Colômbia',score2:1,finished:true},
+    {num:64,team1:'RD Congo',score1:1,team2:'Uzbequistão',score2:2,finished:true},
+    {num:65,team1:'RD Congo',score1:0,team2:'Colômbia',score2:3,finished:true},
+    {num:66,team1:'Uzbequistão',score1:1,team2:'Colômbia',score2:2,finished:true},
+    // Grupo L
+    {num:67,team1:'Inglaterra',score1:2,team2:'Croácia',score2:1,finished:true},
+    {num:68,team1:'Inglaterra',score1:3,team2:'Gana',score2:0,finished:true},
+    {num:69,team1:'Inglaterra',score1:3,team2:'Panamá',score2:0,finished:true},
+    {num:70,team1:'Croácia',score1:2,team2:'Gana',score2:1,finished:true},
+    {num:71,team1:'Croácia',score1:3,team2:'Panamá',score2:0,finished:true},
+    {num:72,team1:'Gana',score1:2,team2:'Panamá',score2:1,finished:true},
+  ],
+  standings: {
+    A:{1:'México',2:'Coreia do Sul',3:'África do Sul',4:'República Tcheca'},
+    B:{1:'Canadá',2:'Suíça',3:'Bósnia',4:'Catar'},
+    C:{1:'Brasil',2:'Marrocos',3:'Escócia',4:'Haiti'},
+    D:{1:'Estados Unidos',2:'Turquia',3:'Austrália',4:'Paraguai'},
+    E:{1:'Alemanha',2:'Equador',3:'Costa do Marfim',4:'Curaçao'},
+    F:{1:'Holanda',2:'Japão',3:'Suécia',4:'Tunísia'},
+    G:{1:'Bélgica',2:'Nova Zelândia',3:'Egito',4:'Irã'},
+    H:{1:'Espanha',2:'Uruguai',3:'Arábia Saudita',4:'Cabo Verde'},
+    I:{1:'França',2:'Noruega',3:'Senegal',4:'Iraque'},
+    J:{1:'Argentina',2:'Áustria',3:'Argélia',4:'Jordânia'},
+    K:{1:'Portugal',2:'Colômbia',3:'Uzbequistão',4:'RD Congo'},
+    L:{1:'Inglaterra',2:'Croácia',3:'Gana',4:'Panamá'},
+  },
+  best_thirds: ['Escócia','Suíça','Austrália','Costa do Marfim','Suécia','Noruega','Argélia','Gana'],
+  knockout_classified: {
+    round32: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal',
+              'México','Estados Unidos','Bélgica','Uruguai','Canadá','Japão','Marrocos','Coreia do Sul'],
+    round16: ['Brasil','França','Espanha','Alemanha','Argentina','Inglaterra','Holanda','Portugal'],
+    quarter: ['Brasil','França','Espanha','Alemanha'],
+    semi:    ['Brasil','Espanha'],
+    final:   ['Brasil','Espanha'],
+    champion:['Brasil'],
+    runner_up:['Espanha'],
+    third:   ['França'],
+  },
+};
 // Jogos eliminatórios de teste (Rodada de 32 — 16 jogos)
 const KO_MATCHES_TEST = [];
 for(let i=0;i<16;i++){
@@ -3511,7 +3648,7 @@ async function runTest(main) {
       const uid = data.user.id;
       // Criar profile usando o token do usuário de teste via SB_TEST
       await SB_TEST.from('profiles').upsert({id:uid, username:u.username, display_name:u.name, is_admin:false});
-      signedUsers.push({...u, id:uid});
+      signedUsers.push({...u, id:uid, _session:data.session});
       testUserIds.push(uid);
       tlog('  ✅ '+u.name+' criado (id: '+uid.substring(0,8)+'...)', 'ok');
     } catch(e) {
@@ -3550,8 +3687,18 @@ async function runTest(main) {
       rows.push({user_id:u.id, match_number:m.num, predicted_score1:s1, predicted_score2:s2, points:0, bolao_id:testBolao?.id});
       userPreds[u.id].matches[m.num]={s1,s2};
     });
-    const {error} = await SB.from('match_predictions').upsert(rows);
-    if(error) tlog(`  ❌ ${u.name}: ${error.message}`, 'err');
+    // Usar SB_TEST com token do usuário para respeitar RLS (user só pode inserir seu próprio user_id)
+    const testSess = u._session;
+    let matchErr = null;
+    if(testSess) {
+      await SB_TEST.auth.setSession({access_token:testSess.access_token, refresh_token:testSess.refresh_token});
+      const {error} = await SB_TEST.from('match_predictions').upsert(rows);
+      matchErr = error;
+    } else {
+      const {error} = await SB.from('match_predictions').upsert(rows);
+      matchErr = error;
+    }
+    if(matchErr) tlog(`  ❌ ${u.name}: ${matchErr.message}`, 'err');
     else tlog(`  ✅ ${u.name}: 72 jogos`, 'ok');
   }
 
@@ -3612,31 +3759,21 @@ async function runTest(main) {
     tlog(`  ✅ ${u.name}: fases + artilheiro "${scorer}"`, 'ok');
   }
 
-  // STEP 5: Resultados reais (admin)
-  tlog('\n🔧 PASSO 5: Inserindo resultados reais...', 'bold');
-  const matchRows = MATCHES.map(m=>({
-    match_number:m.num, team1_name:m.t1, team2_name:m.t2, group_id:m.group,
-    real_score1:REAL_SCORES_TEST[m.num].s1, real_score2:REAL_SCORES_TEST[m.num].s2, is_finished:true
-  }));
-  await SB.from('group_matches').upsert(matchRows);
-  tlog(`  ✅ 72 resultados de jogos`, 'ok');
-
-  const standRows = [];
-  Object.entries(REAL_STANDINGS_TEST).forEach(([g,pos]) => {
-    Object.entries(pos).forEach(([p,team]) => standRows.push({group_id:g, position:parseInt(p), team_name:team}));
-  });
-  await SB.from('real_group_standings').upsert(standRows);
-  tlog(`  ✅ Classificação dos 12 grupos`, 'ok');
-
-  for(const phase of Object.keys(REAL_KO_TEST)) {
-    await SB.from('real_knockouts').upsert({phase, team_ids:REAL_KO_TEST[phase]});
+  // STEP 5: Resultados reais via applyAIResults (mesmo JSON usado pelo admin)
+  tlog('\n🔧 PASSO 5: Inserindo resultados reais via JSON...', 'bold');
+  // Carregar adminMatches para o applyAIResults funcionar corretamente
+  const amRes = await SB.from('group_matches').select('*');
+  adminMatches = {};
+  (amRes.data||[]).forEach(m=>{ adminMatches[m.match_number]=m; });
+  try {
+    await applyAIResults(TEST_RESULTS_JSON, (msg,type)=>{
+      const color = type==='ok'?'#10B981':type==='err'?'#EF4444':type==='warn'?'#F59E0B':'#60A5FA';
+      tlog('  '+msg, type||'info');
+    });
+    tlog('  ✅ Resultados reais aplicados via JSON', 'ok');
+  } catch(e) {
+    tlog('  ❌ Erro ao aplicar JSON: '+e.message, 'err');
   }
-  await SB.from('real_knockouts').upsert({phase:'top_scorer', team_ids:[REAL_SCORER_TEST]});
-  tlog(`  ✅ Eliminatórias + artilheiro real: ${REAL_SCORER_TEST}`, 'ok');
-
-  // Inserir jogos eliminatórios de teste
-  await SB.from('group_matches').upsert(KO_MATCHES_TEST);
-  tlog(`  ✅ ${KO_MATCHES_TEST.length} jogos eliminatórios inseridos`, 'ok');
 
   // STEP 6: Recalcular pontuações
   tlog('\n🔢 PASSO 6: Recalculando pontuações...', 'bold');
