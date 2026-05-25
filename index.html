@@ -1837,12 +1837,17 @@ function buildKoUI(main){
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
         const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
-          disabled:!isSel&&!!champSel,
           onclick:()=>{
-            koPreds['final']=isSel?[]:[{team,pts:isRealCh?20:0}];
-            const vicePick=avail.find(t=>t!==team);
-            const realVice=koReal['runner_up']?.team_ids?.[0];
-            if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?10:0}];
+            // Toggle: clicou no selecionado → deseleciona; clicou no outro → troca
+            if(isSel){
+              koPreds['final']=[];
+              koPreds['runner_up']=[];
+            } else {
+              koPreds['final']=[{team,pts:isRealCh?20:0}];
+              const vicePick=avail.find(t=>t!==team);
+              const realVice=koReal['runner_up']?.team_ids?.[0];
+              if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?10:0}];
+            }
             koDirty=true; buildKoUI(main);
           }
         },(FLAGS[team]||'')+' '+team+(isSel&&isRealCh?' ✓':'')+(isSel&&!realChamp?' ✓':''));
@@ -1982,7 +1987,7 @@ function buildKoUI(main){
         if(isSel&&isReal) cls='btn-s';
         else if(isSel&&rp&&!isReal) cls='btn-d';
         else if(isSel) cls='btn-p';
-        const b=el('button',{class:`btn btn-sm ${cls}`,disabled:!isSel&&isFull,onclick:()=>pickTeam(team)},
+        const b=el('button',{class:`btn btn-sm ${cls}`,onclick:()=>pickTeam(team)},
           (FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
         btns.appendChild(b);
       });
@@ -1994,10 +1999,12 @@ function buildKoUI(main){
   // ── Disputa de 3º/4º ──
   const thirdPh = PHASES.find(ph=>ph.key==='third');
   if(thirdPh){
-    // Pool: 2 perdedores da semi
+    // Pool: 2 perdedores das semifinais = times do quarter que NÃO foram à semi
     const semiSel = (koPreds['semi']||[]).map(x=>x.team);
+    const quarterSel = (koPreds['quarter']||[]).map(x=>x.team);
     const finalSel = (koPreds['final']||[]).map(x=>x.team);
-    const thirdPool = semiSel.filter(t=>!finalSel.includes(t)); // quem foi na semi mas não na final
+    // Perdedores das semis = semifinalistas (quarter) que não passaram para a final
+    const thirdPool = quarterSel.filter(t=>!semiSel.includes(t));
     const rp3 = koReal['third'];
     const thirdSel = koPreds['third']||[];
     const isFull3 = thirdSel.length>=1;
@@ -2009,7 +2016,7 @@ function buildKoUI(main){
     card3.appendChild(tRow);
     if(thirdPool.length===0){
       // Semi ou Final não preenchidos — sem fallback para dados reais
-      const missingStep = semiSel.length===0 ? 'Semifinal' : finalSel.length===0 ? 'Final (Campeão)' : 'Semifinal e Final';
+      const missingStep = quarterSel.length===0 ? 'Quartas de Final' : semiSel.length===0 ? 'Semifinal' : 'Quartas de Final e Semifinal';
       const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
       msgDiv3.appendChild(el('span',{},'⚠️'));
       msgDiv3.appendChild(el('span',{},'Preencha primeiro: '+missingStep+'.'));
@@ -2025,7 +2032,6 @@ function buildKoUI(main){
       const isReal3=rp3?.team_ids?.includes(team);
       const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
-        disabled:!isSel3&&isFull3,
         onclick:()=>{
           koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
           koDirty=true; buildKoUI(main);
@@ -2765,27 +2771,20 @@ async function applyAIResults(data, log) {
 
 // Cascata admin: ao mudar qualquer fase, limpa as posteriores e recalcula pontos
 async function cascadeAdminKo(fromPhase){
+  // Cascata: limpa fases posteriores do real_knockouts quando uma fase muda
+  // NÃO toca em knockout_predictions — isso é feito pelo botão "Salvar e Recalcular"
   const order = ['round32','round16','quarter','semi','final','third'];
-  const pts_map = {champion:20};
   const startIdx = order.indexOf(fromPhase);
   if(startIdx<0) return;
-  // Fases posteriores a partir da fase que mudou
   for(let i=startIdx+1; i<order.length; i++){
     const ph = order[i];
     if(!adminKo[ph]?.team_ids?.length) continue;
-    // Pool da fase anterior
     const prevPh = order[i-1];
     const prevPool = adminKo[prevPh]?.team_ids||[];
-    // Filtrar times que saíram do pool
     const filtered = adminKo[ph].team_ids.filter(t=>prevPool.includes(t));
     if(filtered.length !== adminKo[ph].team_ids.length){
       await dbUpsert('real_knockouts',{phase:ph,team_ids:filtered});
       adminKo[ph].team_ids = filtered;
-      // Recalcular pontos dos knockout_predictions desta fase
-      const pts = pts_map[ph]||10;
-      const preds = await dbQ('knockout_predictions',{phase:ph});
-      if(preds.length>0) await dbUpsert('knockout_predictions',
-        preds.map(p=>({...p,points:filtered.includes(p.team_name)?pts:0})));
     }
   }
 }
@@ -2816,10 +2815,7 @@ async function syncAdminKoWithStandings(changedGroup){
           await dbUpsert('real_knockouts',{phase:ph,team_ids:filtered});
           if(!adminKo[ph]) adminKo[ph]={phase:ph,team_ids:[]};
           adminKo[ph].team_ids=filtered;
-          // Recalcular pontos dos knockout_predictions desta fase
-          const pts=ph==='champion'?20:10;
-          const preds=await dbQ('knockout_predictions',{phase:ph});
-          if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:filtered.includes(p.team_name)?pts:0})));
+          // pontos serão recalculados pelo botão "Salvar e Recalcular" na aba Eliminatórias
         }
       }
     }
@@ -3288,12 +3284,10 @@ function buildAdminUI(main){
         if(next.length>16){showToast('Máximo 16 times!','err');return;}
         try{
           await dbUpsert('real_knockouts',{phase:'round32',team_ids:next});
-          const preds=await dbQ('knockout_predictions',{phase:'round32'});
-          if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?10:0})));
           if(!adminKo['round32'])adminKo['round32']={phase:'round32',team_ids:[]};
           adminKo['round32'].team_ids=next;
           await cascadeAdminKo('round32');
-          showToast('✅ Rodada de 32 atualizada!'); buildAdminUI(main);
+          buildAdminUI(main); // sem toast, troca imediata
         }catch(e){showToast(e.message,'err');}
       }
 
@@ -3370,32 +3364,41 @@ function buildAdminUI(main){
         main.appendChild(card);
         return;
       }
-      // Função de salvar fase admin
+      // Salvar fase: só real_knockouts (sem tocar knockout_predictions — precisa de botão Salvar)
       async function saveAdminPhase(next) {
         try{
           await dbUpsert('real_knockouts',{phase:ph.key,team_ids:next});
-          const pts=ph.key==='final'?20:10;
-          const preds=await dbQ('knockout_predictions',{phase:ph.key});
-          if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:next.includes(p.team_name)?pts:0})));
           if(!adminKo[ph.key])adminKo[ph.key]={phase:ph.key,team_ids:[]};
           adminKo[ph.key].team_ids=next;
+          // Se final, derivar champion e runner_up automaticamente
           if(ph.key==='final' && next.length===1){
             const champ=next[0];
             const semiTeams=adminKo['semi']?.team_ids||[];
             const vice=semiTeams.find(t=>t!==champ)||'';
             await dbUpsert('real_knockouts',{phase:'champion',team_ids:[champ]});
             if(vice) await dbUpsert('real_knockouts',{phase:'runner_up',team_ids:[vice]});
-            const cpreds=await dbQ('knockout_predictions',{phase:'champion'});
-            if(cpreds.length>0) await dbUpsert('knockout_predictions',cpreds.map(p=>({...p,points:p.team_name===champ?20:0})));
-            const vpreds=await dbQ('knockout_predictions',{phase:'runner_up'});
-            if(vpreds.length>0) await dbUpsert('knockout_predictions',vpreds.map(p=>({...p,points:p.team_name===vice?10:0})));
             if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
             adminKo['champion'].team_ids=[champ];
             if(vice){if(!adminKo['runner_up'])adminKo['runner_up']={phase:'runner_up',team_ids:[]}; adminKo['runner_up'].team_ids=[vice];}
           }
           await cascadeAdminKo(ph.key);
-          showToast('✅ Atualizado!'); buildAdminUI(main);
+          buildAdminUI(main); // rerender sem toast (troca é imediata)
         }catch(e){ showToast(e.message,'err'); }
+      }
+
+      // Recalcular pontos dos participantes (chamado pelo botão Salvar)
+      async function recalcAdminPhasePoints() {
+        try{
+          const phasesToCalc = ['round32','round16','quarter','semi','final','third','champion','runner_up'];
+          for(const phase of phasesToCalc){
+            const teamIds = adminKo[phase]?.team_ids||[];
+            if(teamIds.length===0) continue;
+            const pts = phase==='final'||phase==='champion'?20:10;
+            const preds = await dbQ('knockout_predictions',{phase});
+            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:teamIds.includes(p.team_name)?pts:0})));
+          }
+          showToast('✅ Pontuações das fases recalculadas!');
+        }catch(e){ showToast('Erro ao recalcular: '+e.message,'err'); }
       }
 
       async function toggleAdminTeam(team, opponent) {
@@ -3473,6 +3476,26 @@ function buildAdminUI(main){
       main.appendChild(card);
     });
 
+    // Botão Salvar — recalcula pontos dos participantes com as seleções atuais
+    const saveKoBtn=el('button',{
+      class:'btn btn-p',
+      style:{width:'100%',marginTop:'1rem',padding:'.75rem',fontSize:'1rem',fontWeight:'700'},
+      onclick:async()=>{
+        saveKoBtn.disabled=true; saveKoBtn.textContent='⏳ Salvando...';
+        try{
+          const phasesToCalc=['round32','round16','quarter','semi','final','third','champion','runner_up'];
+          for(const phase of phasesToCalc){
+            const teamIds=adminKo[phase]?.team_ids||[];
+            const pts=phase==='final'||phase==='champion'?20:10;
+            const preds=await dbQ('knockout_predictions',{phase});
+            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:teamIds.includes(p.team_name)?pts:0})));
+          }
+          showToast('✅ Pontuações das fases recalculadas!');
+        }catch(e){ showToast('Erro: '+e.message,'err'); }
+        saveKoBtn.disabled=false; saveKoBtn.textContent='💾 Salvar e Recalcular Pontuações';
+      }
+    },'💾 Salvar e Recalcular Pontuações');
+    main.appendChild(saveKoBtn);
   }
 
   if(adminTab==='scorer'){
@@ -3913,24 +3936,30 @@ async function runTest(main) {
 
   for(const u of signedUsers) {
     try {
-      // Jogos — admin tem política admin_insert/update_match_preds
-      const mUp = MATCHES.map(m=>{
+      // Usar sessão do próprio usuário (mesma estratégia dos PASSOs 2/3/4)
+      const sess5 = u._session;
+      const db5 = sess5 ? SB_TEST : SB;
+      if(sess5) await SB_TEST.auth.setSession({access_token:sess5.access_token, refresh_token:sess5.refresh_token});
+
+      // Jogos: DELETE + INSERT com pontos calculados (usuário pode deletar/inserir os próprios)
+      const mRows = MATCHES.map(m=>{
         const p=userPreds[u.id].matches[m.num];
         const r=realMatchMap[m.num]||{s1:0,s2:0};
         return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
       });
-      const {error:mErr} = await SB.from('match_predictions').upsert(mUp);
+      await db5.from('match_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      const {error:mErr} = await db5.from('match_predictions').insert(mRows);
       if(mErr) throw new Error('match_predictions: '+mErr.message);
 
-      // Grupos — admin tem política admin_insert/update_group_preds
-      const gUp = [];
+      // Grupos: DELETE + INSERT com pontos
+      const gRows = [];
       Object.entries(userPreds[u.id].groups).forEach(([g,positions])=>{
         Object.entries(positions).forEach(([pos,team])=>{
           const p=parseInt(pos);
           const rst=realStMap[g]||{};
           const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
           const pts = p<=3 ? calcGrpPts(p, realPos) : 0;
-          gUp.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
+          gRows.push({user_id:u.id, group_id:g, position:p, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
       (userPreds[u.id].thirds||[]).forEach((team,idx)=>{
@@ -3938,12 +3967,13 @@ async function runTest(main) {
         const rst=realStMap[grp]||{};
         const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
         const pts = realPos===3?7:realPos===2||realPos===1?5:0;
-        gUp.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
+        gRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
-      const {error:gErr} = await SB.from('group_predictions').upsert(gUp);
+      await db5.from('group_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      const {error:gErr} = await db5.from('group_predictions').insert(gRows);
       if(gErr) throw new Error('group_predictions: '+gErr.message);
 
-      // Fases KO — admin tem política admin_insert/update_ko_preds
+      // KO: DELETE + INSERT com pontos
       const kRows = [];
       Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
         teams.forEach(team=>{
@@ -3952,16 +3982,16 @@ async function runTest(main) {
           kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
-      await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      await db5.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
       if(kRows.length>0){
-        const {error:kErr} = await SB.from('knockout_predictions').insert(kRows);
+        const {error:kErr} = await db5.from('knockout_predictions').insert(kRows);
         if(kErr) throw new Error('knockout_predictions: '+kErr.message);
       }
 
-      // Artilheiro — admin tem política admin_insert/update_scorer_preds
+      // Artilheiro
       const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
-      const {error:sErr} = await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
-      if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
+      await db5.from('scorer_predictions').delete().eq('user_id',u.id);
+      await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
 
       tlog(`  ✅ ${u.name} recalculado`, 'ok');
     } catch(e) {
