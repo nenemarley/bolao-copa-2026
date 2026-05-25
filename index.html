@@ -1826,52 +1826,40 @@ function buildKoUI(main){
 
     const btns = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
 
-    // Fase "final": seleciona 2 finalistas → 1 deles será campeão
+    // Final — confronto entre os 2 da semi, escolhe 1 campeão (20pts); vice automático
     if(ph.key==='final'){
-      // final = 1 time: o campeão. Pool = os 2 da semi.
-      // Acertar o campeão = 20pts. O vice (o outro da semi) = 10pts automático.
       const realChamp = koReal['final']?.team_ids?.[0] || koReal['champion']?.team_ids?.[0];
-      const semiTeams = (koReal['semi']?.team_ids||[]);
       const champSel = (koPreds['final']||[])[0]?.team;
-      avail.forEach(team=>{
-        const isSel = champSel===team;
-        const isRealCh = realChamp && team===realChamp;
-        let cls='btn-o';
-        if(isSel && isRealCh) cls='btn-s';
-        else if(isSel && realChamp && !isRealCh) cls='btn-d';
-        else if(isSel) cls='btn-p';
-        const blocked = !isSel && !!champSel;
-        const b = el('button',{
-          class:`btn btn-sm ${cls}`,
-          disabled: blocked,
-          style: blocked?{opacity:'0.35',cursor:'not-allowed'}:{},
+      const t1 = avail[0], t2 = avail[1];
+      const matchRow = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+      [t1,t2].forEach(team=>{
+        if(!team) return;
+        const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
+        const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
+        const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
+          disabled:!isSel&&!!champSel,
           onclick:()=>{
-            koPreds['final'] = isSel ? [] : [{team, pts:isRealCh?20:0}];
-            // Vice automático
-            const vicePick = avail.find(t=>t!==team);
-            const realVice = koReal['runner_up']?.team_ids?.[0]; // resultado real do vice
-            if(vicePick) koPreds['runner_up']=[{team:vicePick, pts:realVice&&vicePick===realVice?10:0}];
+            koPreds['final']=isSel?[]:[{team,pts:isRealCh?20:0}];
+            const vicePick=avail.find(t=>t!==team);
+            const realVice=koReal['runner_up']?.team_ids?.[0];
+            if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?10:0}];
             koDirty=true; buildKoUI(main);
           }
-        },(FLAGS[team]||'')+' '+team+(isSel&&isRealCh?' ·20p':''));
-        btns.appendChild(b);
+        },(FLAGS[team]||'')+' '+team+(isSel&&isRealCh?' ✓':'')+(isSel&&!realChamp?' ✓':''));
+        if(matchRow.children.length>0) matchRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
+        matchRow.appendChild(b);
       });
-      card.appendChild(btns);
-      // Vice automático (demonstrativo)
-      const vicePick = avail.find(t=>t!==champSel);
+      card.appendChild(matchRow);
+      // Vice automático
+      const vicePick=avail.find(t=>t!==champSel);
       if(champSel && vicePick){
-        const realVice = koReal['runner_up']?.team_ids?.[0]; // resultado real do vice
-        const viceOk = realVice && vicePick===realVice;
-        const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)'}});
-        const vBadge=el('span',{style:{
-          display:'inline-flex',alignItems:'center',gap:'4px',
-          background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',
-          border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),
-          borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'
-        }},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
-        viceDiv.appendChild(el('span',{style:{marginRight:'6px'}},'🥈 Vice (auto):'));
+        const realVice=koReal['runner_up']?.team_ids?.[0];
+        const viceOk=realVice&&vicePick===realVice;
+        const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:'6px'}});
+        const vBadge=el('span',{style:{display:'inline-flex',alignItems:'center',gap:'4px',background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'}},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
+        viceDiv.appendChild(el('span',{},'🥈 Vice (auto):'));
         viceDiv.appendChild(vBadge);
-        if(realVice && !viceOk) viceDiv.appendChild(el('span',{style:{marginLeft:'6px',color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
+        if(realVice&&!viceOk) viceDiv.appendChild(el('span',{style:{color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
         card.appendChild(viceDiv);
       }
       main.appendChild(card);
@@ -2024,30 +2012,26 @@ function buildKoUI(main){
       card3.appendChild(msgDiv3);
       main.appendChild(card3);
     } else {
-    card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha 1 time entre os 2 perdedores da Semifinal. Acertar = 10pts.'));
-    const btns3=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
-    const pool3 = thirdPool;
-      pool3.forEach(team=>{
-        const isSel3=thirdSel.find(x=>x.team===team);
-        const isReal3=rp3?.team_ids?.includes(team);
-        let cls='btn-o';
-        if(isSel3&&isReal3) cls='btn-s';
-        else if(isSel3&&rp3&&!isReal3) cls='btn-d';
-        else if(isSel3) cls='btn-p';
-        const blocked3=!isSel3&&isFull3;
-        const b3=el('button',{
-          class:`btn btn-sm ${cls}`,
-          disabled:blocked3,
-          style:blocked3?{opacity:'0.35',cursor:'not-allowed'}:{},
-          onclick:()=>{
-            koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
-            koDirty=true; buildKoUI(main);
-          }
-        },(FLAGS[team]||'')+' '+team+(isSel3&&isReal3?' ·10p':''));
-        btns3.appendChild(b3);
-      });
-      card3.appendChild(btns3);
-      main.appendChild(card3);
+    card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha quem ganha o 3º lugar. Acertar = 10pts.'));
+    const t3a=thirdPool[0], t3b=thirdPool[1];
+    const matchRow3=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
+    [t3a,t3b].forEach(team=>{
+      if(!team) return;
+      const isSel3=thirdSel.find(x=>x.team===team);
+      const isReal3=rp3?.team_ids?.includes(team);
+      const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
+      const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
+        disabled:!isSel3&&isFull3,
+        onclick:()=>{
+          koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
+          koDirty=true; buildKoUI(main);
+        }
+      },(FLAGS[team]||'')+' '+team+(isSel3&&isReal3?' ✓':''));
+      if(matchRow3.children.length>0) matchRow3.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
+      matchRow3.appendChild(b3);
+    });
+    card3.appendChild(matchRow3);
+    main.appendChild(card3);
     }
   }
 
@@ -3207,6 +3191,36 @@ function buildAdminUI(main){
     }
     main.appendChild(addCard);
 
+    // Placar padrão para jogos eliminatórios desta fase
+    if(phMatches.length>0){
+      if(!window._adminKoDef) window._adminKoDef={s1:null,s2:null};
+      const koDefBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
+      koDefBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
+      koDefBar.appendChild(makeMatchCtrl(window._adminKoDef.s1, v=>{ window._adminKoDef.s1=v; }));
+      koDefBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+      koDefBar.appendChild(makeMatchCtrl(window._adminKoDef.s2, v=>{ window._adminKoDef.s2=v; }));
+      const koApplyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
+        const ds1=window._adminKoDef.s1, ds2=window._adminKoDef.s2;
+        if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
+        koApplyBtn.textContent='⏳...'; koApplyBtn.disabled=true;
+        let saved=0;
+        for(const m of phMatches){
+          try{
+            await dbUpsert('group_matches',{match_number:m.match_number,real_score1:ds1,real_score2:ds2,is_finished:true,team1_name:m.team1_name,team2_name:m.team2_name,group_id:phKey});
+            const preds=await dbQ('match_predictions',{match_number:m.match_number});
+            if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,ds1,ds2)})));
+            adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:ds1,real_score2:ds2,is_finished:true};
+            saved++;
+          }catch(e){}
+        }
+        showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+saved+' jogos!');
+        koApplyBtn.textContent='Aplicar a todos'; koApplyBtn.disabled=false;
+        buildAdminUI(main);
+      }},'Aplicar a todos');
+      koDefBar.appendChild(koApplyBtn);
+      main.appendChild(koDefBar);
+    }
+
     // Lista de jogos desta fase
     if(phMatches.length===0){
       main.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:'.85rem'}},'Nenhum jogo cadastrado para esta fase ainda.'));
@@ -3754,8 +3768,17 @@ async function runTest(main) {
         userPreds[u.id].groups[g][pos]=team;
       });
     });
-    const {error} = await SB.from('group_predictions').upsert(rows);
-    if(error) tlog(`  ❌ ${u.name}: ${error.message}`, 'err');
+    let grpErr = null;
+    const testSessGrp = u._session;
+    if(testSessGrp){
+      await SB_TEST.auth.setSession({access_token:testSessGrp.access_token, refresh_token:testSessGrp.refresh_token});
+      const {error} = await SB_TEST.from('group_predictions').upsert(rows);
+      grpErr = error;
+    } else {
+      const {error} = await SB.from('group_predictions').upsert(rows);
+      grpErr = error;
+    }
+    if(grpErr) tlog(`  ❌ ${u.name}: ${grpErr.message}`, 'err');
     else tlog(`  ✅ ${u.name}: 48 posições de grupo`, 'ok');
   }
 
@@ -3817,7 +3840,12 @@ async function runTest(main) {
       thirdsRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:0, bolao_id:testBolao?.id});
     });
     userPreds[u.id].thirds = pool3;
-    await SB.from('group_predictions').upsert(thirdsRows);
+    if(u._session){
+      await SB_TEST.auth.setSession({access_token:u._session.access_token,refresh_token:u._session.refresh_token});
+      await SB_TEST.from('group_predictions').upsert(thirdsRows);
+    } else {
+      await SB.from('group_predictions').upsert(thirdsRows);
+    }
   }
   tlog('  ✅ Palpites de 8 melhores 3ºs inseridos (com variedade)', 'ok');
 
@@ -3851,9 +3879,17 @@ async function runTest(main) {
     }
     const scorer = scorerOptions[ui];
     userPreds[u.id].scorer = scorer;
-    await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
-    if(rows.length>0) await SB.from('knockout_predictions').insert(rows);
-    await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
+    const testSessKo = u._session;
+    if(testSessKo){
+      await SB_TEST.auth.setSession({access_token:testSessKo.access_token,refresh_token:testSessKo.refresh_token});
+      await SB_TEST.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      if(rows.length>0) await SB_TEST.from('knockout_predictions').insert(rows);
+      await SB_TEST.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
+    } else {
+      await SB.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      if(rows.length>0) await SB.from('knockout_predictions').insert(rows);
+      await SB.from('scorer_predictions').upsert({user_id:u.id, player_name:scorer, points:0, bolao_id:testBolao?.id});
+    }
     tlog(`  ✅ ${u.name}: fases (offset=${ui}) + artilheiro "${scorer}"`, 'ok');
   }
 
