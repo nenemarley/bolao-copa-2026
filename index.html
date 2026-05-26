@@ -421,6 +421,17 @@ function genMatches(){
 }
 const MATCHES = genMatches();
 
+// Pontuação da classificação dos grupos
+// predPos = posição palpitada (1,2,3), realPos = posição real (1,2,3 ou null)
+function calcGrpPts(predPos, realPos){
+  if(realPos===null||realPos===undefined) return 0;
+  if(predPos===realPos) return predPos===3?7:10; // exato: 1º/2º=10pts, 3º=7pts
+  const diff=Math.abs(predPos-realPos);
+  if(diff===1) return 5;
+  if(diff===2) return 2;
+  return 0;
+}
+
 function calcPts(p1,p2,r1,r2){
   if(p1===r1&&p2===r2) return 10;
   const pw=p1>p2?1:p1<p2?2:0,rw=r1>r2?1:r1<r2?2:0,ok=pw===rw;
@@ -1907,14 +1918,18 @@ function buildKoUI(main){
       const userMatchWinners = {};
       const r32picks = (koPreds['round32']||[]).map(x=>x.team);
 
-      // Distribuir os 8 melhores 3ºs pelos 8 slots de 3º em ordem (sem duplicatas)
-      // Filtrar times que já são 1º/2º de algum grupo nos palpites do usuário
+      // Distribuir os 8 melhores 3ºs pelos 8 slots em ordem (sem duplicatas)
+      // Filtrar times que já são 1º/2º nos palpites do usuário
       const userTop2 = new Set();
       Object.entries(userSt).forEach(([g,pos])=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
+      // Usar palpite do usuário; se inválido, complementar com os reais do banco
       const validUserThirds = userThirds.filter(t=>!userTop2.has(t));
+      // Completar com os reais caso o usuário tenha menos de 8 válidos
+      const realThirdsForSlots = koRealThirds.filter(t=>!userTop2.has(t)&&!validUserThirds.includes(t));
+      const thirdsForSlots = [...validUserThirds, ...realThirdsForSlots].slice(0,8);
       const thirdSlotOrder = [74,77,79,80,81,82,85,87];
       const thirdAssignment = {};
-      validUserThirds.slice(0,8).forEach((team,i)=>{
+      thirdsForSlots.forEach((team,i)=>{
         if(thirdSlotOrder[i]) thirdAssignment[thirdSlotOrder[i]] = team;
       });
 
@@ -3027,13 +3042,13 @@ function buildAdminUI(main){
             const preds=await dbQ('group_predictions',{group_id:g,position:pos});
             if(preds.length>0){
               const rm=adminStandings[g];
-              await dbUpsert('group_predictions',preds.map(p=>{
+              const realThirdsAdm=adminKo['best_thirds']?.team_ids||[];
+              for(const p of preds){
                 let pts=0;
-                const realThirdsAdm=adminKo['best_thirds']?.team_ids||[];
                 const rp=(()=>{if(rm[1]===p.team_name)return 1;if(rm[2]===p.team_name)return 2;if(realThirdsAdm.includes(p.team_name))return 3;return null;})();
                 if(p.position<=3&&rp!==null) pts=calcGrpPts(p.position,rp);
-                return {...p,points:pts};
-              }));
+                if(p.points!==pts) await SB.from('group_predictions').update({points:pts}).eq('user_id',p.user_id).eq('group_id',g).eq('position',pos).eq('team_name',p.team_name);
+              }
             }
             // Se mudou o 3º de um grupo, verificar se o time antigo estava em best_thirds
             if(pos===3 && adminKo['best_thirds']?.team_ids){
@@ -3067,7 +3082,16 @@ function buildAdminUI(main){
 
   if(adminTab==='thirds'){
     const card=el('div',{class:'card'});
-    card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},'8 MELHORES 3ºS COLOCADOS'));
+    const thirdsHeader=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.3rem'}});
+    thirdsHeader.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)'}},'8 MELHORES 3ºS COLOCADOS'));
+    thirdsHeader.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
+      if(!confirm('Limpar todos os 8 melhores 3ºs do banco?')) return;
+      await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:[]});
+      if(!adminKo['best_thirds']) adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
+      adminKo['best_thirds'].team_ids=[];
+      showToast('✅ Best thirds limpos!'); buildAdminUI(main);
+    }},'🗑 Limpar'));
+    card.appendChild(thirdsHeader);
     card.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'1rem'}},'Selecione os 8 times que se classificaram como melhores 3ºs. Isso atualiza automaticamente os palpites dos participantes.'));
     const currThirds = adminKo['best_thirds']?.team_ids||[];
     // Pool: todos os 3ºs dos grupos (adminStandings)
