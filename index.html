@@ -2331,6 +2331,30 @@ function buildKoMatchesUI(main, realSt){
 
   // Mostrar jogos com palpite de placar
   main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
+
+  // Placar padrão — aplica a todos os jogos desta fase
+  if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
+  const koDefBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
+  koDefBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
+  koDefBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }));
+  koDefBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+  koDefBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }));
+  const koApplyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
+    const ds1=window._koMatchDef.s1, ds2=window._koMatchDef.s2;
+    if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
+    koApplyBtn.textContent='⏳...'; koApplyBtn.disabled=true;
+    const openMatches=phaseMatches.filter(m=>canBetKoMatch(m.match_number));
+    for(const m of openMatches){
+      koMatchPreds[m.match_number]={s1:ds1,s2:ds2,pts:0};
+    }
+    koMatchDirty=true;
+    await saveKoMatches();
+    koApplyBtn.textContent='Aplicar a todos'; koApplyBtn.disabled=false;
+    buildKoMatchesUI(main,koMatchRealSt);
+  }},'Aplicar a todos');
+  koDefBar.appendChild(koApplyBtn);
+  main.appendChild(koDefBar);
+
   phaseMatches.sort((a,b)=>a.match_number-b.match_number).forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
     const hasResult = m.is_finished && m.real_score1!==undefined;
