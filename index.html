@@ -1908,10 +1908,13 @@ function buildKoUI(main){
       const r32picks = (koPreds['round32']||[]).map(x=>x.team);
 
       // Distribuir os 8 melhores 3ºs pelos 8 slots de 3º em ordem (sem duplicatas)
-      // Slots de 3º no bracket, em ordem de aparição: 74,77,79,80,81,82,85,87
+      // Filtrar times que já são 1º/2º de algum grupo nos palpites do usuário
+      const userTop2 = new Set();
+      Object.entries(userSt).forEach(([g,pos])=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
+      const validUserThirds = userThirds.filter(t=>!userTop2.has(t));
       const thirdSlotOrder = [74,77,79,80,81,82,85,87];
-      const thirdAssignment = {}; // matchId → time 3º
-      userThirds.slice(0,8).forEach((team,i)=>{
+      const thirdAssignment = {};
+      validUserThirds.slice(0,8).forEach((team,i)=>{
         if(thirdSlotOrder[i]) thirdAssignment[thirdSlotOrder[i]] = team;
       });
 
@@ -2717,8 +2720,11 @@ async function applyAIResults(data, log) {
   if(data.best_thirds && data.best_thirds.length>0) {
     const normThirds = data.best_thirds.map(t=>normalizeTeamName(t)).filter(Boolean);
     await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:normThirds});
-    const preds = await dbQ('group_predictions',{group_id:'_thirds',position:3});
-    if(preds.length>0) await dbUpsert('group_predictions',preds.map(p=>({...p,points:data.best_thirds.includes(p.team_name)?5:0})));
+    const preds = await dbQ('group_predictions',{group_id:'_thirds'});
+    for(const p of preds){
+      const newPts=normThirds.includes(p.team_name)?5:0;
+      if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
+    }
     log('✅ 8 melhores 3ºs definidos', '#10B981');
   }
 
@@ -3040,7 +3046,10 @@ function buildAdminUI(main){
                 await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:cleanedThirds});
                 adminKo['best_thirds'].team_ids=cleanedThirds;
                 const thirdsP=await dbQ('group_predictions',{group_id:'_thirds'});
-                if(thirdsP.length>0) await dbUpsert('group_predictions',thirdsP.map(p=>({...p,points:cleanedThirds.includes(p.team_name)?5:0})));
+                for(const p of thirdsP){
+                  const newPts=cleanedThirds.includes(p.team_name)?5:0;
+                  if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
+                }
               }
             }
             // Cascata: limpar fases eliminatórias reais se o pool mudou
@@ -3090,7 +3099,10 @@ function buildAdminUI(main){
             try{
               await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:next});
               const thirdsP=await dbQ('group_predictions',{group_id:'_thirds'});
-              if(thirdsP.length>0) await dbUpsert('group_predictions',thirdsP.map(p=>({...p,points:next.includes(p.team_name)?5:0})));
+              for(const p of thirdsP){
+                const newPts=next.includes(p.team_name)?5:0;
+                if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
+              }
               if(!adminKo['best_thirds'])adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
               adminKo['best_thirds'].team_ids=next;
               await syncAdminKoWithStandings(null);
@@ -3326,10 +3338,13 @@ function buildAdminUI(main){
       const adminMatchesMapR32={};
       Object.values(adminMatches).forEach(m=>{ adminMatchesMapR32[m.match_number]=m; });
 
-      // Distribuir 3ºs pelos slots em ordem (sem duplicatas)
+      // Distribuir 3ºs pelos slots em ordem — filtrar times que já são 1º/2º de algum grupo
+      const top2Teams = new Set();
+      Object.values(adminStandings).forEach(pos=>{ if(pos[1]) top2Teams.add(pos[1]); if(pos[2]) top2Teams.add(pos[2]); });
+      const validThirds = realThirdsR32.filter(t=>!top2Teams.has(t));
       const adminThirdSlotOrder = [74,77,79,80,81,82,85,87];
       const adminThirdAssign = {};
-      realThirdsR32.slice(0,8).forEach((team,i)=>{
+      validThirds.slice(0,8).forEach((team,i)=>{
         if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]] = team;
       });
 
