@@ -281,6 +281,30 @@ const PHASE_BRACKETS = {
 };
 
 // Resolver slot a partir dos resultados reais cadastrados
+// Retorna {team, label} para um slot do bracket
+// label = ex: "1ºA", "2ºB", "3ºC(1º)", "Venc. J89"
+function resolveSlotInfo(slot, standings, thirds, thirdAssign, matchId) {
+  if(slot.type==='1'||slot.type==='2') {
+    const pos=slot.type==='1'?1:2;
+    const team=standings?.[slot.group]?.[pos];
+    return {team: team||(pos+'ºGrupo'+slot.group), label: pos+'º'+slot.group};
+  }
+  if(slot.type==='3') {
+    const team = thirdAssign?.[matchId];
+    const order = thirds.indexOf(team);
+    const orderLabel = order>=0 ? (order+1)+'º' : '?º';
+    const grp = team ? Object.keys(standings||{}).find(g=>standings[g]?.[3]===team)||'?' : '?';
+    return {
+      team: team||('3º('+( slot.thirdGroups||[]).join('/')+')'),
+      label: team ? '3º'+grp+'('+orderLabel+')' : '3º?'
+    };
+  }
+  if(slot.type==='W'||slot.type==='L') {
+    return {team:null, label:(slot.type==='W'?'Venc.':'Perd.')+' J'+slot.matchId};
+  }
+  return {team:'?', label:'?'};
+}
+
 function resolveMatchSlot(slot, realStandings, realThirds, adminMatchesMap) {
   if(slot.type==='1'||slot.type==='2') {
     const pos = slot.type==='1'?1:2;
@@ -1934,15 +1958,11 @@ function buildKoUI(main){
       });
 
       ROUND32_BRACKET.forEach(m=>{
-        let t1, t2;
-        t1 = m.slot1.type==='3'
-          ? (thirdAssignment[m.id] || '3º '+m.id)
-          : resolveMatchSlot(m.slot1,userSt,userThirds,{});
-        t2 = m.slot2.type==='3'
-          ? (thirdAssignment[m.id] || '3º '+m.id)
-          : resolveMatchSlot(m.slot2,userSt,userThirds,{});
+        const i1=resolveSlotInfo(m.slot1,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const i2=resolveSlotInfo(m.slot2,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const t1=i1.team||i1.label, t2=i2.team||i2.label;
         const winner=r32picks.find(t=>t===t1||t===t2);
-        userMatchWinners[m.id]={winner:winner||null,t1,t2};
+        userMatchWinners[m.id]={winner:winner||null,t1,t2,l1:i1.label,l2:i2.label};
       });
       const r16picks = (koPreds['round16']||[]).map(x=>x.team);
       ROUND16_BRACKET.forEach(m=>{
@@ -1985,25 +2005,22 @@ function buildKoUI(main){
 
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
 
-        // Time 1
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
         const b1=el('button',{
           class:`btn btn-sm ${cls1}`,
-          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.5'},
+          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},
           disabled:!t1Known,
           onclick:()=>pickTeam(t1,t2)
         },(FLAGS[t1]||'')+' '+t1+(sel1?pts1:''));
 
-        // VS
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
 
-        // Time 2
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
         const b2=el('button',{
           class:`btn btn-sm ${cls2}`,
-          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.5'},
+          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},
           disabled:!t2Known,
           onclick:()=>pickTeam(t2,t1)
         },(FLAGS[t2]||'')+' '+t2+(sel2?pts2:''));
@@ -3373,30 +3390,26 @@ function buildAdminUI(main){
       });
 
       ROUND32_BRACKET.forEach(m=>{
-        let t1, t2;
-        t1 = m.slot1.type==='3'
-          ? (adminThirdAssign[m.id] || '3º J'+m.id)
-          : resolveMatchSlot(m.slot1,adminStandings,realThirdsR32,adminMatchesMapR32);
-        t2 = m.slot2.type==='3'
-          ? (adminThirdAssign[m.id] || '3º J'+m.id)
-          : resolveMatchSlot(m.slot2,adminStandings,realThirdsR32,adminMatchesMapR32);
-        const t1Known=t1&&!t1.includes('º do Grupo')&&!t1.includes('3º J')&&!t1.includes('3º (');
-        const t2Known=t2&&!t2.includes('º do Grupo')&&!t2.includes('3º J')&&!t2.includes('3º (');
+        const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
+        const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds,adminThirdAssign,m.id);
+        const t1=i1.team||i1.label, t2=i2.team||i2.label;
+        const l1=i1.label, l2=i2.label;
+        const t1Known=!!(i1.team); const t2Known=!!(i2.team);
         const sel1=currR32.includes(t1), sel2=currR32.includes(t2);
         const isFull32=currR32.length>=16;
 
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
         const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
-          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
+          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.45'},
           disabled:!t1Known,
           onclick:()=>toggleR32(t1,t2)},
-          (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
+          (FLAGS[t1]||'')+' '+t1+(l1?' ('+l1+')':'')+(sel1?' ✓':''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
         const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),
-          style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
+          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.45'},
           disabled:!t2Known,
           onclick:()=>toggleR32(t2,t1)},
-          (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
+          (FLAGS[t2]||'')+' '+t2+(l2?' ('+l2+')':'')+(sel2?' ✓':''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         r32Wrap.appendChild(row);
       });
@@ -4092,7 +4105,8 @@ async function runTest(main) {
           kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
-      await db5.from('knockout_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      // DELETE por user_id + bolao_id (PK não inclui bolao_id, mas garante limpeza do bolão correto)
+      await db5.from('knockout_predictions').delete().eq('user_id',u.id);
       if(kRows.length>0){
         const {error:kErr} = await db5.from('knockout_predictions').insert(kRows);
         if(kErr) throw new Error('knockout_predictions: '+kErr.message);
@@ -4182,7 +4196,8 @@ async function runTest(main) {
     STATE.user = adminUser;
     STATE.profile = adminProfile[0];
     await loadMyBolaos(adminUser.id);
-    CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code==='TESTE1')||MY_BOLAOS[0];
+    // Selecionar primeiro bolão real (não o de teste)
+    CURRENT_BOLAO = MY_BOLAOS.find(b=>b.invite_code!=='TESTE1')||null;
     tlog('  ✅ Estado restaurado: '+STATE.profile?.display_name+' | Bolão: '+(CURRENT_BOLAO?.name||'nenhum'), 'ok');
   }
 
