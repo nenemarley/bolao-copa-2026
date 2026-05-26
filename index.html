@@ -1997,10 +1997,12 @@ function buildKoUI(main){
       // Renderizar confrontos
       const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
       bracket.forEach(m=>{
-        let t1,t2;
+        let t1,t2,l1='',l2='';
         if(ph.key==='round32'){
-          t1=resolveMatchSlot(m.slot1,userSt,userThirds,{});
-          t2=resolveMatchSlot(m.slot2,userSt,userThirds,{});
+          // Usar userMatchWinners que já resolveu via resolveSlotInfo (sem duplicatas)
+          const mw = userMatchWinners[m.id];
+          t1=mw?.t1||'?'; t2=mw?.t2||'?';
+          l1=mw?.l1||''; l2=mw?.l2||'';
         } else {
           t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
           t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
@@ -2009,30 +2011,32 @@ function buildKoUI(main){
         const sel2=sel.find(x=>x.team===t2);
         const real1=rp?.team_ids?.includes(t1);
         const real2=rp?.team_ids?.includes(t2);
-        const t1Known=!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º');
-        const t2Known=!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º');
+        const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º')&&t1!=='?';
+        const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º')&&t2!=='?';
 
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
 
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
+        const lbl1 = l1 ? ' ('+l1+')' : '';
         const b1=el('button',{
           class:`btn btn-sm ${cls1}`,
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},
           disabled:!t1Known,
           onclick:()=>pickTeam(t1,t2)
-        },(FLAGS[t1]||'')+' '+t1+(sel1?pts1:''));
+        },(FLAGS[t1]||'')+' '+t1+lbl1+(sel1?pts1:''));
 
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
 
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
+        const lbl2 = l2 ? ' ('+l2+')' : '';
         const b2=el('button',{
           class:`btn btn-sm ${cls2}`,
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},
           disabled:!t2Known,
           onclick:()=>pickTeam(t2,t1)
-        },(FLAGS[t2]||'')+' '+t2+(sel2?pts2:''));
+        },(FLAGS[t2]||'')+' '+t2+lbl2+(sel2?pts2:''));
 
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         matchesWrap.appendChild(row);
