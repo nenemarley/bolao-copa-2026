@@ -519,10 +519,19 @@ async function dbQBolao(table, extraFilters={}, cols='*'){
 async function upsertWithReplicate(table, rows, conflictCols=''){
   if(!CURRENT_BOLAO) return;
   const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
+  // PK por tabela para onConflict correto
+  const pkMap = {
+    'match_predictions': 'user_id,match_number,bolao_id',
+    'group_predictions': 'user_id,group_id,position,bolao_id',
+    'knockout_predictions': 'user_id,phase,team_name,bolao_id',
+    'scorer_predictions': 'user_id,bolao_id',
+  };
+  const pk = conflictCols || pkMap[table] || '';
   for(const bolao of targetBolaos){
     const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
-    const {error} = await SB.from(table).upsert(tagged);
-    if(error){ console.error(table, error); throw error; }
+    const q = pk ? SB.from(table).upsert(tagged, {onConflict:pk}) : SB.from(table).upsert(tagged);
+    const {error} = await q;
+    if(error){ console.error(table, error.message); throw error; }
   }
 }
 async function dbUpsert(table, rows){
@@ -1278,6 +1287,7 @@ function buildMatchesUI(main){
     const pts = (hasResult && p.s1!==undefined)
       ? calcPts(p.s1, p.s2||0, r.real_score1, r.real_score2) : 0;
     const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+    // pts-badge para atualização em tempo real
     const dateStr2 = MATCH_DATES[m.num];
     const dateLabel = dateStr2 ? new Date(dateStr2+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
 
@@ -2363,6 +2373,7 @@ function buildKoMatchesUI(main, realSt){
     const hasPred = p.s1!==undefined;
     const pts = hasResult && hasPred ? calcPts(p.s1,p.s2||0,m.real_score1,m.real_score2) : 0;
     const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+    // pts-badge para atualização em tempo real
     const daysLeft = daysUntilKoMatch(m.match_number);
 
     const mc=el('div',{class:'mc'+(locked?' fin':''),style:{display:'block',padding:'.875rem',marginBottom:'8px'}});
@@ -2393,9 +2404,26 @@ function buildKoMatchesUI(main, realSt){
       if(daysLeft===1){
         mc.appendChild(el('div',{style:{fontSize:'.7rem',color:'#F59E0B',textAlign:'center',marginBottom:'4px'}},'⚠️ Último dia para palpitar!'));
       }
-      scoreRow.appendChild(makeMatchCtrl(v1,v=>{ koMatchPreds[m.match_number]={...(koMatchPreds[m.match_number]||{}),s1:v,s2:koMatchPreds[m.match_number]?.s2??0}; koMatchDirty=true; updateKoMatchSaveBar(); }));
+      scoreRow.appendChild(makeMatchCtrl(v1,v=>{
+        const cur=koMatchPreds[m.match_number]||{};
+        const newS2=cur.s2??0;
+        const newPts=m.is_finished?calcPts(v,newS2,m.real_score1,m.real_score2):0;
+        koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
+        koMatchDirty=true; updateKoMatchSaveBar();
+        // Atualizar badge de pontos na tela sem rebuild completo
+        const ptsBadge=mc.querySelector('.pts-badge');
+        if(ptsBadge&&m.is_finished){ ptsBadge.textContent=newPts+'pts'; ptsBadge.className='pts-badge p'+newPts; }
+      }));
       scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 3px'}},'×'));
-      scoreRow.appendChild(makeMatchCtrl(v2,v=>{ koMatchPreds[m.match_number]={...(koMatchPreds[m.match_number]||{}),s2:v,s1:koMatchPreds[m.match_number]?.s1??0}; koMatchDirty=true; updateKoMatchSaveBar(); }));
+      scoreRow.appendChild(makeMatchCtrl(v2,v=>{
+        const cur=koMatchPreds[m.match_number]||{};
+        const newS1=cur.s1??0;
+        const newPts=m.is_finished?calcPts(newS1,v,m.real_score1,m.real_score2):0;
+        koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
+        koMatchDirty=true; updateKoMatchSaveBar();
+        const ptsBadge=mc.querySelector('.pts-badge');
+        if(ptsBadge&&m.is_finished){ ptsBadge.textContent=newPts+'pts'; ptsBadge.className='pts-badge p'+newPts; }
+      }));
       mc.appendChild(scoreRow);
     }
 
@@ -2403,7 +2431,7 @@ function buildKoMatchesUI(main, realSt){
       const rr=el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.2rem'}});
       rr.appendChild(document.createTextNode('Resultado real: '));
       rr.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontFamily:"'Bebas Neue',cursive",fontSize:'.9rem'}},m.real_score1+' — '+m.real_score2));
-      if(hasPred) rr.appendChild(el('span',{class:'pp '+ptsCls,style:{marginLeft:'4px',fontSize:'.65rem'}},pts+'pts'));
+      if(hasPred) rr.appendChild(el('span',{class:'pp pts-badge '+ptsCls,style:{marginLeft:'4px',fontSize:'.65rem'}},pts+'pts'));
       mc.appendChild(rr);
     }
     main.appendChild(mc);
@@ -2434,21 +2462,13 @@ async function saveKoMatches(){
       rows.push({user_id:STATE.profile.id,match_number:parseInt(num),predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
     }
   });
-  if(!CURRENT_BOLAO){ showToast('Nenhum bolão selecionado','err'); return; }
-  const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
-  let saved=true;
-  for(const bolao of targetBolaos){
-    const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
-    const {error} = await SB.from('match_predictions').upsert(tagged);
-    if(error){ showToast('Erro ao salvar: '+error.message,'err'); saved=false; break; }
-  }
-  if(saved){
+  try{
+    await upsertWithReplicate('match_predictions', rows);
     koMatchDirty=false;
     showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
     updateKoMatchSaveBar();
-    // Recarregar para mostrar pontos atualizados
-    renderKoMatches(document.getElementById('main')||document.querySelector('main')||document.body);
-  }
+    buildKoMatchesUI(document.querySelector('.pg')||document.body, koMatchRealSt);
+  } catch(e){ showToast('Erro: '+e.message,'err'); }
 }
 // ── Fluxo copiar/colar com Claude ─────────────────────────────────────────
 async function fetchResultsFromAI(main, phase) {
