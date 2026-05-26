@@ -522,7 +522,7 @@ async function upsertWithReplicate(table, rows, conflictCols=''){
   for(const bolao of targetBolaos){
     const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
     const {error} = await SB.from(table).upsert(tagged);
-    if(error) console.error(table, error);
+    if(error){ console.error(table, error); throw error; }
   }
 }
 async function dbUpsert(table, rows){
@@ -2429,11 +2429,26 @@ async function saveKoMatches(){
     if(p&&p.s1!==undefined&&p.s2!==undefined){
       const r=koMatchReal[num];
       const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
+      // Atualizar pontos em memória também
+      koMatchPreds[num].pts=pts;
       rows.push({user_id:STATE.profile.id,match_number:parseInt(num),predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
     }
   });
-  try{ await upsertWithReplicate('match_predictions',rows); koMatchDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateKoMatchSaveBar(); }
-  catch(e){ showToast(e.message,'err'); }
+  if(!CURRENT_BOLAO){ showToast('Nenhum bolão selecionado','err'); return; }
+  const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
+  let saved=true;
+  for(const bolao of targetBolaos){
+    const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
+    const {error} = await SB.from('match_predictions').upsert(tagged);
+    if(error){ showToast('Erro ao salvar: '+error.message,'err'); saved=false; break; }
+  }
+  if(saved){
+    koMatchDirty=false;
+    showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    updateKoMatchSaveBar();
+    // Recarregar para mostrar pontos atualizados
+    renderKoMatches(document.getElementById('main')||document.querySelector('main')||document.body);
+  }
 }
 // ── Fluxo copiar/colar com Claude ─────────────────────────────────────────
 async function fetchResultsFromAI(main, phase) {
