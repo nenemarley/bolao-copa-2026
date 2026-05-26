@@ -1943,12 +1943,13 @@ function buildKoUI(main){
       const r32picks = (koPreds['round32']||[]).map(x=>x.team);
 
       // Distribuir os 8 melhores 3ºs pelos 8 slots em ordem (sem duplicatas)
-      // Filtrar times que já são 1º/2º nos palpites do usuário
+      // 1. Coletar todos os times que aparecem como 1º ou 2º nos palpites
       const userTop2 = new Set();
       Object.entries(userSt).forEach(([g,pos])=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
-      // Usar palpite do usuário; se inválido, complementar com os reais do banco
-      const validUserThirds = userThirds.filter(t=>!userTop2.has(t));
-      // Completar com os reais caso o usuário tenha menos de 8 válidos
+      // 2. Filtrar userThirds — remover inválidos (são top2 ou não são 3º de nenhum grupo)
+      const validThirdsOfGroups = new Set(Object.values(userSt).map(p=>p[3]).filter(Boolean));
+      const validUserThirds = userThirds.filter(t=>!userTop2.has(t)&&validThirdsOfGroups.has(t));
+      // 3. Completar com reais do banco se necessário (também filtrados)
       const realThirdsForSlots = koRealThirds.filter(t=>!userTop2.has(t)&&!validUserThirds.includes(t));
       const thirdsForSlots = [...validUserThirds, ...realThirdsForSlots].slice(0,8);
       const thirdSlotOrder = [74,77,79,80,81,82,85,87];
@@ -1957,10 +1958,18 @@ function buildKoUI(main){
         if(thirdSlotOrder[i]) thirdAssignment[thirdSlotOrder[i]] = team;
       });
 
+      // Montar confrontos garantindo que nenhum time aparece em mais de 1 jogo
+      const usedTeams = new Set();
       ROUND32_BRACKET.forEach(m=>{
         const i1=resolveSlotInfo(m.slot1,userSt,thirdsForSlots,thirdAssignment,m.id);
         const i2=resolveSlotInfo(m.slot2,userSt,thirdsForSlots,thirdAssignment,m.id);
-        const t1=i1.team||i1.label, t2=i2.team||i2.label;
+        let t1=i1.team||i1.label, t2=i2.team||i2.label;
+        // Se t1 já foi usado em outro confronto como time normal (não 3º), manter
+        // Se um 3º já foi atribuído a outro slot, substituir por placeholder
+        if(m.slot1.type==='3' && t1 && usedTeams.has(t1)) t1=i1.label||('3º J'+m.id);
+        if(m.slot2.type==='3' && t2 && usedTeams.has(t2)) t2=i2.label||('3º J'+m.id);
+        if(t1 && !t1.startsWith('3º') && !t1.startsWith('Venc.')) usedTeams.add(t1);
+        if(t2 && !t2.startsWith('3º') && !t2.startsWith('Venc.')) usedTeams.add(t2);
         const winner=r32picks.find(t=>t===t1||t===t2);
         userMatchWinners[m.id]={winner:winner||null,t1,t2,l1:i1.label,l2:i2.label};
       });
