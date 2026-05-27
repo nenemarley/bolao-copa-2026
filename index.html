@@ -1494,10 +1494,15 @@ function buildStandingsUI(main){
   if(!window._grpSubTab) window._grpSubTab='classified';
 
   // Sub-abas
-  const subTabs=el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem'}});
-  const tabCls=(k)=>`btn ${window._grpSubTab===k?'btn-p':'btn-o'}`;
-  const t1=el('button',{class:tabCls('classified'),onclick:()=>{ window._grpSubTab='classified'; buildStandingsUI(main); }},'📊 Classificados por Grupo');
-  const t2=el('button',{class:tabCls('thirds'),onclick:()=>{ window._grpSubTab='thirds'; buildStandingsUI(main); }},'🥉 Melhores 3ºs');
+  const subTabs=el('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'1rem'}});
+  const tabStyle=(k)=>({
+    padding:'.6rem',textAlign:'center',borderRadius:'10px',fontWeight:'600',fontSize:'.85rem',
+    cursor:'pointer',border:'none',
+    background: window._grpSubTab===k ? 'var(--gold)' : 'var(--dk3)',
+    color: window._grpSubTab===k ? '#000' : 'var(--muted)',
+  });
+  const t1=el('button',{style:tabStyle('classified'),onclick:()=>{ window._grpSubTab='classified'; buildStandingsUI(main); }},'📊 Classificados por Grupo');
+  const t2=el('button',{style:tabStyle('thirds'),onclick:()=>{ window._grpSubTab='thirds'; buildStandingsUI(main); }},'🥉 Melhores 3ºs');
   subTabs.appendChild(t1); subTabs.appendChild(t2);
   main.appendChild(subTabs);
 
