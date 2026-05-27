@@ -518,20 +518,30 @@ async function dbQBolao(table, extraFilters={}, cols='*'){
 
 async function upsertWithReplicate(table, rows, conflictCols=''){
   if(!CURRENT_BOLAO) return;
+  if(!rows || rows.length===0) return;
+  const uid = STATE.profile?.id;
+  if(!uid) throw new Error('Usuário não autenticado');
   const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
-  // PK por tabela para onConflict correto
-  const pkMap = {
-    'match_predictions': 'user_id,match_number,bolao_id',
-    'group_predictions': 'user_id,group_id,position,bolao_id',
-    'knockout_predictions': 'user_id,phase,team_name,bolao_id',
-    'scorer_predictions': 'user_id,bolao_id',
-  };
-  const pk = conflictCols || pkMap[table] || '';
   for(const bolao of targetBolaos){
     const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
-    const q = pk ? SB.from(table).upsert(tagged, {onConflict:pk}) : SB.from(table).upsert(tagged);
-    const {error} = await q;
-    if(error){ console.error(table, error.message); throw error; }
+    // DELETE seletivo para não apagar dados de outras fases
+    if(table==='match_predictions'){
+      // Detectar se são jogos da 1ª fase (1-72) ou eliminatórias (73+)
+      const nums = rows.map(r=>r.match_number||0);
+      const minNum = Math.min(...nums);
+      const maxNum = Math.max(...nums);
+      let delQ = SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
+      if(minNum>=73){ delQ = delQ.gte('match_number',73); }       // só KO
+      else if(maxNum<=72){ delQ = delQ.lte('match_number',72); }  // só 1ª fase
+      const {error:delErr} = await delQ;
+      if(delErr){ console.error(table+' delete:', delErr.message); throw delErr; }
+    } else {
+      // Para outras tabelas: DELETE total + INSERT total (salva tudo de uma vez)
+      const {error:delErr} = await SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
+      if(delErr){ console.error(table+' delete:', delErr.message); throw delErr; }
+    }
+    const {error:insErr} = await SB.from(table).insert(tagged);
+    if(insErr){ console.error(table+' insert:', insErr.message); throw insErr; }
   }
 }
 async function dbUpsert(table, rows){
@@ -2455,20 +2465,27 @@ async function saveKoMatches(){
   const rows=[];
   Object.entries(koMatchPreds).forEach(([num,p])=>{
     if(p&&p.s1!==undefined&&p.s2!==undefined){
-      const r=koMatchReal[num];
+      const r=koMatchReal[parseInt(num)]; // parseInt: chave numérica
       const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
-      // Atualizar pontos em memória também
       koMatchPreds[num].pts=pts;
       rows.push({user_id:STATE.profile.id,match_number:parseInt(num),predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
     }
   });
+  if(!CURRENT_BOLAO){ showToast('Sem bolão selecionado','err'); return; }
+  if(rows.length===0){ showToast('Nenhum palpite para salvar','err'); return; }
+  console.log('[saveKoMatches] bolao='+CURRENT_BOLAO?.name+' rows='+rows.length+' user='+STATE.profile?.id);
   try{
     await upsertWithReplicate('match_predictions', rows);
     koMatchDirty=false;
-    showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    buildKoMatchesUI(document.querySelector('.pg')||document.body, koMatchRealSt);
-  } catch(e){ showToast('Erro: '+e.message,'err'); }
+    // Recarregar do banco para confirmar persistência
+    const mainEl = document.querySelector('.pg') || document.body;
+    renderKoMatches(mainEl);
+  } catch(e){
+    console.error('[saveKoMatches] ERRO:', e);
+    showToast('Erro ao salvar: '+e.message,'err');
+  }
 }
 // ── Fluxo copiar/colar com Claude ─────────────────────────────────────────
 async function fetchResultsFromAI(main, phase) {
@@ -4131,20 +4148,28 @@ async function runTest(main) {
 
   for(const u of signedUsers) {
     try {
-      // Usar sessão do próprio usuário (mesma estratégia dos PASSOs 2/3/4)
       const sess5 = u._session;
       const db5 = sess5 ? SB_TEST : SB;
-      if(sess5) await SB_TEST.auth.setSession({access_token:sess5.access_token, refresh_token:sess5.refresh_token});
+      if(sess5){
+        const {error:sessErr} = await SB_TEST.auth.setSession({access_token:sess5.access_token, refresh_token:sess5.refresh_token});
+        if(sessErr) tlog(`  ⚠️ ${u.name} sessão: ${sessErr.message}`, 'warn');
+        else tlog(`  🔑 ${u.name}: sessão ok (${sess5.access_token.substring(0,12)}...)`, 'info');
+      } else {
+        tlog(`  ⚠️ ${u.name}: sem sessão — usando admin SB`, 'warn');
+      }
 
-      // Jogos: DELETE + INSERT com pontos calculados (usuário pode deletar/inserir os próprios)
+      // Jogos: DELETE + INSERT
       const mRows = MATCHES.map(m=>{
         const p=userPreds[u.id].matches[m.num];
         const r=realMatchMap[m.num]||{s1:0,s2:0};
         return {user_id:u.id, match_number:m.num, predicted_score1:p.s1, predicted_score2:p.s2, points:calcPts(p.s1,p.s2,r.s1,r.s2), bolao_id:testBolao?.id};
       });
-      await db5.from('match_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      const totalMPts = mRows.reduce((s,r)=>s+r.points,0);
+      const {error:mDel} = await db5.from('match_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      if(mDel) tlog(`  ⚠️ ${u.name} delete match: ${mDel.message}`, 'warn');
       const {error:mErr} = await db5.from('match_predictions').insert(mRows);
       if(mErr) throw new Error('match_predictions: '+mErr.message);
+      tlog(`  ✅ ${u.name} jogos: ${mRows.length} rows, ${totalMPts}pts calculados`, 'ok');
 
       // Grupos: DELETE + INSERT com pontos
       const gRows = [];
@@ -4164,9 +4189,12 @@ async function runTest(main) {
         const pts = realPos===3?7:realPos===2||realPos===1?5:0;
         gRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
-      await db5.from('group_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      const totalGPts = gRows.reduce((s,r)=>s+r.points,0);
+      const {error:gDel} = await db5.from('group_predictions').delete().eq('user_id',u.id).eq('bolao_id',testBolao?.id);
+      if(gDel) tlog(`  ⚠️ ${u.name} delete group: ${gDel.message}`, 'warn');
       const {error:gErr} = await db5.from('group_predictions').insert(gRows);
       if(gErr) throw new Error('group_predictions: '+gErr.message);
+      tlog(`  ✅ ${u.name} grupos: ${gRows.length} rows, ${totalGPts}pts`, 'ok');
 
       // KO: DELETE + INSERT com pontos
       const kRows = [];
@@ -4178,18 +4206,27 @@ async function runTest(main) {
         });
       });
       // DELETE por user_id + bolao_id (PK não inclui bolao_id, mas garante limpeza do bolão correto)
-      await db5.from('knockout_predictions').delete().eq('user_id',u.id);
+      const {error:kDel} = await db5.from('knockout_predictions').delete().eq('user_id',u.id);
+      if(kDel) tlog(`  ⚠️ ${u.name} delete KO: ${kDel.message}`, 'warn');
       if(kRows.length>0){
+        const totalKPts = kRows.reduce((s,r)=>s+r.points,0);
         const {error:kErr} = await db5.from('knockout_predictions').insert(kRows);
         if(kErr) throw new Error('knockout_predictions: '+kErr.message);
+        tlog(`  ✅ ${u.name} KO: ${kRows.length} rows, ${totalKPts}pts`, 'ok');
+      } else {
+        tlog(`  ⚠️ ${u.name} KO: 0 rows (sem palpites de fase)`, 'warn');
       }
 
       // Artilheiro
       const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
       await db5.from('scorer_predictions').delete().eq('user_id',u.id);
-      await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
+      const {error:sErr} = await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
+      if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
+      else tlog(`  ✅ ${u.name} scorer: "${userPreds[u.id].scorer}" → ${spts}pts`, 'ok');
 
-      tlog(`  ✅ ${u.name} recalculado`, 'ok');
+      // Total esperado
+      const expM = Object.values(userPreds[u.id].matches||{}).reduce((s,p)=>{ const r=realMatchMap[p.num||0]||{}; return s+(r.s1!==undefined?calcPts(p.s1,p.s2,r.s1,r.s2):0); }, 0);
+      tlog(`  📊 ${u.name} recalculado ok`, 'ok');
     } catch(e) {
       tlog(`  ❌ ${u.name}: ${e.message}`, 'err');
     }
@@ -4246,6 +4283,23 @@ async function runTest(main) {
     if(!ok) allPassed=false;
     results.push({name:u.name, expM,actM, expG,actG, expK,actK, expS,actS, expT,actT, ok});
     tlog(`  ${ok?'✅':'❌'} ${u.name}: Total Esp=${expT} Obt=${actT} | J:${expM}/${actM} G:${expG}/${actG} F:${expK}/${actK} A:${expS}/${actS}`, ok?'ok':'err');
+    if(!ok){
+      // Log diagnóstico detalhado
+      if(expM!==actM) tlog(`     🔍 Jogos: esperado ${expM}, banco=${actM} — ${(mp.data||[]).length} rows no banco`, 'warn');
+      if(expG!==actG) tlog(`     🔍 Grupos: esperado ${expG}, banco=${actG} — ${(gp.data||[]).length} rows no banco`, 'warn');
+      if(expK!==actK){
+        tlog(`     🔍 Fases: esperado ${expK}, banco=${actK} — ${(kp.data||[]).length} rows no banco`, 'warn');
+        // Mostrar quais fases foram palpitadas vs reais
+        const koDetail = Object.entries(userPreds[u.id].knockout||{}).map(([ph,ts])=>{
+          const real = realKoMap[ph]||[];
+          const hits = ts.filter(t=>real.includes(t));
+          const pts = hits.length*(ph==='final'||ph==='champion'?20:10);
+          return `${ph}:${hits.length}/${ts.length}(${pts}p)`;
+        }).join(' ');
+        tlog(`     🔍 KO detail: ${koDetail}`, 'warn');
+      }
+      if(expS!==actS) tlog(`     🔍 Artilheiro: ${u.name} palpitou="${userPreds[u.id].scorer}" real="${realScorer}" banco=${actS}pts`, 'warn');
+    }
   }
 
   tlog('\n═══════════════════════════════════════', 'info');
