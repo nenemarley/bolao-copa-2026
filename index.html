@@ -1111,7 +1111,7 @@ function renderDashboard(main){
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
-  const mFilter = {};
+  const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
   Promise.all([
     dbQ('match_predictions',mFilter,'user_id,points'),
     dbQ('group_predictions',mFilter,'user_id,points'),
