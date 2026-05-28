@@ -476,7 +476,7 @@ let STATE = { user:null, profile:null, profiles:[], page:'dashboard', loading:tr
 let PAGE_VERSION = 0; // increments on every page change to cancel stale queries
 let CURRENT_BOLAO = null; // bolão atualmente selecionado
 let MY_BOLAOS = []; // bolões do usuário
-let REPLICATE_ALL = true; // checkbox replicar para todos
+let REPLICATE_ALL = false; // checkbox replicar para todos
 
 function setState(patch){ 
   Object.assign(STATE,patch); 
@@ -1399,7 +1399,8 @@ async function saveMatches(){
     showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
     updateSaveBar();
     // Recarregar tela para mostrar pontos atualizados
-    renderMatches(document.querySelector('.pg')||document.body);
+    const mainEl2 = document.querySelector('.main') || document.body;
+    renderMatches(mainEl2);
   }
   catch(e){ showToast(e.message,'err'); }
 }
@@ -2227,7 +2228,7 @@ async function saveKo(){
     koDirty=false;
     showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
     const sb=document.getElementById('savebar'); if(sb) sb.innerHTML='';
-    buildKoUI(document.querySelector('.pg')||document.body);
+    buildKoUI(document.querySelector('.main')||document.body);
   }catch(e){ showToast(e.message,'err'); }
 }
 
@@ -2524,7 +2525,7 @@ async function saveKoMatches(){
     showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
     // Recarregar do banco para confirmar persistência
-    const mainEl = document.querySelector('.pg') || document.body;
+    const mainEl = document.querySelector('.main') || document.body;
     renderKoMatches(mainEl);
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
