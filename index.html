@@ -3204,21 +3204,92 @@ function buildAdminUI(main){
     const thirdsHeader=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.3rem'}});
     thirdsHeader.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)'}},'8 MELHORES 3ºS COLOCADOS'));
     const thirdsActions=el('div',{style:{display:'flex',gap:'6px'}});
-    // Botão Recalcular pontos (7pts)
+    // Botão Recalcular Tudo
     thirdsActions.appendChild(el('button',{class:'btn btn-sm btn-p',style:{fontSize:'.7rem',padding:'3px 10px'},onclick:async()=>{
-      const currT=adminKo['best_thirds']?.team_ids||[];
-      if(currT.length===0){ showToast('Defina os 8 melhores 3ºs primeiro','err'); return; }
-      const preds=await dbQ('group_predictions',{group_id:'_thirds'});
-      let updated=0;
-      for(const p of preds){
-        const newPts=currT.includes(p.team_name)?5:0;
-        if(p.points!==newPts){
-          await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
-          updated++;
+      if(!confirm('Recalcular pontuações de TODOS os participantes?\n\nIsso atualiza jogos, grupos, 8 melhores 3ºs, fases eliminatórias e artilheiro.')) return;
+      const btn=thirdsActions.querySelector('.btn-p');
+      if(btn){ btn.disabled=true; btn.textContent='⏳ Calculando...'; }
+      let total=0;
+
+      try{
+        // 1. Buscar resultados reais
+        const [realMatches, realStandings, realKos, realScorer] = await Promise.all([
+          dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished'),
+          dbQ('group_predictions',{user_id:STATE.profile.id},'group_id,position,team_name').then(()=>dbQ('real_standings',{},'group_id,position,team_name')).catch(()=>[]),
+          dbQ('real_knockouts',{},'phase,team_ids'),
+          dbQ('real_knockouts',{phase:'top_scorer'},'team_ids').then(r=>r[0]?.team_ids?.[0]||null).catch(()=>null),
+        ]);
+
+        const matchMap={}; (realMatches||[]).forEach(m=>{ matchMap[m.match_number]=m; });
+        const stMap={}; 
+        // Buscar standings reais do admin
+        const adminStRows = await dbQ('group_predictions',{user_id:STATE.profile.id}).catch(()=>[]);
+        const realSt={};
+        const koMap={};
+        (realKos||[]).forEach(k=>{ koMap[k.phase]=k.team_ids||[]; });
+        const realThirds=koMap['best_thirds']||[];
+        const realScName=koMap['top_scorer']?.[0]||null;
+
+        // Buscar standings reais (do banco real_knockouts ou group_predictions do admin)
+        const rsRows = await SB.from('group_predictions').select('group_id,position,team_name').eq('user_id',STATE.profile.id);
+        (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id]) realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+
+        // 2. Buscar todos os participantes
+        const members = await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
+        const userIds = (members||[]).map(m=>m.user_id);
+        tlog && tlog('Recalculando '+userIds.length+' participantes...');
+
+        for(const uid of userIds){
+          // Jogos
+          const mPreds = await SB.from('match_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          const mRows = (mPreds.data||[]).map(p=>{
+            const r=matchMap[p.match_number];
+            const pts=r?.is_finished?calcPts(p.predicted_score1,p.predicted_score2,r.real_score1,r.real_score2):0;
+            return {...p,points:pts};
+          });
+          if(mRows.length>0){
+            await SB.from('match_predictions').delete().eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+            await SB.from('match_predictions').insert(mRows);
+            total+=mRows.length;
+          }
+
+          // Grupos (pos 1 e 2)
+          const gPreds = await SB.from('group_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id).neq('group_id','_thirds');
+          for(const p of (gPreds.data||[])){
+            const realPos=(()=>{ const g=realSt[p.group_id]||{}; if(g[1]===p.team_name)return 1; if(g[2]===p.team_name)return 2; if(g[3]===p.team_name)return 3; return null; })();
+            const pts=calcGrpPts(p.position,realPos);
+            if(p.points!==pts){ await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id',p.group_id).eq('position',p.position); total++; }
+          }
+
+          // 8 Melhores 3ºs
+          const tPreds = await SB.from('group_predictions').select('*').eq('user_id',uid).eq('group_id','_thirds');
+          for(const p of (tPreds.data||[])){
+            const pts=realThirds.includes(p.team_name)?5:0;
+            if(p.points!==pts){ await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id','_thirds').eq('team_name',p.team_name); total++; }
+          }
+
+          // Fases eliminatórias
+          const kPreds = await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          for(const p of (kPreds.data||[])){
+            const pts=(koMap[p.phase]||[]).includes(p.team_name)?(p.phase==='final'||p.phase==='champion'?30:p.phase==='runner_up'?20:10):0;
+            if(p.points!==pts){ await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name); total++; }
+          }
+
+          // Artilheiro
+          const sPreds = await SB.from('scorer_predictions').select('*').eq('user_id',uid);
+          for(const p of (sPreds.data||[])){
+            const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?20:0;
+            if(p.points!==pts){ await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid); total++; }
+          }
         }
+
+        showToast('✅ Recalculado! '+total+' pontuações atualizadas.');
+      } catch(e){
+        showToast('Erro: '+e.message,'err');
+        console.error(e);
       }
-      showToast('✅ '+updated+' palpites recalculados para 7pts!');
-    }},'🔄 Recalcular 7pts'));
+      if(btn){ btn.disabled=false; btn.textContent='🔄 Recalcular Tudo'; }
+    }},'🔄 Recalcular Tudo'));
     // Botão Limpar
     thirdsActions.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
       if(!confirm('Limpar todos os 8 melhores 3ºs do banco?')) return;
