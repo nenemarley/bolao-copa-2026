@@ -201,7 +201,7 @@ const PHASES = [
   {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
   {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
   {key:"semi",     label:"Semifinal",         count:2,  pts:10},
-  {key:"final",    label:"Final (Campeão)",     count:1,  pts:30},
+  {key:"final",    label:"Final (Campeão)",     count:1,  pts:50},
   {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
 // final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
@@ -1378,6 +1378,12 @@ function updateSaveBar(){
   sb.appendChild(inn);
 }
 async function saveMatches(){
+  // Buscar resultados reais frescos do banco antes de calcular pontos
+  try{
+    const freshReal = await dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished');
+    (freshReal||[]).forEach(r=>{ realScores[r.match_number]=r; });
+  } catch(e){ /* usa realScores em memória */ }
+
   const rows=[];
   MATCHES.forEach(m=>{
     const p=matchPreds[m.num];
@@ -1387,7 +1393,14 @@ async function saveMatches(){
       rows.push({user_id:STATE.profile.id,match_number:m.num,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
     }
   });
-  try{ await upsertWithReplicate('match_predictions',rows); matchDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateSaveBar(); }
+  try{
+    await upsertWithReplicate('match_predictions',rows);
+    matchDirty=false;
+    showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    updateSaveBar();
+    // Recarregar tela para mostrar pontos atualizados
+    renderMatches(document.querySelector('.pg')||document.body);
+  }
   catch(e){ showToast(e.message,'err'); }
 }
 
@@ -1842,7 +1855,7 @@ function buildKoUI(main){
       el('div',{style:{color:'var(--muted)',fontSize:'.75rem',marginTop:'2px'}},'Prazo: '+GROUPS_DEADLINE+' · Classif. grupos → Rodada 32 → Oitavas → Campeão')
     ));
   }
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 30pts · Vice = 20pts · 3º lugar = 10pts'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 50pts · Vice = 30pts · 3º lugar = 15pts · Artilheiro = 30pts'));
 
   // REGRA: confrontos do participante usam SEMPRE os palpites do usuário
   // Se não preencheu os 8 melhores 3ºs ainda, os slots de 3º ficam como "3º (A/B/...)"
@@ -1908,7 +1921,7 @@ function buildKoUI(main){
         if(!team) return;
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
         const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
-        const ptsLabel = realChamp ? (isRealCh ? ' ·30p' : (isSel ? ' ·0p' : '')) : '';
+        const ptsLabel = realChamp ? (isRealCh ? ' ·50p' : (isSel ? ' ·0p' : '')) : '';
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
           onclick:()=>{
             // Toggle: clicou no selecionado → deseleciona; clicou no outro → troca
@@ -1916,10 +1929,10 @@ function buildKoUI(main){
               koPreds['final']=[];
               koPreds['runner_up']=[];
             } else {
-              koPreds['final']=[{team,pts:isRealCh?30:0}];
+              koPreds['final']=[{team,pts:isRealCh?50:0}];
               const vicePick=avail.find(t=>t!==team);
               const realVice=koReal['runner_up']?.team_ids?.[0];
-              if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?20:0}];
+              if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?30:0}];
             }
             koDirty=true; buildKoUI(main);
           }
@@ -1934,7 +1947,7 @@ function buildKoUI(main){
         const realVice=koReal['runner_up']?.team_ids?.[0];
         const viceOk=realVice&&vicePick===realVice;
         const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:'6px'}});
-        const vBadge=el('span',{style:{display:'inline-flex',alignItems:'center',gap:'4px',background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'}},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·20p ✓':''));
+        const vBadge=el('span',{style:{display:'inline-flex',alignItems:'center',gap:'4px',background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'}},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·30p ✓':''));
         viceDiv.appendChild(el('span',{},'🥈 Vice (auto):'));
         viceDiv.appendChild(vBadge);
         if(realVice&&!viceOk) viceDiv.appendChild(el('span',{style:{color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
@@ -2128,10 +2141,10 @@ function buildKoUI(main){
       const isSel3=thirdSel.find(x=>x.team===team);
       const isReal3=rp3?.team_ids?.includes(team);
       const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
-      const pts3 = rp3 ? (isReal3 ? ' ·10p' : (isSel3 ? ' ·0p' : '')) : '';
+      const pts3 = rp3 ? (isReal3 ? ' ·15p' : (isSel3 ? ' ·0p' : '')) : '';
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
         onclick:()=>{
-          koPreds['third']=isSel3?[]:[{team,pts:isReal3?10:0}];
+          koPreds['third']=isSel3?[]:[{team,pts:isReal3?15:0}];
           koDirty=true; buildKoUI(main);
         }
       },(FLAGS[team]||'')+' '+team+(isSel3?pts3:''));
@@ -2154,7 +2167,7 @@ function buildKoUI(main){
     const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
     scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
     if(koScorer){
-      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?20:0;
+      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?30:0;
       scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
     }
     scard.appendChild(scorerRow);
@@ -2173,36 +2186,48 @@ function buildKoUI(main){
 
 async function saveKo(){
   try{
-    // Auto-calcular vice (o outro da semi que não é o campeão)
+    // Buscar resultados reais frescos do banco
+    const freshKoReal = await dbQ('real_knockouts',{},'phase,team_ids').catch(()=>[]);
+    (freshKoReal||[]).forEach(r=>{ koReal[r.phase]={phase:r.phase,team_ids:r.team_ids}; });
+
+    // Auto-calcular vice
     const champPick = (koPreds['final']||[])[0]?.team;
     const semiPicks = (koPreds['semi']||[]).map(x=>x.team);
     const viceTeam  = semiPicks.find(t=>t!==champPick);
     if(viceTeam){
-      // pts do vice: verificar contra resultado real (koReal['runner_up'])
       const realVice = koReal['runner_up']?.team_ids?.[0];
-      koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?20:0}];
+      koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?30:0}];
     }
+
     const rows=[];
     Object.entries(koPreds).forEach(([phase,teams])=>{
       const rp=koReal[phase];
       teams.forEach(({team})=>{
         let pts=0;
-        if(rp?.team_ids?.includes(team)) pts=phase==='final'?20:10;
+        if(rp?.team_ids?.includes(team)){
+          pts = phase==='final'||phase==='champion' ? 50
+              : phase==='runner_up' ? 30
+              : phase==='third' ? 15
+              : 10;
+        }
         rows.push({user_id:STATE.profile.id,phase,team_name:team,points:pts});
       });
     });
+
     const targetBolaos2=REPLICATE_ALL?MY_BOLAOS:[CURRENT_BOLAO];
     for(const bolao of targetBolaos2){
       await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
       if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
-        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?20:0;
+        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?30:0;
         await SB.from('scorer_predictions').upsert({user_id:STATE.profile.id,player_name:koScorer,points:pts,bolao_id:bolao.id});
       }
     }
-    koDirty=false; showToast('✅ Palpites salvos!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    koDirty=false;
+    showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
     const sb=document.getElementById('savebar'); if(sb) sb.innerHTML='';
+    buildKoUI(document.querySelector('.pg')||document.body);
   }catch(e){ showToast(e.message,'err'); }
 }
 
@@ -2475,6 +2500,12 @@ function updateKoMatchSaveBar(){
 }
 
 async function saveKoMatches(){
+  // Buscar resultados reais frescos do banco antes de calcular pontos
+  try{
+    const freshKo = await dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished,group_id');
+    (freshKo||[]).forEach(m=>{ if(m.group_id?.startsWith('KO_')) koMatchReal[m.match_number]=m; });
+  } catch(e){ /* usa koMatchReal em memória */ }
+
   const rows=[];
   Object.entries(koMatchPreds).forEach(([num,p])=>{
     if(p&&p.s1!==undefined&&p.s2!==undefined){
@@ -2881,9 +2912,9 @@ async function applyAIResults(data, log) {
       if(!teams||teams.length===0) continue;
       const normTeams = norm(teams);
       // final no banco salva o campeão; o participante usa 'final' para os 2 finalistas
-      // mas para cálculo de pontos usamos champion(30pts) e runner_up(20pts)
+      // mas para cálculo de pontos usamos champion(50pts) e runner_up(30pts)
       await dbUpsert('real_knockouts',{phase,team_ids:normTeams});
-      const pts = (phase==='final'||phase==='champion')?30:(phase==='runner_up')?20:10;
+      const pts = (phase==='final'||phase==='champion')?50:(phase==='runner_up')?30:phase==='third'?15:10;
       const preds = await dbQ('knockout_predictions',{phase});
       if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:normTeams.includes(p.team_name)?pts:0})));
       log('✅ '+phase+': '+normTeams.join(', '), '#10B981');
@@ -3271,14 +3302,14 @@ function buildAdminUI(main){
           // Fases eliminatórias
           const kPreds = await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
           for(const p of (kPreds.data||[])){
-            const pts=(koMap[p.phase]||[]).includes(p.team_name)?(p.phase==='final'||p.phase==='champion'?30:p.phase==='runner_up'?20:10):0;
+            const pts=(koMap[p.phase]||[]).includes(p.team_name)?(p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10):0;
             if(p.points!==pts){ await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name); total++; }
           }
 
           // Artilheiro
           const sPreds = await SB.from('scorer_predictions').select('*').eq('user_id',uid);
           for(const p of (sPreds.data||[])){
-            const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?20:0;
+            const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?30:0;
             if(p.points!==pts){ await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid); total++; }
           }
         }
@@ -3677,7 +3708,7 @@ function buildAdminUI(main){
           for(const phase of phasesToCalc){
             const teamIds = adminKo[phase]?.team_ids||[];
             if(teamIds.length===0) continue;
-            const pts = phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10;
+            const pts = phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10;
             const preds = await dbQ('knockout_predictions',{phase});
             if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:teamIds.includes(p.team_name)?pts:0})));
           }
@@ -3789,7 +3820,7 @@ function buildAdminUI(main){
           let totalUpdated=0;
           for(const phase of phasesToCalc){
             const teamIds=adminKo[phase]?.team_ids||[];
-            const pts=phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10;
+            const pts=phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10;
             const preds=await dbQ('knockout_predictions',{phase});
             for(const p of preds){
               const newPts=teamIds.includes(p.team_name)?pts:0;
@@ -3821,7 +3852,7 @@ function buildAdminUI(main){
         const name=inp.value.trim(); if(!name) return;
         await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[name]});
         const preds=await dbQ('scorer_predictions');
-        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?20:0})));
+        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?30:0})));
         showToast('✅ Artilheiro salvo!');
       }catch(e){ showToast(e.message,'err'); }
     }},'Salvar');
@@ -4303,7 +4334,7 @@ async function runTest(main) {
       Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
         teams.forEach(team=>{
           const isReal = realKoMap[phase]?.includes(team);
-          const pts = isReal ? (phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10) : 0;
+          const pts = isReal ? (phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10) : 0;
           kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
@@ -4320,7 +4351,7 @@ async function runTest(main) {
       }
 
       // Artilheiro
-      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 20 : 0;
+      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 30 : 0;
       await db5.from('scorer_predictions').delete().eq('user_id',u.id);
       const {error:sErr} = await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
       if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
@@ -4364,10 +4395,10 @@ async function runTest(main) {
     });
     // Fases KO
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
-      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10); });
+      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10); });
     });
     // Artilheiro
-    expS = realScorer && userPreds[u.id].scorer===realScorer ? 20 : 0;
+    expS = realScorer && userPreds[u.id].scorer===realScorer ? 30 : 0;
     const expT = expM+expG+expK+expS;
 
     const [mp,gp,kp,sp] = await Promise.all([
