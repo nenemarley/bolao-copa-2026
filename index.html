@@ -201,7 +201,7 @@ const PHASES = [
   {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
   {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
   {key:"semi",     label:"Semifinal",         count:2,  pts:10},
-  {key:"final",    label:"Final (Campeão)",     count:1,  pts:20},
+  {key:"final",    label:"Final (Campeão)",     count:1,  pts:30},
   {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
 // final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
@@ -446,13 +446,19 @@ function genMatches(){
 const MATCHES = genMatches();
 
 // Pontuação da classificação dos grupos
-// predPos = posição palpitada (1,2,3), realPos = posição real (1,2,3 ou null)
+// predPos = posição palpitada (1,2,3,4), realPos = posição real (1,2,3,4 ou null)
+// 1º/2º exato=10pts | diff1=5pts | diff2=2pts | 4º=0pts
+// Os 8 melhores 3ºs são pontuados separadamente (7pts cada)
 function calcGrpPts(predPos, realPos){
+  // Só 1º e 2º pontuam na classificação de grupos
+  // Exato (1º/1º ou 2º/2º) = 10pts
+  // Invertido (1º/2º ou 2º/1º) = 5pts
+  // Qualquer outra combinação = 0pts
+  if(predPos>=3) return 0;
   if(realPos===null||realPos===undefined) return 0;
-  if(predPos===realPos) return predPos===3?7:10; // exato: 1º/2º=10pts, 3º=7pts
-  const diff=Math.abs(predPos-realPos);
-  if(diff===1) return 5;
-  if(diff===2) return 2;
+  if(realPos>=3) return 0; // time não ficou em 1º ou 2º
+  if(predPos===realPos) return 10;
+  if((predPos===1&&realPos===2)||(predPos===2&&realPos===1)) return 5;
   return 0;
 }
 
@@ -1536,7 +1542,7 @@ function buildStandingsUI(main){
 
   // ── ABA 1: CLASSIFICADOS POR GRUPO ──────────────────────────────────────
   if(window._grpSubTab==='classified'){
-    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'1rem'}},'Posição exata 1º/2º=10pts · 3º exato=7pts · 1 posição diferença=5pts · 2 posições diferença=2pts · 4º não pontua'));
+    main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'1rem'}},'1º exato=10pts · 2º exato=10pts · 1º/2º invertidos=5pts · 3º e 4º não pontuam · Melhores 3ºs=5pts'));
     const grid=el('div',{class:'sg'});
 
     Object.entries(GROUPS).forEach(([g,teams])=>{
@@ -1704,12 +1710,14 @@ async function saveStandings(){
     [1,2,3,4].forEach(pos=>{
       const p=grpPreds[g]?.[pos];
       if(p?.team){
-        let pts=0;
-        // Só 1º e 2º pontuam
-        if(pos<=2){
-          if(grpReal[g]?.[pos]===p.team) pts=10;
-          else if([grpReal[g]?.[1],grpReal[g]?.[2]].includes(p.team)) pts=5;
-        }
+        // Usar calcGrpPts: só 1º e 2º pontuam, 3º/4º = 0
+        const realPos = (()=>{
+          if(grpReal[g]?.[1]===p.team) return 1;
+          if(grpReal[g]?.[2]===p.team) return 2;
+          if(grpReal[g]?.[3]===p.team) return 3;
+          return null;
+        })();
+        const pts = calcGrpPts(pos, realPos);
         rows.push({user_id:STATE.profile.id,group_id:g,position:pos,team_name:p.team,points:pts});
       }
     });
@@ -1834,7 +1842,7 @@ function buildKoUI(main){
       el('div',{style:{color:'var(--muted)',fontSize:'.75rem',marginTop:'2px'}},'Prazo: '+GROUPS_DEADLINE+' · Classif. grupos → Rodada 32 → Oitavas → Campeão')
     ));
   }
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 20pts · 3º lugar = 10pts'));
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Acertar classificado em cada fase = 10pts · Campeão = 30pts · Vice = 20pts · 3º lugar = 10pts'));
 
   // REGRA: confrontos do participante usam SEMPRE os palpites do usuário
   // Se não preencheu os 8 melhores 3ºs ainda, os slots de 3º ficam como "3º (A/B/...)"
@@ -1900,7 +1908,7 @@ function buildKoUI(main){
         if(!team) return;
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
         const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
-        const ptsLabel = realChamp ? (isRealCh ? ' ·20p' : (isSel ? ' ·0p' : '')) : '';
+        const ptsLabel = realChamp ? (isRealCh ? ' ·30p' : (isSel ? ' ·0p' : '')) : '';
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
           onclick:()=>{
             // Toggle: clicou no selecionado → deseleciona; clicou no outro → troca
@@ -1908,10 +1916,10 @@ function buildKoUI(main){
               koPreds['final']=[];
               koPreds['runner_up']=[];
             } else {
-              koPreds['final']=[{team,pts:isRealCh?20:0}];
+              koPreds['final']=[{team,pts:isRealCh?30:0}];
               const vicePick=avail.find(t=>t!==team);
               const realVice=koReal['runner_up']?.team_ids?.[0];
-              if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?10:0}];
+              if(vicePick) koPreds['runner_up']=[{team:vicePick,pts:realVice&&vicePick===realVice?20:0}];
             }
             koDirty=true; buildKoUI(main);
           }
@@ -1926,7 +1934,7 @@ function buildKoUI(main){
         const realVice=koReal['runner_up']?.team_ids?.[0];
         const viceOk=realVice&&vicePick===realVice;
         const viceDiv=el('div',{style:{marginTop:'.5rem',fontSize:'.78rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:'6px'}});
-        const vBadge=el('span',{style:{display:'inline-flex',alignItems:'center',gap:'4px',background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'}},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·10p ✓':''));
+        const vBadge=el('span',{style:{display:'inline-flex',alignItems:'center',gap:'4px',background:viceOk?'rgba(16,185,129,.15)':'rgba(255,255,255,.05)',border:'1px solid '+(viceOk?'#10B981':'var(--bdr)'),borderRadius:'20px',padding:'3px 10px',fontSize:'.78rem'}},(FLAGS[vicePick]||'')+' '+vicePick+(viceOk?' ·20p ✓':''));
         viceDiv.appendChild(el('span',{},'🥈 Vice (auto):'));
         viceDiv.appendChild(vBadge);
         if(realVice&&!viceOk) viceDiv.appendChild(el('span',{style:{color:'var(--err)',fontSize:'.72rem'}},'Real: '+(FLAGS[realVice]||'')+' '+realVice));
@@ -2146,7 +2154,7 @@ function buildKoUI(main){
     const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
     scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
     if(koScorer){
-      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?10:0;
+      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?20:0;
       scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
     }
     scard.appendChild(scorerRow);
@@ -2172,7 +2180,7 @@ async function saveKo(){
     if(viceTeam){
       // pts do vice: verificar contra resultado real (koReal['runner_up'])
       const realVice = koReal['runner_up']?.team_ids?.[0];
-      koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?10:0}];
+      koPreds['runner_up']=[{team:viceTeam, pts:realVice&&viceTeam===realVice?20:0}];
     }
     const rows=[];
     Object.entries(koPreds).forEach(([phase,teams])=>{
@@ -2189,7 +2197,7 @@ async function saveKo(){
       if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
-        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?10:0;
+        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?20:0;
         await SB.from('scorer_predictions').upsert({user_id:STATE.profile.id,player_name:koScorer,points:pts,bolao_id:bolao.id});
       }
     }
@@ -2873,9 +2881,9 @@ async function applyAIResults(data, log) {
       if(!teams||teams.length===0) continue;
       const normTeams = norm(teams);
       // final no banco salva o campeão; o participante usa 'final' para os 2 finalistas
-      // mas para cálculo de pontos usamos champion(20pts) e runner_up(10pts)
+      // mas para cálculo de pontos usamos champion(30pts) e runner_up(20pts)
       await dbUpsert('real_knockouts',{phase,team_ids:normTeams});
-      const pts = (phase==='final'||phase==='champion')?20:10;
+      const pts = (phase==='final'||phase==='champion')?30:(phase==='runner_up')?20:10;
       const preds = await dbQ('knockout_predictions',{phase});
       if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:normTeams.includes(p.team_name)?pts:0})));
       log('✅ '+phase+': '+normTeams.join(', '), '#10B981');
@@ -3195,13 +3203,31 @@ function buildAdminUI(main){
     const card=el('div',{class:'card'});
     const thirdsHeader=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.3rem'}});
     thirdsHeader.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)'}},'8 MELHORES 3ºS COLOCADOS'));
-    thirdsHeader.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
+    const thirdsActions=el('div',{style:{display:'flex',gap:'6px'}});
+    // Botão Recalcular pontos (7pts)
+    thirdsActions.appendChild(el('button',{class:'btn btn-sm btn-p',style:{fontSize:'.7rem',padding:'3px 10px'},onclick:async()=>{
+      const currT=adminKo['best_thirds']?.team_ids||[];
+      if(currT.length===0){ showToast('Defina os 8 melhores 3ºs primeiro','err'); return; }
+      const preds=await dbQ('group_predictions',{group_id:'_thirds'});
+      let updated=0;
+      for(const p of preds){
+        const newPts=currT.includes(p.team_name)?5:0;
+        if(p.points!==newPts){
+          await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
+          updated++;
+        }
+      }
+      showToast('✅ '+updated+' palpites recalculados para 7pts!');
+    }},'🔄 Recalcular 7pts'));
+    // Botão Limpar
+    thirdsActions.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
       if(!confirm('Limpar todos os 8 melhores 3ºs do banco?')) return;
       await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:[]});
       if(!adminKo['best_thirds']) adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
       adminKo['best_thirds'].team_ids=[];
       showToast('✅ Best thirds limpos!'); buildAdminUI(main);
     }},'🗑 Limpar'));
+    thirdsHeader.appendChild(thirdsActions);
     card.appendChild(thirdsHeader);
     card.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'1rem'}},'Selecione os 8 times que se classificaram como melhores 3ºs. Isso atualiza automaticamente os palpites dos participantes.'));
     const currThirds = adminKo['best_thirds']?.team_ids||[];
@@ -3580,7 +3606,7 @@ function buildAdminUI(main){
           for(const phase of phasesToCalc){
             const teamIds = adminKo[phase]?.team_ids||[];
             if(teamIds.length===0) continue;
-            const pts = phase==='final'||phase==='champion'?20:10;
+            const pts = phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10;
             const preds = await dbQ('knockout_predictions',{phase});
             if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:teamIds.includes(p.team_name)?pts:0})));
           }
@@ -3692,7 +3718,7 @@ function buildAdminUI(main){
           let totalUpdated=0;
           for(const phase of phasesToCalc){
             const teamIds=adminKo[phase]?.team_ids||[];
-            const pts=phase==='final'||phase==='champion'?20:10;
+            const pts=phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10;
             const preds=await dbQ('knockout_predictions',{phase});
             for(const p of preds){
               const newPts=teamIds.includes(p.team_name)?pts:0;
@@ -3724,7 +3750,7 @@ function buildAdminUI(main){
         const name=inp.value.trim(); if(!name) return;
         await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[name]});
         const preds=await dbQ('scorer_predictions');
-        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?10:0})));
+        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?20:0})));
         showToast('✅ Artilheiro salvo!');
       }catch(e){ showToast(e.message,'err'); }
     }},'Salvar');
@@ -3761,7 +3787,7 @@ function buildAdminUI(main){
             const grpOfTeam=Object.entries(GROUPS).find(([g,ts])=>ts.includes(p.team_name))?.[0];
             const rs=realSt[grpOfTeam]||{};
             const rp=(()=>{if(rs[1]===p.team_name)return 1;if(rs[2]===p.team_name)return 2;if(realThirds.includes(p.team_name))return 3;return null;})();
-            pts = rp===3?7:rp===2||rp===1?5:0;
+            pts = calcGrpPts(p.position, rp);
           } else if(p.position<=3){
             const rs=realSt[p.group_id]||{};
             const rp=(()=>{if(rs[1]===p.team_name)return 1;if(rs[2]===p.team_name)return 2;if(realThirds.includes(p.team_name))return 3;return null;})();
@@ -4191,7 +4217,7 @@ async function runTest(main) {
         const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
         const rst=realStMap[grp]||{};
         const realPos=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
-        const pts = realPos===3?7:realPos===2||realPos===1?5:0;
+        const pts = realPos===3?5:0; // 3º melhor = 5pts, 1º/2º na aba grupos não conta aqui
         gRows.push({user_id:u.id, group_id:'_thirds', position:idx+1, team_name:team, points:pts, bolao_id:testBolao?.id});
       });
       const totalGPts = gRows.reduce((s,r)=>s+r.points,0);
@@ -4206,7 +4232,7 @@ async function runTest(main) {
       Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
         teams.forEach(team=>{
           const isReal = realKoMap[phase]?.includes(team);
-          const pts = isReal ? (phase==='final'||phase==='champion'?20:10) : 0;
+          const pts = isReal ? (phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10) : 0;
           kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
@@ -4223,7 +4249,7 @@ async function runTest(main) {
       }
 
       // Artilheiro
-      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
+      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 20 : 0;
       await db5.from('scorer_predictions').delete().eq('user_id',u.id);
       const {error:sErr} = await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
       if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
@@ -4263,14 +4289,14 @@ async function runTest(main) {
       const grp=Object.entries(GROUPS).find(([g,ts])=>ts.includes(team))?.[0];
       const rst=realStMap[grp]||{};
       const rp=(()=>{ if(rst[1]===team)return 1; if(rst[2]===team)return 2; if(realThirds.includes(team))return 3; return null; })();
-      expG+=rp===3?7:rp===2||rp===1?5:0;
+      expG+=rp===3?5:0; // 3º melhor = 5pts fixo
     });
     // Fases KO
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
-      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?20:10); });
+      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?30:phase==='runner_up'?20:10); });
     });
     // Artilheiro
-    expS = realScorer && userPreds[u.id].scorer===realScorer ? 10 : 0;
+    expS = realScorer && userPreds[u.id].scorer===realScorer ? 20 : 0;
     const expT = expM+expG+expK+expS;
 
     const [mp,gp,kp,sp] = await Promise.all([
