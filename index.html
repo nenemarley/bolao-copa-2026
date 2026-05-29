@@ -86,7 +86,7 @@ body{background:var(--dk);color:var(--txt);font-family:'Inter',sans-serif;min-he
 .gb-btn{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
 .gb-btn.active{background:var(--gold);color:#111 !important;border-color:var(--gold);font-weight:700}
 .gb-btn:hover{border-color:var(--gold);color:var(--gold)}
-.tabs{display:flex;gap:3px;margin-bottom:1.25rem;background:var(--dk3);border-radius:8px;padding:3px}
+.tabs{display:flex;gap:3px;margin-bottom:1.25rem;background:var(--dk3);border-radius:8px;padding:3px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 .tb{flex:1;padding:7px;border:none;background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;font-size:.78rem;font-weight:500}
 .tb.act{background:var(--card);color:var(--gold)}
 .amr{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center;padding:10px;background:var(--dk3);border-radius:8px;margin-bottom:6px}
@@ -413,7 +413,11 @@ function daysUntilGroupsDeadline() {
   return Math.ceil((cutoff - today) / 86400000);
 }
 
+let MATCHES_LOCK_START = null; // data configurável pelo admin para início do bloqueio
+
 function canBet(matchNum) {
+  // Se data de bloqueio global está no passado, bloquear todos os jogos
+  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
   const dateStr = MATCH_DATES[matchNum];
   if(!dateStr) return true;
   const today = new Date();
@@ -1673,6 +1677,8 @@ function renderStandings(main){
     if(PAGE_VERSION !== v) return;
     const srRow=(rk||[]).find(r=>r.phase==='second_round_date');
     if(srRow?.team_ids?.[0]) SECOND_ROUND_DATE=srRow.team_ids[0];
+    const mlRow=(rk||[]).find(r=>r.phase==='matches_lock_start');
+    if(mlRow?.team_ids?.[0]) MATCHES_LOCK_START=mlRow.team_ids[0];
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'📊 Classificação dos Grupos'));
     if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
@@ -3325,7 +3331,7 @@ function buildAdminUI(main){
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
   [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
-    tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
+    tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,style:{whiteSpace:'nowrap',flexShrink:'0'},onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
   });
   main.appendChild(tabs);
 
@@ -4105,6 +4111,28 @@ function buildAdminUI(main){
   if(adminTab==='config'){
     const cfgCard=el('div',{class:'card'});
     cfgCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.8rem',fontSize:'1.1rem'}},'⚙️ Configurações do Bolão'));
+
+    // Data de início do bloqueio dos jogos
+    cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem',marginTop:'.5rem'}},'🔒 Data/hora de início do bloqueio dos jogos'));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'A partir desta data, os palpites de placar ficam bloqueados individualmente por jogo. Útil para testar antes da Copa começar.'));
+    const lockInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'},value:''});
+    // Carregar data atual do banco
+    dbQ('real_knockouts',{phase:'matches_lock_start'},'team_ids').then(r=>{
+      if(r?.[0]?.team_ids?.[0]) lockInput.value=new Date(r[0].team_ids[0]).toISOString().substring(0,16);
+    }).catch(()=>{});
+    const lockSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
+      const val=lockInput.value;
+      if(!val){showToast('Defina a data primeiro','err');return;}
+      const dt=new Date(val).toISOString();
+      try{
+        await dbUpsert('real_knockouts',{phase:'matches_lock_start',team_ids:[dt]});
+        showToast('✅ Data de bloqueio salva: '+new Date(dt).toLocaleString('pt-BR'));
+      }catch(e){showToast('Erro: '+e.message,'err');}
+    }},'💾 Salvar');
+    cfgCard.appendChild(lockInput);
+    cfgCard.appendChild(el('br',{}));
+    cfgCard.appendChild(lockSave);
+    cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
 
     // Data início 2ª rodada
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'📅 Data/hora início da 2ª rodada'));
