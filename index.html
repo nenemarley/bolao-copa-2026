@@ -1111,6 +1111,217 @@ async function loadBolaoMembers(bolaoId) {
   } catch { return []; }
 }
 
+
+// ── Ver palpites de outro usuário ─────────────────────────────────────────
+async function showUserPalpites(userId, userName) {
+  // Remover popup anterior
+  document.getElementById('user-palpites-modal')?.remove();
+
+  const overlay = el('div', {id:'user-palpites-modal', style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.75)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div', {style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'85vh',
+    display:'flex',flexDirection:'column',overflow:'hidden'
+  }});
+
+  // Header
+  const hdr = el('div',{style:{padding:'1rem 1rem .5rem',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--bdr)'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.2rem'}},'👤 Palpites de '+userName));
+  hdr.appendChild(el('button',{class:'btn btn-sm',style:{padding:'4px 10px'},onclick:()=>overlay.remove()},'✕'));
+  modal.appendChild(hdr);
+
+  // Abas
+  let activeTab = 'jogos';
+  const tabBar = el('div',{style:{display:'flex',gap:'6px',padding:'.6rem 1rem',borderBottom:'1px solid var(--bdr)'}});
+  const body = el('div',{style:{flex:'1',overflowY:'auto',padding:'1rem'}});
+
+  const secondStarted = isSecondRoundStarted();
+
+  function tabStyle(k) {
+    return activeTab===k
+      ? {padding:'5px 12px',borderRadius:'20px',background:'var(--gold)',color:'#000',fontWeight:'700',fontSize:'.8rem',border:'none',cursor:'pointer'}
+      : {padding:'5px 12px',borderRadius:'20px',background:'var(--dk3)',color:'var(--muted)',fontSize:'.8rem',border:'none',cursor:'pointer'};
+  }
+
+  const tabs = [
+    ['jogos','⚽ Jogos'],
+    ...(secondStarted ? [
+      ['grupos','📊 Grupos'],
+      ['thirds','🥉 3ºs'],
+      ['fases','🔥 Eliminat.'],
+      ['artilheiro','🎯 Artilheiro'],
+    ] : [])
+  ];
+
+  async function renderTab() {
+    body.innerHTML = '';
+    body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+
+    const bolaoId = CURRENT_BOLAO?.id;
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    if(activeTab==='jogos') {
+      // Buscar palpites de jogos bloqueados (data <= hoje)
+      const [mp, rm] = await Promise.all([
+        dbQ('match_predictions',{user_id:userId, bolao_id:bolaoId},'match_number,predicted_score1,predicted_score2,points'),
+        dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished,team1_name,team2_name'),
+      ]);
+      body.innerHTML='';
+      const matchMap={};
+      (rm||[]).forEach(m=>matchMap[m.match_number]=m);
+      const predMap={};
+      (mp||[]).forEach(p=>predMap[p.match_number]=p);
+
+      // Filtrar só jogos cujo dia já passou (bloqueados)
+      const today2 = new Date(); today2.setHours(0,0,0,0);
+      const visibleMatches = MATCHES.filter(m=>{
+        const dateStr = MATCH_DATES?.[m.num];
+        if(!dateStr) return false;
+        return new Date(dateStr) <= today2;
+      }).sort((a,b)=>a.num-b.num);
+
+      if(visibleMatches.length===0){
+        body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Nenhum jogo realizado ainda.'));
+        return;
+      }
+      visibleMatches.forEach(m=>{
+        const r=matchMap[m.num];
+        const p=predMap[m.num];
+        if(!r||!p) return;
+        const pts=p.points||0;
+        const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+        const row=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--bdr)',gap:'8px'}});
+        row.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',minWidth:'60px'}},m.team1+' × '+m.team2));
+        const palpDiv=el('div',{style:{fontSize:'.85rem',color:'var(--gold)',fontWeight:'700'}},p.predicted_score1+' – '+p.predicted_score2);
+        row.appendChild(palpDiv);
+        const realDiv=el('div',{style:{fontSize:'.78rem',color:'var(--muted)'}},r.real_score1+' – '+r.real_score2);
+        row.appendChild(realDiv);
+        row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
+        body.appendChild(row);
+      });
+
+    } else if(activeTab==='grupos') {
+      const gp = await dbQ('group_predictions',{user_id:userId, bolao_id:bolaoId},'group_id,position,team_name,points');
+      const rg = await dbQ('real_group_standings',{},'group_id,position,team_name');
+      body.innerHTML='';
+      const realSt={};
+      (rg||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+      const byGroup={};
+      (gp||[]).filter(p=>p.group_id!=='_thirds').forEach(p=>{
+        if(!byGroup[p.group_id]) byGroup[p.group_id]={};
+        byGroup[p.group_id][p.position]=p;
+      });
+      Object.keys(GROUPS).sort().forEach(g=>{
+        const grpDiv=el('div',{style:{marginBottom:'.75rem'}});
+        grpDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'4px'}},'Grupo '+g));
+        [1,2].forEach(pos=>{
+          const p=byGroup[g]?.[pos];
+          if(!p) return;
+          const pts=p.points||0;
+          const ptsCls=pts===10?'p10':pts===5?'p5':'p0';
+          const row=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'4px 0',fontSize:'.82rem'}});
+          row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'20px'}},pos+'º'));
+          row.appendChild(el('span',{style:{flex:'1'}},(FLAGS[p.team_name]||'')+' '+p.team_name));
+          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
+          grpDiv.appendChild(row);
+        });
+        body.appendChild(grpDiv);
+      });
+
+    } else if(activeTab==='thirds') {
+      const gp = await dbQ('group_predictions',{user_id:userId},'group_id,position,team_name,points');
+      const rk = await dbQ('real_knockouts',{phase:'best_thirds'},'team_ids');
+      body.innerHTML='';
+      const realThirds=rk?.[0]?.team_ids||[];
+      const thirds=(gp||[]).filter(p=>p.group_id==='_thirds').sort((a,b)=>a.position-b.position);
+      if(thirds.length===0){
+        body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Nenhum 3º selecionado.'));
+        return;
+      }
+      thirds.forEach(p=>{
+        const passed=realThirds.includes(p.team_name);
+        const pts=p.points||0;
+        const row=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:'1px solid var(--bdr)'}});
+        row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'25px',fontSize:'.8rem'}},p.position+'º'));
+        row.appendChild(el('span',{style:{flex:'1',fontSize:'.85rem'}},(FLAGS[p.team_name]||'')+' '+p.team_name));
+        row.appendChild(el('span',{class:'pp '+(pts>0?'p10':'p0'),style:{fontSize:'.7rem'}},pts+'pts'));
+        body.appendChild(row);
+      });
+
+    } else if(activeTab==='fases') {
+      const kp = await dbQ('knockout_predictions',{user_id:userId, bolao_id:bolaoId},'phase,team_name,points');
+      const rk = await dbQ('real_knockouts',{},'phase,team_ids');
+      body.innerHTML='';
+      const koMap={};
+      (rk||[]).forEach(r=>koMap[r.phase]=r.team_ids||[]);
+      const phaseLabels={round32:'Rodada de 32',round16:'Oitavas',quarter:'Quartas',semi:'Semifinal',final:'Campeão',runner_up:'Vice',third:'3º Lugar'};
+      const byPhase={};
+      (kp||[]).forEach(p=>{ if(!byPhase[p.phase]) byPhase[p.phase]=[]; byPhase[p.phase].push(p); });
+      const phaseOrder=['round32','round16','quarter','semi','final','runner_up','third'];
+      phaseOrder.forEach(ph=>{
+        const items=byPhase[ph]||[];
+        if(items.length===0) return;
+        const phDiv=el('div',{style:{marginBottom:'.75rem'}});
+        phDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'4px'}},phaseLabels[ph]||ph));
+        items.forEach(p=>{
+          const pts=p.points||0;
+          const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
+          const row=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'4px 0',fontSize:'.82rem'}});
+          row.appendChild(el('span',{style:{flex:'1'}},(FLAGS[p.team_name]||'')+' '+p.team_name));
+          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
+          phDiv.appendChild(row);
+        });
+        body.appendChild(phDiv);
+      });
+
+    } else if(activeTab==='artilheiro') {
+      const sp = await dbQ('scorer_predictions',{user_id:userId},'player_name,points');
+      body.innerHTML='';
+      const s=sp?.[0];
+      if(!s){ body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Artilheiro não palpitado.')); return; }
+      const pts=s.points||0;
+      const div=el('div',{style:{textAlign:'center',padding:'1.5rem'}});
+      div.appendChild(el('div',{style:{fontSize:'2rem',marginBottom:'8px'}},'⚽'));
+      div.appendChild(el('div',{style:{fontSize:'1.2rem',fontWeight:'700',color:'var(--gold)',marginBottom:'8px'}},s.player_name));
+      div.appendChild(el('span',{class:'pp '+(pts>0?'p10':'p0'),style:{fontSize:'1rem'}},pts+'pts'));
+      body.appendChild(div);
+    }
+  }
+
+  // Montar abas
+  tabs.forEach(([k,label])=>{
+    const btn=el('button',{style:tabStyle(k),onclick:async()=>{
+      activeTab=k;
+      // Atualizar estilos
+      tabBar.querySelectorAll('button').forEach((b,i)=>{
+        const [tk]=tabs[i];
+        Object.assign(b.style, tabStyle(tk));
+      });
+      await renderTab();
+    }},label);
+    tabBar.appendChild(btn);
+  });
+
+  modal.appendChild(tabBar);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  if(!secondStarted){
+    const info=el('div',{style:{padding:'.5rem 1rem',background:'rgba(245,158,11,.1)',fontSize:'.75rem',color:'var(--gold)',textAlign:'center'}});
+    info.textContent='⏳ Grupos/3ºs/Eliminatórias disponíveis após início da 2ª rodada';
+    modal.insertBefore(info, body);
+  }
+
+  await renderTab();
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function renderDashboard(main){
   const v = PAGE_VERSION;
@@ -1119,33 +1330,56 @@ function renderDashboard(main){
   const bolaoId = CURRENT_BOLAO?.id;
   const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
   Promise.all([
-    dbQ('match_predictions',mFilter,'user_id,points'),
-    dbQ('group_predictions',mFilter,'user_id,points'),
-    dbQ('knockout_predictions',mFilter,'user_id,points'),
+    dbQ('match_predictions',mFilter,'user_id,match_number,points'),
+    dbQ('group_predictions',mFilter,'user_id,group_id,points'),
+    dbQ('knockout_predictions',mFilter,'user_id,phase,points'),
     dbQ('scorer_predictions',mFilter,'user_id,points'),
     bolaoId ? dbQ('bolao_members',{bolao_id:bolaoId},'user_id') : Promise.resolve([]),
-    // Sempre recarregar profiles frescos do banco (para incluir usuários criados depois do login)
     dbQ('profiles',{},'id,display_name,is_admin,username'),
   ]).then(([mp,gp,kp,sp,members,freshProfiles])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
-
-    // Atualizar STATE.profiles com dados frescos
     if(freshProfiles && freshProfiles.length>0) STATE.profiles = freshProfiles;
 
-    // Filtrar só os membros do bolão atual
     const memberIds = new Set((members||[]).map(m=>m.user_id));
     const bolaoProfiles = bolaoId
       ? STATE.profiles.filter(p=>memberIds.has(p.id))
       : STATE.profiles;
 
+    // Categorias detalhadas
     const totals={};
-    bolaoProfiles.forEach(p=>{ totals[p.id]={m:0,g:0,k:0,s:0,prof:p}; });
-    (mp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].m+=(r.points||0); });
-    (gp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].g+=(r.points||0); });
-    (kp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].k+=(r.points||0); });
+    bolaoProfiles.forEach(p=>{ totals[p.id]={
+      j1:0,   // Jogos 1ª Fase (1-72)
+      je:0,   // Jogos Eliminatórias (73+)
+      g:0,    // Grupos 1º/2º
+      t3:0,   // 8 Melhores 3ºs
+      fk:0,   // Fases KO (R32/Oitavas/Quartas/Semi)
+      fc:0,   // Campeão/Vice/3ºLugar
+      s:0,    // Artilheiro
+      prof:p
+    }; });
+
+    (mp||[]).forEach(r=>{
+      if(!totals[r.user_id]) return;
+      if((r.match_number||0)<=72) totals[r.user_id].j1+=(r.points||0);
+      else                        totals[r.user_id].je+=(r.points||0);
+    });
+    (gp||[]).forEach(r=>{
+      if(!totals[r.user_id]) return;
+      if(r.group_id==='_thirds') totals[r.user_id].t3+=(r.points||0);
+      else                       totals[r.user_id].g+=(r.points||0);
+    });
+    (kp||[]).forEach(r=>{
+      if(!totals[r.user_id]) return;
+      const finalPhases=['final','champion','runner_up','third'];
+      if(finalPhases.includes(r.phase)) totals[r.user_id].fc+=(r.points||0);
+      else                              totals[r.user_id].fk+=(r.points||0);
+    });
     (sp||[]).forEach(r=>{ if(totals[r.user_id]) totals[r.user_id].s+=(r.points||0); });
-    const rows=Object.values(totals).map(t=>({...t,total:t.m+t.g+t.k+t.s})).sort((a,b)=>b.total-a.total);
+
+    const rows=Object.values(totals).map(t=>({
+      ...t, total:t.j1+t.je+t.g+t.t3+t.fk+t.fc+t.s
+    })).sort((a,b)=>b.total-a.total);
 
     const stats=el('div',{class:'stats'});
     [{v:bolaoProfiles.length,l:'Participantes'},{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
@@ -1154,26 +1388,37 @@ function renderDashboard(main){
 
     const card=el('div',{class:'card'});
     card.appendChild(el('div',{class:'ch'},'🏆 Ranking Geral'));
+
+    // Tabela com scroll horizontal
+    const tableWrap=el('div',{style:{overflowX:'auto'}});
     const t=el('table',{class:'rkt'});
-    t.appendChild(el('thead',{},el('tr',{},
-      ...['#','Participante','Jogos','Grupos','Fases','Artilheiro','Total'].map(h=>el('th',{},h))
-    )));
+    const headers=['#','Participante','J.1ªFase','J.Elim.','Grupos','3ºs','Fases','Campeão','Artil.','Total'];
+    t.appendChild(el('thead',{},el('tr',{},...headers.map(h=>el('th',{style:{whiteSpace:'nowrap',fontSize:'.7rem',padding:'6px 4px'}},h)))));
     const em=['🥇','🥈','🥉'],rc=['r1','r2','r3'];
     const tbody=el('tbody');
     rows.forEach((r,i)=>{
       const tr=el('tr');
       tr.appendChild(el('td',{class:rc[i]||''},em[i]||`${i+1}º`));
-      const nameTd=el('td');
-      const nameSpan=el('span',{style:{fontWeight:r.prof.id===STATE.profile.id?'700':'400',color:r.prof.id===STATE.profile.id?'var(--gold)':'inherit'}},r.prof.display_name);
+      const nameTd=el('td',{style:{whiteSpace:'nowrap'}});
+      const isMe = r.prof.id===STATE.profile.id;
+      const nameSpan=el('span',{
+        style:{fontWeight:isMe?'700':'400',color:isMe?'var(--gold)':'inherit',cursor:isMe?'default':'pointer',textDecoration:isMe?'none':'underline dotted'},
+        onclick: isMe ? null : ()=>showUserPalpites(r.prof.id, r.prof.display_name)
+      },r.prof.display_name);
       nameTd.appendChild(nameSpan);
       if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
       tr.appendChild(nameTd);
-      [r.m,r.g,r.k,r.s].forEach(v=>tr.appendChild(el('td',{},''+v)));
+      [r.j1,r.je,r.g,r.t3,r.fk,r.fc,r.s].forEach(v=>{
+        const td=el('td',{style:{textAlign:'center',fontSize:'.8rem'}});
+        td.appendChild(el('span',{style:{color:v>0?'var(--ok)':'var(--muted)'}},''+v));
+        tr.appendChild(td);
+      });
       const totalTd=el('td'); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
       tbody.appendChild(tr);
     });
     t.appendChild(tbody);
-    const tw=el('div',{class:'rkt-wrap'}); tw.appendChild(t); card.appendChild(tw);
+    tableWrap.appendChild(t);
+    card.appendChild(tableWrap);
     main.appendChild(card);
   });
 }
@@ -1426,6 +1671,8 @@ function renderStandings(main){
     dbQ('real_knockouts',{},'phase,team_ids'),
   ]).then(([gp,rs,rk])=>{
     if(PAGE_VERSION !== v) return;
+    const srRow=(rk||[]).find(r=>r.phase==='second_round_date');
+    if(srRow?.team_ids?.[0]) SECOND_ROUND_DATE=srRow.team_ids[0];
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'📊 Classificação dos Grupos'));
     if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
@@ -3013,6 +3260,17 @@ async function syncAdminKoWithStandings(changedGroup){
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 let adminTab='matches', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
+let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
+
+function canBetGroups() {
+  // Retorna true se ainda pode apostar em grupos/3ºs/eliminatórias/artilheiro
+  if(!SECOND_ROUND_DATE) return true;
+  return new Date() < new Date(SECOND_ROUND_DATE);
+}
+function isSecondRoundStarted() {
+  if(!SECOND_ROUND_DATE) return false;
+  return new Date() >= new Date(SECOND_ROUND_DATE);
+}
 let adminSaveDirty=false;
 function updateAdminSaveBar(){
   let sb=document.getElementById('admin-savebar');
@@ -3066,7 +3324,7 @@ function buildAdminUI(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
-  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['test','🧪 Teste']].forEach(([k,l])=>{
+  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
     tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
   });
   main.appendChild(tabs);
@@ -3842,6 +4100,45 @@ function buildAdminUI(main){
       }
     },'💾 Salvar e Recalcular Pontuações');
     main.appendChild(saveKoBtn);
+  }
+
+  if(adminTab==='config'){
+    const cfgCard=el('div',{class:'card'});
+    cfgCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.8rem',fontSize:'1.1rem'}},'⚙️ Configurações do Bolão'));
+
+    // Data início 2ª rodada
+    cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'📅 Data/hora início da 2ª rodada'));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'A partir deste momento: palpites de grupos, 3ºs, eliminatórias e artilheiro serão bloqueados e visíveis por todos.'));
+    const dtInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'},value:SECOND_ROUND_DATE?SECOND_ROUND_DATE.replace('Z','').substring(0,16):''});
+    const dtSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
+      const val=dtInput.value;
+      if(!val){showToast('Defina a data primeiro','err');return;}
+      // Converter para ISO com timezone local
+      const dt=new Date(val).toISOString();
+      try{
+        await dbUpsert('real_knockouts',{phase:'second_round_date',team_ids:[dt]});
+        SECOND_ROUND_DATE=dt;
+        showToast('✅ Data salva: '+new Date(dt).toLocaleString('pt-BR'));
+      }catch(e){showToast('Erro: '+e.message,'err');}
+    }},'💾 Salvar Data');
+    cfgCard.appendChild(dtInput);
+    cfgCard.appendChild(el('br',{}));
+    cfgCard.appendChild(dtSave);
+
+    // Status atual
+    const statusDiv=el('div',{style:{marginTop:'1rem',padding:'.75rem',background:'var(--dk3)',borderRadius:'8px',fontSize:'.82rem'}});
+    if(SECOND_ROUND_DATE){
+      const dt=new Date(SECOND_ROUND_DATE);
+      const started=isSecondRoundStarted();
+      statusDiv.appendChild(el('div',{style:{color:started?'var(--ok)':'var(--gold)',fontWeight:'600'}},
+        started?'✅ 2ª Rodada JÁ COMEÇOU':'⏳ 2ª Rodada ainda não começou'));
+      statusDiv.appendChild(el('div',{style:{color:'var(--muted)',marginTop:'4px'}},
+        'Data configurada: '+dt.toLocaleString('pt-BR')));
+    } else {
+      statusDiv.appendChild(el('div',{style:{color:'var(--err)'}},'⚠️ Data não configurada — palpites de grupos/eliminatórias não serão bloqueados'));
+    }
+    cfgCard.appendChild(statusDiv);
+    main.appendChild(cfgCard);
   }
 
   if(adminTab==='scorer'){
