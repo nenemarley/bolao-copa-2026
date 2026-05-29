@@ -378,11 +378,13 @@ const KO_MATCH_DATES = {
 };
 
 function canBetKoMatch(matchNum) {
+  // Bloquear se data global de lock passou
+  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
   const dateStr = KO_MATCH_DATES[matchNum];
-  if(!dateStr) return true; // sem data cadastrada — libera
+  if(!dateStr) return true;
   const today = new Date(); today.setHours(0,0,0,0);
   const matchDay = new Date(dateStr + 'T00:00:00');
-  return today < matchDay; // bloqueia no dia do jogo
+  return today < matchDay;
 }
 
 function daysUntilKoMatch(matchNum) {
@@ -3269,7 +3271,8 @@ let adminTab='matches', adminGrp='A', adminKoPhase='round32', adminMatches={}, a
 let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
 
 function canBetGroups() {
-  // Retorna true se ainda pode apostar em grupos/3ºs/eliminatórias/artilheiro
+  // Bloquear com MATCHES_LOCK_START também (para testes)
+  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
   if(!SECOND_ROUND_DATE) return true;
   return new Date() < new Date(SECOND_ROUND_DATE);
 }
@@ -3526,8 +3529,8 @@ function buildAdminUI(main){
         const realThirds=koMap['best_thirds']||[];
         const realScName=koMap['top_scorer']?.[0]||null;
 
-        // Buscar standings reais (do banco real_knockouts ou group_predictions do admin)
-        const rsRows = await SB.from('group_predictions').select('group_id,position,team_name').eq('user_id',STATE.profile.id);
+        // Buscar standings reais da tabela oficial
+        const rsRows = await SB.from('real_group_standings').select('group_id,position,team_name');
         (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id]) realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
 
         // 2. Buscar todos os participantes
@@ -3554,28 +3557,33 @@ function buildAdminUI(main){
           for(const p of (gPreds.data||[])){
             const realPos=(()=>{ const g=realSt[p.group_id]||{}; if(g[1]===p.team_name)return 1; if(g[2]===p.team_name)return 2; if(g[3]===p.team_name)return 3; return null; })();
             const pts=calcGrpPts(p.position,realPos);
-            if(p.points!==pts){ await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id',p.group_id).eq('position',p.position); total++; }
+            await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id',p.group_id).eq('position',p.position);
+            total++;
           }
 
           // 8 Melhores 3ºs
           const tPreds = await SB.from('group_predictions').select('*').eq('user_id',uid).eq('group_id','_thirds');
           for(const p of (tPreds.data||[])){
             const pts=realThirds.includes(p.team_name)?5:0;
-            if(p.points!==pts){ await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id','_thirds').eq('team_name',p.team_name); total++; }
+            await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id','_thirds').eq('team_name',p.team_name);
+            total++;
           }
 
           // Fases eliminatórias
           const kPreds = await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
           for(const p of (kPreds.data||[])){
             const pts=(koMap[p.phase]||[]).includes(p.team_name)?(p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10):0;
-            if(p.points!==pts){ await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name); total++; }
+            // Forçar update sempre para garantir pontuações atualizadas
+            await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name);
+            total++;
           }
 
           // Artilheiro
           const sPreds = await SB.from('scorer_predictions').select('*').eq('user_id',uid);
           for(const p of (sPreds.data||[])){
             const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?30:0;
-            if(p.points!==pts){ await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid); total++; }
+            await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid);
+            total++;
           }
         }
 
