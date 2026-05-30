@@ -2823,6 +2823,9 @@ function buildKoMatchesUI(main, realSt){
 }
 
 function updateKoMatchSaveBar(){
+  // Usar savebar da página atual (ko_matches)
+  // Só mostrar se estamos na página ko_matches
+  if(STATE.page !== 'ko_matches') return;
   let sb=document.getElementById('savebar');
   if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
   sb.innerHTML='';
@@ -2893,9 +2896,9 @@ async function saveKoMatches(){
     showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
     // Recarregar mantendo a sub-fase atual
-    const savedPhase = koMatchPhase;
-    setState({page:'ko_matches'});
-    koMatchPhase = savedPhase;
+    const savedPhase = koMatchPhase; // guardar antes
+    koMatchPhase = savedPhase;       // garantir que está setado
+    setState({page:'ko_matches'});   // agora renderiza com a fase correta
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
     showToast('Erro ao salvar: '+e.message,'err');
@@ -4152,11 +4155,19 @@ function buildAdminUI(main){
     }
     const lockSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
       const val=lockInput.value;
-      if(!val){showToast('Defina a data primeiro','err');return;}
-      const dt=new Date(val).toISOString();
       try{
-        await dbUpsert('real_knockouts',{phase:'matches_lock_start',team_ids:[dt]});
-        showToast('✅ Data de bloqueio salva: '+new Date(dt).toLocaleString('pt-BR'));
+        if(!val){
+          // Limpar data — salvar array vazio
+          await dbUpsert('real_knockouts',{phase:'matches_lock_start',team_ids:[]});
+          MATCHES_LOCK_START=null;
+          showToast('✅ Data de bloqueio removida — bloqueio por jogo individual ativo');
+        } else {
+          const dt=new Date(val).toISOString();
+          await dbUpsert('real_knockouts',{phase:'matches_lock_start',team_ids:[dt]});
+          MATCHES_LOCK_START=dt;
+          showToast('✅ Data salva: '+new Date(dt).toLocaleString('pt-BR'));
+        }
+        buildAdminUI(document.querySelector('.main')||document.body);
       }catch(e){showToast('Erro: '+e.message,'err');}
     }},'💾 Salvar');
     cfgCard.appendChild(lockInput);
@@ -4171,13 +4182,18 @@ function buildAdminUI(main){
     if(SECOND_ROUND_DATE){ try{ dtInput.value=new Date(SECOND_ROUND_DATE).toISOString().substring(0,16); }catch(e){} }
     const dtSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
       const val=dtInput.value;
-      if(!val){showToast('Defina a data primeiro','err');return;}
-      // Converter para ISO com timezone local
-      const dt=new Date(val).toISOString();
       try{
-        await dbUpsert('real_knockouts',{phase:'second_round_date',team_ids:[dt]});
-        SECOND_ROUND_DATE=dt;
-        showToast('✅ Data salva: '+new Date(dt).toLocaleString('pt-BR'));
+        if(!val){
+          await dbUpsert('real_knockouts',{phase:'second_round_date',team_ids:[]});
+          SECOND_ROUND_DATE=null;
+          showToast('✅ Data da 2ª rodada removida — classificados sem bloqueio automático');
+        } else {
+          const dt=new Date(val).toISOString();
+          await dbUpsert('real_knockouts',{phase:'second_round_date',team_ids:[dt]});
+          SECOND_ROUND_DATE=dt;
+          showToast('✅ Data salva: '+new Date(dt).toLocaleString('pt-BR'));
+        }
+        buildAdminUI(document.querySelector('.main')||document.body);
       }catch(e){showToast('Erro: '+e.message,'err');}
     }},'💾 Salvar Data');
     cfgCard.appendChild(dtInput);
