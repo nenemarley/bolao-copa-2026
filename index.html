@@ -378,8 +378,8 @@ const KO_MATCH_DATES = {
 };
 
 function canBetKoMatch(matchNum) {
-  // Bloquear se data global de lock passou
-  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
+  // Jogos eliminatórios usam SECOND_ROUND_DATE (não MATCHES_LOCK_START que é só 1ªfase)
+  if(SECOND_ROUND_DATE && new Date() >= new Date(SECOND_ROUND_DATE)) return false;
   const dateStr = KO_MATCH_DATES[matchNum];
   if(!dateStr) return true;
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1428,13 +1428,13 @@ function renderDashboard(main){
     // Tabela com scroll horizontal
     const tableWrap=el('div',{style:{overflowX:'auto'}});
     const t=el('table',{class:'rkt'});
-    const headers=['#','Participante','J.1ªFase','J.Elim.','Grupos','3ºs','Fases','Campeão','Artil.','Total'];
-    t.appendChild(el('thead',{},el('tr',{},...headers.map(h=>el('th',{style:{whiteSpace:'nowrap',fontSize:'.7rem',padding:'6px 4px'}},h)))));
+    const headers=['#','Palpiteiro','Placar\n1ªFase','Placar\nFinais','Classifi-\ncados','Melhores\n3º','Elimina-\ntórias','Finais','Total'];
+    t.appendChild(el('thead',{},el('tr',{},...headers.map(h=>el('th',{style:{whiteSpace:'pre-wrap',fontSize:'.65rem',padding:'5px 3px',textAlign:'center',lineHeight:'1.2'}},h)))));
     const em=['🥇','🥈','🥉'],rc=['r1','r2','r3'];
     const tbody=el('tbody');
     rows.forEach((r,i)=>{
       const tr=el('tr');
-      tr.appendChild(el('td',{class:rc[i]||''},em[i]||`${i+1}º`));
+      tr.appendChild(el('td',{class:rc[i]||'',style:{textAlign:'center'}},em[i]||`${i+1}º`));
       const nameTd=el('td',{style:{whiteSpace:'nowrap'}});
       const isMe = r.prof.id===STATE.profile.id;
       const nameSpan=el('span',{
@@ -1444,12 +1444,14 @@ function renderDashboard(main){
       nameTd.appendChild(nameSpan);
       if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
       tr.appendChild(nameTd);
-      [r.j1,r.je,r.g,r.t3,r.fk,r.fc,r.s].forEach(v=>{
+      // Finais = campeão/vice/3ºlugar + artilheiro somados
+      const finais = r.fc + r.s;
+      [r.j1, r.je, r.g, r.t3, r.fk, finais].forEach(v=>{
         const td=el('td',{style:{textAlign:'center',fontSize:'.8rem'}});
         td.appendChild(el('span',{style:{color:v>0?'var(--ok)':'var(--muted)'}},''+v));
         tr.appendChild(td);
       });
-      const totalTd=el('td'); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
+      const totalTd=el('td',{style:{textAlign:'center'}}); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
       tbody.appendChild(tr);
     });
     t.appendChild(tbody);
@@ -1679,9 +1681,8 @@ async function saveMatches(){
     matchDirty=false;
     showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
     updateSaveBar();
-    // Recarregar tela para mostrar pontos atualizados
-    const mainEl2 = document.querySelector('.main') || document.body;
-    renderMatches(mainEl2);
+    // Recarregar via setState para garantir página correta
+    setState({page:'matches'});
   }
   catch(e){ showToast(e.message,'err'); }
 }
@@ -2849,9 +2850,8 @@ async function saveKoMatches(){
     koMatchDirty=false;
     showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Recarregar do banco para confirmar persistência
-    const mainEl = document.querySelector('.main') || document.body;
-    renderKoMatches(mainEl);
+    // Recarregar via setState para garantir página correta
+    setState({page:'ko_matches'});
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
     showToast('Erro ao salvar: '+e.message,'err');
@@ -3341,8 +3341,7 @@ let adminTab='matches', adminGrp='A', adminKoPhase='round32', adminMatches={}, a
 let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
 
 function canBetGroups() {
-  // Bloquear com MATCHES_LOCK_START também (para testes)
-  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
+  // Grupos/3ºs/eliminatórias bloqueiam com SECOND_ROUND_DATE
   if(!SECOND_ROUND_DATE) return true;
   return new Date() < new Date(SECOND_ROUND_DATE);
 }
