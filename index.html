@@ -378,10 +378,14 @@ const KO_MATCH_DATES = {
 };
 
 function canBetKoMatch(matchNum) {
-  // Jogos eliminatórios usam SECOND_ROUND_DATE (não MATCHES_LOCK_START que é só 1ªfase)
-  if(SECOND_ROUND_DATE && new Date() >= new Date(SECOND_ROUND_DATE)) return false;
+  // Verificar data da 2ª rodada (bloqueia grupos/elim/artilheiro)
+  if(SECOND_ROUND_DATE){
+    const sr = new Date(SECOND_ROUND_DATE);
+    if(!isNaN(sr) && new Date() >= sr) return false;
+  }
+  // Verificar data individual do jogo
   const dateStr = KO_MATCH_DATES[matchNum];
-  if(!dateStr) return true;
+  if(!dateStr) return true; // sem data = liberado
   const today = new Date(); today.setHours(0,0,0,0);
   const matchDay = new Date(dateStr + 'T00:00:00');
   return today < matchDay;
@@ -2827,31 +2831,34 @@ async function saveKoMatches(){
   } catch(e){ /* usa koMatchReal em memória */ }
 
   const rows=[];
+  let blocked=0, noData=0;
+  console.log('[saveKoMatches] koMatchPreds keys:', Object.keys(koMatchPreds).length,
+    'SECOND_ROUND_DATE:', SECOND_ROUND_DATE,
+    'now:', new Date().toISOString());
   Object.entries(koMatchPreds).forEach(([num,p])=>{
     const matchNum=parseInt(num);
-    // Só salvar jogos eliminatórios (>=73)
-    if(matchNum<73) return;
+    if(matchNum<73){ noData++; return; }
     if(p&&p.s1!==undefined&&p.s2!==undefined){
-      // Só salvar se não estiver bloqueado
-      if(!canBetKoMatch(matchNum)){
-        return; // bloqueado — não altera
-      }
+      const canBet=canBetKoMatch(matchNum);
+      if(!canBet){ blocked++; console.log('[saveKoMatches] bloqueado: match '+matchNum+' SECOND_ROUND_DATE='+SECOND_ROUND_DATE); return; }
       const r=koMatchReal[matchNum];
       const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
       koMatchPreds[num].pts=pts;
       rows.push({user_id:STATE.profile.id,match_number:matchNum,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
-    }
+    } else { noData++; }
   });
+  console.log('[saveKoMatches] rows='+rows.length+' blocked='+blocked+' noData='+noData);
   if(!CURRENT_BOLAO){ showToast('Sem bolão selecionado','err'); return; }
-  if(rows.length===0){ showToast('⚠️ Nenhum jogo disponível para salvar (bloqueados ou sem palpites)','err'); return; }
-  console.log('[saveKoMatches] bolao='+CURRENT_BOLAO?.name+' rows='+rows.length+' user='+STATE.profile?.id);
+  if(rows.length===0){ showToast('⚠️ Nenhum jogo disponível (bloqueados='+blocked+', sem dados='+noData+')','err'); return; }
   try{
     await upsertWithReplicate('match_predictions', rows);
     koMatchDirty=false;
     showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Recarregar via setState para garantir página correta
+    // Recarregar mantendo a sub-fase atual
+    const savedPhase = koMatchPhase;
     setState({page:'ko_matches'});
+    koMatchPhase = savedPhase;
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
     showToast('Erro ao salvar: '+e.message,'err');
