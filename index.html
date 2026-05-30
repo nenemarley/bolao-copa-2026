@@ -4240,6 +4240,67 @@ function buildAdminUI(main){
     }},'🔍 Diagnóstico Completo');
     cfgCard.appendChild(diagBtn);
     cfgCard.appendChild(el('br',{}));
+    // Botão Corrigir Problemas (scorer duplicatas + pts errados)
+    const fixBtn=el('button',{class:'btn btn-s',style:{width:'100%',padding:'.6rem',fontWeight:'700',marginBottom:'8px'},onclick:async()=>{
+      if(!confirm('Corrigir problemas encontrados?\n\n• Remover duplicatas de scorer\n• Corrigir espaços em branco nos nomes\n• Forçar recálculo de pontos KO')) return;
+      fixBtn.disabled=true; fixBtn.textContent='⏳ Corrigindo...';
+      let fixes=0;
+      try{
+        const koRows=await dbQ('real_knockouts',{},'phase,team_ids');
+        const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
+        const realScorer=(koMap['top_scorer']?.[0]||'').trim();
+        const members=await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
+
+        for(const m of (members||[])){
+          const uid=m.user_id;
+
+          // 1. Corrigir duplicatas de scorer — manter só 1
+          const spAll=await SB.from('scorer_predictions').select('id,player_name,points').eq('user_id',uid);
+          const spRows=spAll.data||[];
+          if(spRows.length>1){
+            // Deletar tudo e reinserir 1 linha
+            await SB.from('scorer_predictions').delete().eq('user_id',uid);
+            const bestName=spRows[0].player_name?.trim()||'';
+            const pts=realScorer&&bestName.toLowerCase()===realScorer.toLowerCase()?30:0;
+            await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts});
+            fixes+=spRows.length-1;
+            console.log('Corrigido scorer de '+uid+': '+spRows.length+' → 1 ('+bestName+' = '+pts+'pts)');
+          } else if(spRows.length===1){
+            // Corrigir espaço no nome e/ou pontos errados
+            const p=spRows[0];
+            const cleanName=p.player_name?.trim()||'';
+            const correctPts=realScorer&&cleanName.toLowerCase()===realScorer.toLowerCase()?30:0;
+            if(p.player_name!==cleanName||p.points!==correctPts){
+              await SB.from('scorer_predictions').delete().eq('user_id',uid);
+              await SB.from('scorer_predictions').insert({user_id:uid,player_name:cleanName,points:correctPts});
+              fixes++;
+              console.log('Corrigido scorer '+uid+': "'+p.player_name+'" → "'+cleanName+'" '+p.points+'→'+correctPts+'pts');
+            }
+          }
+
+          // 2. Corrigir pontos KO errados
+          const kpAll=await SB.from('knockout_predictions').select('phase,team_name,points').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          for(const p of (kpAll.data||[])){
+            const realTeams=(koMap[p.phase]||[]).concat(
+              p.phase==='final'?(koMap['champion']||[]):[],
+              p.phase==='champion'?(koMap['final']||[]):[]
+            );
+            const acertou=realTeams.map(t=>t.toLowerCase()).includes(p.team_name.toLowerCase());
+            const correctPts=acertou?(p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10):0;
+            if(p.points!==correctPts){
+              await SB.from('knockout_predictions').update({points:correctPts})
+                .eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name).eq('bolao_id',CURRENT_BOLAO.id);
+              fixes++;
+              console.log('Corrigido KO '+uid+' '+p.phase+':'+p.team_name+' '+p.points+'→'+correctPts+'pts');
+            }
+          }
+        }
+        showToast('✅ '+fixes+' problemas corrigidos!');
+      }catch(e){ showToast('Erro: '+e.message,'err'); console.error(e); }
+      fixBtn.disabled=false; fixBtn.textContent='🔧 Corrigir Problemas Detectados';
+    }},'🔧 Corrigir Problemas Detectados');
+    cfgCard.appendChild(fixBtn);
+
     const recalcBtn=el('button',{class:'btn btn-p',style:{width:'100%',padding:'.7rem',fontWeight:'700'},onclick:async()=>{
       if(!confirm('Recalcular pontuações de TODOS os participantes?\nIsso pode demorar alguns segundos.')) return;
       recalcBtn.disabled=true; recalcBtn.textContent='⏳ Calculando...';
