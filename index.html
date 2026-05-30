@@ -533,27 +533,47 @@ async function upsertWithReplicate(table, rows, conflictCols=''){
   if(!rows || rows.length===0) return;
   const uid = STATE.profile?.id;
   if(!uid) throw new Error('Usuário não autenticado');
+
+  // PK de cada tabela para onConflict (UPSERT seguro sem duplicatas)
+  const pkMap = {
+    'match_predictions':  'user_id,match_number,bolao_id',
+    'group_predictions':  'user_id,group_id,position,bolao_id',
+    'knockout_predictions':'user_id,phase,team_name,bolao_id',
+    'scorer_predictions': 'user_id,bolao_id',
+  };
+  const pk = conflictCols || pkMap[table] || '';
+
   const targetBolaos = REPLICATE_ALL ? MY_BOLAOS : [CURRENT_BOLAO];
   for(const bolao of targetBolaos){
     const tagged = rows.map(r=>({...r, bolao_id:bolao.id}));
-    // DELETE seletivo para não apagar dados de outras fases
-    if(table==='match_predictions'){
-      // Detectar se são jogos da 1ª fase (1-72) ou eliminatórias (73+)
-      const nums = rows.map(r=>r.match_number||0);
-      const minNum = Math.min(...nums);
-      const maxNum = Math.max(...nums);
-      let delQ = SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
-      if(minNum>=73){ delQ = delQ.gte('match_number',73); }       // só KO
-      else if(maxNum<=72){ delQ = delQ.lte('match_number',72); }  // só 1ª fase
-      const {error:delErr} = await delQ;
-      if(delErr){ console.error(table+' delete:', delErr.message); throw delErr; }
+    if(pk){
+      // UPSERT: atualiza se existe, insere se não existe — sem duplicatas
+      const {error} = await SB.from(table).upsert(tagged, {onConflict:pk});
+      if(error){
+        // Fallback DELETE+INSERT se upsert falhar (PK não configurada no banco)
+        console.warn(table+' upsert falhou ('+error.message+'), usando DELETE+INSERT');
+        if(table==='match_predictions'){
+          const nums=rows.map(r=>r.match_number||0);
+          const minNum=Math.min(...nums), maxNum=Math.max(...nums);
+          let delQ=SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
+          if(minNum>=73) delQ=delQ.gte('match_number',73);
+          else if(maxNum<=72) delQ=delQ.lte('match_number',72);
+          const {error:dErr}=await delQ;
+          if(dErr) throw dErr;
+        } else {
+          const {error:dErr}=await SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
+          if(dErr) throw dErr;
+        }
+        const {error:iErr}=await SB.from(table).insert(tagged);
+        if(iErr){ console.error(table+' insert:', iErr.message); throw iErr; }
+      }
     } else {
-      // Para outras tabelas: DELETE total + INSERT total (salva tudo de uma vez)
-      const {error:delErr} = await SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
-      if(delErr){ console.error(table+' delete:', delErr.message); throw delErr; }
+      // Sem PK conhecida: DELETE+INSERT
+      const {error:dErr}=await SB.from(table).delete().eq('user_id',uid).eq('bolao_id',bolao.id);
+      if(dErr) throw dErr;
+      const {error:iErr}=await SB.from(table).insert(tagged);
+      if(iErr) throw iErr;
     }
-    const {error:insErr} = await SB.from(table).insert(tagged);
-    if(insErr){ console.error(table+' insert:', insErr.message); throw insErr; }
   }
 }
 async function dbUpsert(table, rows){
@@ -2482,14 +2502,40 @@ async function saveKo(){
 
     const targetBolaos2=REPLICATE_ALL?MY_BOLAOS:[CURRENT_BOLAO];
     for(const bolao of targetBolaos2){
-      await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
-      if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
+      // Upsert knockout: atualiza se já existe (user_id+phase+team_name+bolao_id), insere se não existe
+      if(rows.length>0){
+        const tagged=rows.map(r=>({...r,bolao_id:bolao.id}));
+        const {error:kErr}=await SB.from('knockout_predictions')
+          .upsert(tagged,{onConflict:'user_id,phase,team_name,bolao_id'});
+        if(kErr){
+          // Fallback: DELETE+INSERT se upsert falhar (PK diferente no banco)
+          console.warn('upsert KO falhou, usando DELETE+INSERT:', kErr.message);
+          await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
+          await SB.from('knockout_predictions').insert(tagged);
+        }
+      }
+      // Scorer: UPDATE se existe, INSERT se não existe
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
-        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.trim().toLowerCase()?30:0;
-        // Deletar antes para evitar duplicatas
-        await SB.from('scorer_predictions').delete().eq('user_id',STATE.profile.id);
-        await SB.from('scorer_predictions').insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
+        const pts=rp?.team_ids?.[0]?.trim().toLowerCase()===koScorer.trim().toLowerCase()?30:0;
+        const existing=await SB.from('scorer_predictions').select('id').eq('user_id',STATE.profile.id).limit(1);
+        if(existing.data?.length>0){
+          // UPDATE — preserva a linha existente
+          await SB.from('scorer_predictions')
+            .update({player_name:koScorer.trim(),points:pts})
+            .eq('user_id',STATE.profile.id);
+          // Remover duplicatas se houver
+          const allScorer=await SB.from('scorer_predictions').select('id').eq('user_id',STATE.profile.id);
+          if((allScorer.data?.length||0)>1){
+            const keepId=allScorer.data[0].id;
+            await SB.from('scorer_predictions').delete()
+              .eq('user_id',STATE.profile.id).neq('id',keepId);
+          }
+        } else {
+          // INSERT — primeira vez
+          await SB.from('scorer_predictions')
+            .insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
+        }
       }
     }
     koDirty=false;
@@ -4244,58 +4290,103 @@ function buildAdminUI(main){
     const fixBtn=el('button',{class:'btn btn-s',style:{width:'100%',padding:'.6rem',fontWeight:'700',marginBottom:'8px'},onclick:async()=>{
       if(!confirm('Corrigir problemas encontrados?\n\n• Remover duplicatas de scorer\n• Corrigir espaços em branco nos nomes\n• Forçar recálculo de pontos KO')) return;
       fixBtn.disabled=true; fixBtn.textContent='⏳ Corrigindo...';
-      let fixes=0;
       try{
         const koRows=await dbQ('real_knockouts',{},'phase,team_ids');
         const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
         const realScorer=(koMap['top_scorer']?.[0]||'').trim();
+        const realChamp=([...(koMap['champion']||[]),...(koMap['final']||[])].map(t=>t.toLowerCase()));
+        const realVice=(koMap['runner_up']||[]).map(t=>t.toLowerCase());
+        const realThird=(koMap['third']||[]).map(t=>t.toLowerCase());
         const members=await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
+        let fixes=0, errors=[];
 
         for(const m of (members||[])){
           const uid=m.user_id;
 
-          // 1. Corrigir duplicatas de scorer — manter só 1
-          const spAll=await SB.from('scorer_predictions').select('id,player_name,points').eq('user_id',uid);
+          // Scorer: o usuário só pode editar o próprio — usar sessão do usuário não funciona
+          // Usar SB_ADMIN (admin session) via execução como admin logado
+          // Como somos admin, podemos usar SB direto — mas RLS bloqueia outras linhas
+          // Solução: usar a sessão do próprio admin para fazer update via service key
+          // Por ora: mostrar SQL para executar manualmente
+
+          // Tentar mesmo assim — em alguns configs de RLS admin pode
+          const spAll=await SB.from('scorer_predictions').select('*').eq('user_id',uid);
           const spRows=spAll.data||[];
+          console.log('[Fix] uid='+uid+' scorer rows:', spRows.length, spRows.map(r=>'"'+r.player_name+'" pts='+r.points));
+
+          // Deletar duplicatas (só funciona se RLS permite admin deletar outros)
           if(spRows.length>1){
-            // Deletar tudo e reinserir 1 linha
-            await SB.from('scorer_predictions').delete().eq('user_id',uid);
-            const bestName=spRows[0].player_name?.trim()||'';
-            const pts=realScorer&&bestName.toLowerCase()===realScorer.toLowerCase()?30:0;
-            await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts});
-            fixes+=spRows.length-1;
-            console.log('Corrigido scorer de '+uid+': '+spRows.length+' → 1 ('+bestName+' = '+pts+'pts)');
+            const {error:delErr}=await SB.from('scorer_predictions').delete().eq('user_id',uid);
+            console.log('[Fix] delete scorer:', delErr?.message||'OK');
+            if(!delErr){
+              const bestName=spRows[0].player_name?.trim()||'';
+              const pts=realScorer&&bestName.toLowerCase()===realScorer.toLowerCase()?30:0;
+              const {error:insErr}=await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts});
+              console.log('[Fix] insert scorer:', insErr?.message||'OK ('+bestName+' = '+pts+'pts)');
+              if(!insErr) fixes++; else errors.push('scorer dup: '+insErr.message);
+            } else errors.push('scorer del: '+delErr.message);
           } else if(spRows.length===1){
-            // Corrigir espaço no nome e/ou pontos errados
             const p=spRows[0];
             const cleanName=p.player_name?.trim()||'';
             const correctPts=realScorer&&cleanName.toLowerCase()===realScorer.toLowerCase()?30:0;
-            if(p.player_name!==cleanName||p.points!==correctPts){
-              await SB.from('scorer_predictions').delete().eq('user_id',uid);
-              await SB.from('scorer_predictions').insert({user_id:uid,player_name:cleanName,points:correctPts});
-              fixes++;
-              console.log('Corrigido scorer '+uid+': "'+p.player_name+'" → "'+cleanName+'" '+p.points+'→'+correctPts+'pts');
+            if(p.player_name?.trim()!==p.player_name||p.points!==correctPts){
+              // Tentar update direto
+              const {error:upErr}=await SB.from('scorer_predictions')
+                .update({player_name:cleanName,points:correctPts}).eq('user_id',uid);
+              console.log('[Fix] update scorer:', upErr?.message||'OK ('+cleanName+' = '+correctPts+'pts)');
+              if(!upErr) fixes++; else errors.push('scorer upd: '+upErr.message);
             }
           }
 
-          // 2. Corrigir pontos KO errados
-          const kpAll=await SB.from('knockout_predictions').select('phase,team_name,points').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          // KO pts
+          const kpAll=await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
           for(const p of (kpAll.data||[])){
-            const realTeams=(koMap[p.phase]||[]).concat(
-              p.phase==='final'?(koMap['champion']||[]):[],
-              p.phase==='champion'?(koMap['final']||[]):[]
-            );
-            const acertou=realTeams.map(t=>t.toLowerCase()).includes(p.team_name.toLowerCase());
+            const tn=p.team_name.toLowerCase();
+            const acertou=(p.phase==='final'||p.phase==='champion')?realChamp.includes(tn)
+              :p.phase==='runner_up'?realVice.includes(tn)
+              :p.phase==='third'?realThird.includes(tn)
+              :(koMap[p.phase]||[]).map(t=>t.toLowerCase()).includes(tn);
             const correctPts=acertou?(p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10):0;
             if(p.points!==correctPts){
-              await SB.from('knockout_predictions').update({points:correctPts})
-                .eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name).eq('bolao_id',CURRENT_BOLAO.id);
-              fixes++;
-              console.log('Corrigido KO '+uid+' '+p.phase+':'+p.team_name+' '+p.points+'→'+correctPts+'pts');
+              const {error:kErr}=await SB.from('knockout_predictions')
+                .update({points:correctPts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name).eq('bolao_id',CURRENT_BOLAO.id);
+              console.log('[Fix] KO '+p.phase+':'+p.team_name+' '+p.points+'→'+correctPts+'pts:', kErr?.message||'OK');
+              if(!kErr) fixes++; else errors.push('KO: '+kErr.message);
             }
           }
         }
-        showToast('✅ '+fixes+' problemas corrigidos!');
+
+        if(errors.length>0){
+          showToast('⚠️ '+fixes+' OK, '+errors.length+' erros de RLS. Execute o SQL no Supabase!','err');
+          // Mostrar SQL para executar manualmente
+          const sqlModal=el('div',{style:{position:'fixed',top:'10%',left:'5%',right:'5%',bottom:'10%',background:'var(--dk2)',borderRadius:'12px',zIndex:'99999',display:'flex',flexDirection:'column',padding:'1rem',overflow:'hidden'}});
+          sqlModal.appendChild(el('div',{style:{color:'var(--gold)',fontWeight:'700',marginBottom:'8px'}},'📋 Execute este SQL no Supabase → SQL Editor:'));
+          const sqlText=`-- Cole no Supabase SQL Editor e clique Run
+UPDATE scorer_predictions SET player_name=trim(player_name), points=30
+WHERE lower(trim(player_name))='${realScorer.toLowerCase()}' AND points!=30;
+
+DELETE FROM scorer_predictions a USING scorer_predictions b
+WHERE a.user_id=b.user_id AND a.ctid<b.ctid;
+
+UPDATE knockout_predictions SET points=50
+WHERE phase IN ('final','champion') AND lower(team_name) IN (${realChamp.map(t=>"'"+t+"'").join(',')}) AND points!=50;
+
+UPDATE knockout_predictions SET points=30
+WHERE phase='runner_up' AND lower(team_name) IN (${realVice.map(t=>"'"+t+"'").join(',')}) AND points!=30;
+
+UPDATE knockout_predictions SET points=15
+WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(',')}) AND points!=15;`;
+          const ta=el('textarea',{style:{flex:'1',background:'var(--dk3)',color:'var(--gold)',border:'none',borderRadius:'8px',padding:'8px',fontFamily:'monospace',fontSize:'.75rem',resize:'none'}});
+          ta.value=sqlText;
+          sqlModal.appendChild(ta);
+          const row=el('div',{style:{display:'flex',gap:'8px',marginTop:'8px'}});
+          row.appendChild(el('button',{class:'btn btn-p',style:{flex:'1'},onclick:()=>{ navigator.clipboard.writeText(sqlText); showToast('✅ SQL copiado!'); }},'📋 Copiar SQL'));
+          row.appendChild(el('button',{class:'btn btn-o',onclick:()=>sqlModal.remove()},'Fechar'));
+          sqlModal.appendChild(row);
+          document.body.appendChild(sqlModal);
+        } else {
+          showToast('✅ '+fixes+' problemas corrigidos com sucesso!');
+        }
       }catch(e){ showToast('Erro: '+e.message,'err'); console.error(e); }
       fixBtn.disabled=false; fixBtn.textContent='🔧 Corrigir Problemas Detectados';
     }},'🔧 Corrigir Problemas Detectados');
