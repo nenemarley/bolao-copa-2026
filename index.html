@@ -404,9 +404,9 @@ const KNOCKOUT_DATES = {
 const GROUPS_DEADLINE = '2026-06-18'; // 2ª rodada começa 18/06 na Copa real // 1º jogo da 2ª rodada (Grupo A)
 
 function canBetGroups() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const cutoff = new Date(GROUPS_DEADLINE + 'T00:00:00');
-  return today < cutoff;
+  // Usa SECOND_ROUND_DATE configurável pelo admin (fallback: GROUPS_DEADLINE hardcoded)
+  const dateRef = SECOND_ROUND_DATE || (GROUPS_DEADLINE + 'T00:00:00');
+  return new Date() < new Date(dateRef);
 }
 
 function daysUntilGroupsDeadline() {
@@ -3340,11 +3340,7 @@ async function syncAdminKoWithStandings(changedGroup){
 let adminTab='matches', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
 let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
 
-function canBetGroups() {
-  // Grupos/3ºs/eliminatórias bloqueiam com SECOND_ROUND_DATE
-  if(!SECOND_ROUND_DATE) return true;
-  return new Date() < new Date(SECOND_ROUND_DATE);
-}
+// canBetGroups definida acima (linha ~406) — usa SECOND_ROUND_DATE
 function isSecondRoundStarted() {
   if(!SECOND_ROUND_DATE) return false;
   return new Date() >= new Date(SECOND_ROUND_DATE);
