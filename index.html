@@ -504,8 +504,10 @@ function setState(patch){
   if(patch.page) {
     PAGE_VERSION++; // cancel any pending queries from previous page
     matchDirty=false; grpDirty=false; koDirty=false; koMatchDirty=false;
-    const sb=document.getElementById('savebar'); 
-    if(sb) sb.style.display='none';
+    ['savebar-matches','savebar-ko','savebar'].forEach(id=>{
+      const sb=document.getElementById(id);
+      if(sb) sb.style.display='none';
+    });
   }
   render(); 
 }
@@ -1665,8 +1667,11 @@ function buildMatchesUI(main){
 }
 
 function updateSaveBar(){
-  let sb=document.getElementById('savebar');
-  if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
+  let sb=document.getElementById('savebar-matches');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar-matches'}); document.body.appendChild(sb); }
+  // Esconder a KO savebar se existir
+  const sbko=document.getElementById('savebar-ko');
+  if(sbko) sbko.style.display='none';
   sb.innerHTML='';
   if(!matchDirty){ sb.style.display='none'; return; }
   sb.style.display='flex';
@@ -2009,7 +2014,7 @@ function buildStandingsUI(main){
   updateGrpSaveBar();
 }
 function updateGrpSaveBar(){
-  let sb=document.getElementById('savebar');
+  let sb=document.getElementById('savebar-matches')||document.getElementById('savebar-ko');
   if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
   sb.innerHTML='';
   if(!grpDirty){ sb.style.display='none'; return; }
@@ -2477,7 +2482,7 @@ function buildKoUI(main){
   main.appendChild(scard);
 
   // Save bar
-  let sb=document.getElementById('savebar');
+  let sb=document.getElementById('savebar-matches')||document.getElementById('savebar-ko');
   if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
   sb.innerHTML=''; sb.style.display='flex';
   const inn=el('div',{class:'sbar-in'});
@@ -2556,7 +2561,7 @@ async function saveKo(){
     }
     koDirty=false;
     showToast('✅ Palpites salvos e pontos calculados!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
-    const sb=document.getElementById('savebar'); if(sb) sb.innerHTML='';
+    const sb=document.getElementById('savebar-ko')||document.getElementById('savebar-matches'); if(sb) sb.innerHTML='';
     buildKoUI(document.querySelector('.main')||document.body);
   }catch(e){ showToast(e.message,'err'); }
 }
@@ -2823,11 +2828,12 @@ function buildKoMatchesUI(main, realSt){
 }
 
 function updateKoMatchSaveBar(){
-  // Usar savebar da página atual (ko_matches)
-  // Só mostrar se estamos na página ko_matches
   if(STATE.page !== 'ko_matches') return;
-  let sb=document.getElementById('savebar');
-  if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
+  // Esconder a matches savebar se existir
+  const sbm=document.getElementById('savebar-matches');
+  if(sbm) sbm.style.display='none';
+  let sb=document.getElementById('savebar-ko');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar-ko'}); document.body.appendChild(sb); }
   sb.innerHTML='';
   if(!koMatchDirty){ sb.style.display='none'; return; }
   sb.style.display='flex';
@@ -2893,12 +2899,13 @@ async function saveKoMatches(){
   try{
     await upsertWithReplicate('match_predictions', rows);
     koMatchDirty=false;
-    showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
+    showToast('✅ Palpites salvos e pontos calculados! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Recarregar só a UI dos jogos KO sem mudar de página
+    // Reconstruir só a parte interna dos jogos KO (sem ir ao banco de novo)
+    // koMatchPreds e koMatchReal já estão atualizados em memória
     const mainEl = document.querySelector('.main');
     if(mainEl && STATE.page==='ko_matches'){
-      renderKoMatches(mainEl);
+      buildKoMatchesUI(mainEl, koMatchRealSt);
     }
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
