@@ -2486,8 +2486,10 @@ async function saveKo(){
       if(rows.length>0) await SB.from('knockout_predictions').insert(rows.map(r=>({...r,bolao_id:bolao.id})));
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
-        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.toLowerCase()?30:0;
-        await SB.from('scorer_predictions').upsert({user_id:STATE.profile.id,player_name:koScorer,points:pts,bolao_id:bolao.id});
+        const pts=rp?.team_ids?.[0]?.toLowerCase()===koScorer.trim().toLowerCase()?30:0;
+        // Deletar antes para evitar duplicatas
+        await SB.from('scorer_predictions').delete().eq('user_id',STATE.profile.id);
+        await SB.from('scorer_predictions').insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
       }
     }
     koDirty=false;
@@ -4114,29 +4116,128 @@ function buildAdminUI(main){
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.5rem'}},'🔄 Recalcular todas as pontuações'));
     cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'Atualiza jogos, grupos, 3ºs, fases e artilheiro de todos os participantes com as regras atuais.'));
     
-    // Botão diagnóstico
+    // Botão diagnóstico completo
     const diagBtn=el('button',{class:'btn btn-sm',style:{marginBottom:'8px',fontSize:'.75rem',color:'var(--gold)',border:'1px solid var(--gold)',background:'transparent'},onclick:async()=>{
-      const koRows=await dbQ('real_knockouts',{},'phase,team_ids');
-      const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
-      const members=await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
-      const profiles=STATE.profiles;
-      let msg='=== DIAGNÓSTICO ===\n';
-      msg+='Resultados reais:\n';
-      ['champion','final','runner_up','third','top_scorer','best_thirds'].forEach(p=>{
-        if(koMap[p]?.length) msg+='  '+p+': '+koMap[p].join(', ')+'\n';
-      });
-      msg+='\nPalpites KO por usuário:\n';
-      for(const m of (members||[])){
-        const prof=profiles.find(p=>p.id===m.user_id);
-        const kp=await SB.from('knockout_predictions').select('phase,team_name,points').eq('user_id',m.user_id).eq('bolao_id',CURRENT_BOLAO.id);
-        const sp=await SB.from('scorer_predictions').select('player_name,points').eq('user_id',m.user_id);
-        msg+='\n'+prof?.display_name+':\n';
-        (kp.data||[]).filter(p=>['final','champion','runner_up','third'].includes(p.phase))
-          .forEach(p=>{ msg+='  '+p.phase+': '+p.team_name+' = '+p.points+'pts\n'; });
-        (sp.data||[]).forEach(p=>{ msg+='  scorer: '+p.player_name+' = '+p.points+'pts\n'; });
-      }
-      alert(msg);
-    }},'🔍 Diagnóstico KO/Artilheiro');
+      diagBtn.disabled=true; diagBtn.textContent='⏳ Carregando...';
+      try{
+        // Criar modal de diagnóstico
+        document.getElementById('diag-modal')?.remove();
+        const ov=el('div',{id:'diag-modal',style:{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,.85)',zIndex:'9999',display:'flex',flexDirection:'column',overflow:'hidden'}});
+        
+        // Header
+        const hdr=el('div',{style:{padding:'12px 16px',background:'var(--dk3)',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:'0'}});
+        hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem'}},'🔍 DIAGNÓSTICO COMPLETO'));
+        hdr.appendChild(el('button',{style:{background:'none',border:'none',color:'var(--muted)',fontSize:'1.2rem',cursor:'pointer'},onclick:()=>ov.remove()},'✕'));
+        ov.appendChild(hdr);
+
+        const body=el('div',{style:{flex:'1',overflowY:'auto',padding:'1rem'}});
+        ov.appendChild(body);
+        document.body.appendChild(ov);
+        body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center'}},'Carregando dados...'));
+
+        // Buscar tudo
+        const [koRows, rsRows, members] = await Promise.all([
+          dbQ('real_knockouts',{},'phase,team_ids'),
+          SB.from('real_group_standings').select('group_id,position,team_name'),
+          dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id'),
+        ]);
+        const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
+        const realSt={}; (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+        const realThirds=koMap['best_thirds']||[];
+        const realScorer=koMap['top_scorer']?.[0]||null;
+        const profiles=STATE.profiles;
+        body.innerHTML='';
+
+        // Resultados reais
+        const realCard=el('div',{style:{background:'var(--dk3)',borderRadius:'8px',padding:'12px',marginBottom:'1rem'}});
+        realCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'8px'}},'RESULTADOS REAIS'));
+        const realGrid=el('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px',fontSize:'.78rem'}});
+        [['Campeão',koMap['champion']?.[0]||koMap['final']?.[0]||'-'],
+         ['Vice',koMap['runner_up']?.[0]||'-'],
+         ['3º Lugar',koMap['third']?.[0]||'-'],
+         ['Artilheiro',realScorer||'-'],
+         ['Best 3ºs ('+realThirds.length+')',realThirds.join(', ')||'-'],
+        ].forEach(([k,v])=>{
+          realGrid.appendChild(el('span',{style:{color:'var(--muted)'}},k+':'));
+          realGrid.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'600'}},v));
+        });
+        realCard.appendChild(realGrid);
+        body.appendChild(realCard);
+
+        // Por usuário
+        for(const m of (members||[])){
+          const prof=profiles.find(p=>p.id===m.user_id);
+          const [mpR,gpR,kpR,spR]=await Promise.all([
+            SB.from('match_predictions').select('match_number,predicted_score1,predicted_score2,points').eq('user_id',m.user_id).eq('bolao_id',CURRENT_BOLAO.id).order('match_number'),
+            SB.from('group_predictions').select('group_id,position,team_name,points').eq('user_id',m.user_id).eq('bolao_id',CURRENT_BOLAO.id).order('group_id'),
+            SB.from('knockout_predictions').select('phase,team_name,points').eq('user_id',m.user_id).eq('bolao_id',CURRENT_BOLAO.id),
+            SB.from('scorer_predictions').select('player_name,points').eq('user_id',m.user_id),
+          ]);
+          const mp=mpR.data||[], gp=gpR.data||[], kp=kpR.data||[], sp=spR.data||[];
+
+          // Calcular totais e verificar
+          const totalJ=mp.reduce((s,p)=>s+(p.points||0),0);
+          const totalG=gp.filter(p=>p.group_id!=='_thirds').reduce((s,p)=>s+(p.points||0),0);
+          const totalT=gp.filter(p=>p.group_id==='_thirds').reduce((s,p)=>s+(p.points||0),0);
+          const totalK=kp.filter(p=>!['final','champion','runner_up','third'].includes(p.phase)).reduce((s,p)=>s+(p.points||0),0);
+          const totalF=kp.filter(p=>['final','champion','runner_up','third'].includes(p.phase)).reduce((s,p)=>s+(p.points||0),0);
+          const totalS=sp.reduce((s,p)=>s+(p.points||0),0);
+          const grand=totalJ+totalG+totalT+totalK+totalF+totalS;
+
+          // Verificar duplicatas
+          const mpNums=mp.map(p=>p.match_number);
+          const mpDups=mpNums.filter((n,i)=>mpNums.indexOf(n)!==i);
+          const spNames=sp.map(p=>p.player_name);
+          const spDups=spNames.filter((n,i)=>spNames.indexOf(n)!==i);
+
+          const uCard=el('div',{style:{background:'var(--dk3)',borderRadius:'8px',padding:'12px',marginBottom:'1rem'}});
+          
+          // Nome e total
+          const uHdr=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+          uHdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem'}},prof?.display_name||m.user_id));
+          uHdr.appendChild(el('span',{class:'pbadge'},grand+'pts'));
+          uCard.appendChild(uHdr);
+
+          // Alertas de duplicata
+          if(mpDups.length>0) uCard.appendChild(el('div',{style:{color:'var(--err)',fontSize:'.75rem',marginBottom:'4px'}},'⚠️ Duplicatas em jogos: '+mpDups.join(', ')));
+          if(spDups.length>0) uCard.appendChild(el('div',{style:{color:'var(--err)',fontSize:'.75rem',marginBottom:'4px'}},'⚠️ Duplicatas em scorer: '+spDups.join(', ')));
+
+          // Resumo por categoria
+          const cats=[
+            ['⚽ Jogos 1ªFase ('+mp.filter(p=>p.match_number<=72).length+')',mp.filter(p=>p.match_number<=72).reduce((s,p)=>s+(p.points||0),0)],
+            ['⚔️ Jogos Elim. ('+mp.filter(p=>p.match_number>72).length+')',mp.filter(p=>p.match_number>72).reduce((s,p)=>s+(p.points||0),0)],
+            ['📊 Grupos ('+gp.filter(p=>p.group_id!=='_thirds').length+')',totalG],
+            ['🥉 3ºs ('+gp.filter(p=>p.group_id==='_thirds').length+')',totalT],
+            ['🔥 Fases KO ('+kp.filter(p=>!['final','champion','runner_up','third'].includes(p.phase)).length+')',totalK],
+            ['🏆 Final/Vice/3º ('+kp.filter(p=>['final','champion','runner_up','third'].includes(p.phase)).length+')',totalF],
+            ['🎯 Artilheiro ('+sp.length+')',totalS],
+          ];
+          const catGrid=el('div',{style:{display:'grid',gridTemplateColumns:'1fr auto',gap:'3px',fontSize:'.78rem',marginBottom:'8px'}});
+          cats.forEach(([label,pts])=>{
+            catGrid.appendChild(el('span',{style:{color:'var(--muted)'}},label));
+            catGrid.appendChild(el('span',{style:{color:pts>0?'var(--ok)':'var(--muted)',textAlign:'right',fontWeight:'600'}},pts+'pts'));
+          });
+          uCard.appendChild(catGrid);
+
+          // Detalhes Final/Vice/3º/Artilheiro
+          const finDiv=el('div',{style:{borderTop:'1px solid var(--bdr)',paddingTop:'8px',fontSize:'.78rem'}});
+          kp.filter(p=>['final','champion','runner_up','third'].includes(p.phase)).forEach(p=>{
+            const ok=p.points>0;
+            finDiv.appendChild(el('div',{style:{color:ok?'var(--ok)':'var(--err)',marginBottom:'2px'}},
+              (ok?'✅':'❌')+' '+p.phase+': '+p.team_name+' = '+p.points+'pts'));
+          });
+          sp.forEach(p=>{
+            const ok=p.points>0;
+            const correct=realScorer&&p.player_name?.trim().toLowerCase()===realScorer.trim().toLowerCase();
+            finDiv.appendChild(el('div',{style:{color:ok?'var(--ok)':correct?'var(--err)':'var(--muted)',marginBottom:'2px'}},
+              (ok?'✅':correct?'❌ (nome com espaço?)':'⬜')+' scorer: "'+p.player_name+'" = '+p.points+'pts'+(correct&&!ok?' ← DEVERIA SER 30pts!':'')));
+          });
+          uCard.appendChild(finDiv);
+          body.appendChild(uCard);
+        }
+      }catch(e){ alert('Erro: '+e.message); }
+      diagBtn.disabled=false; diagBtn.textContent='🔍 Diagnóstico Completo';
+    }},'🔍 Diagnóstico Completo');
     cfgCard.appendChild(diagBtn);
     cfgCard.appendChild(el('br',{}));
     const recalcBtn=el('button',{class:'btn btn-p',style:{width:'100%',padding:'.7rem',fontWeight:'700'},onclick:async()=>{
@@ -4188,8 +4289,10 @@ function buildAdminUI(main){
             const acertou = realTeams.includes(p.team_name);
             const pts = acertou ? (p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10) : 0;
             console.log('[Recalcular] '+p.phase+':'+p.team_name+' realTeams:'+JSON.stringify(realTeams)+' pts:'+pts);
-            const {error:kErr} = await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name);
+            const {error:kErr} = await SB.from('knockout_predictions').update({points:pts})
+              .eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name).eq('bolao_id',CURRENT_BOLAO.id);
             if(kErr) console.error('[Recalcular] KO update error:', kErr);
+            else console.log('[Recalcular] KO updated: '+p.phase+':'+p.team_name+' -> '+pts+'pts');
             total++;
           }
           
@@ -4197,9 +4300,10 @@ function buildAdminUI(main){
           const sP=await SB.from('scorer_predictions').select('*').eq('user_id',uid);
           console.log('[Recalcular] uid='+uid+' scorer:', (sP.data||[]).map(p=>p.player_name+'='+p.points));
           for(const p of (sP.data||[])){
-            const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?30:0;
-            console.log('[Recalcular] scorer '+p.player_name+' real='+realScName+' pts='+pts);
-            const {error:sErr} = await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid).eq('player_name',p.player_name);
+            const pts=realScName&&p.player_name?.trim().toLowerCase()===realScName.trim().toLowerCase()?30:0;
+            console.log('[Recalcular] scorer "'+p.player_name+'" real="'+realScName+'" pts='+pts);
+            // Atualizar por user_id (não por player_name pois pode ter espaço extra)
+            const {error:sErr} = await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid);
             if(sErr) console.error('[Recalcular] scorer update error:', sErr);
             total++;
           }
