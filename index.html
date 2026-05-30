@@ -609,6 +609,16 @@ async function loadProfile(u){
   await loadMyBolaos(u.id);
   console.log('[loadProfile] Bolões carregados:', MY_BOLAOS.length, MY_BOLAOS.map(b=>b.name));
 
+  // Carregar configurações globais (datas de bloqueio)
+  try {
+    const cfgRows = await dbQ('real_knockouts', {}, 'phase,team_ids');
+    const lockRow = (cfgRows||[]).find(r=>r.phase==='matches_lock_start');
+    const srRow   = (cfgRows||[]).find(r=>r.phase==='second_round_date');
+    if(lockRow?.team_ids?.[0]) MATCHES_LOCK_START = lockRow.team_ids[0];
+    if(srRow?.team_ids?.[0])   SECOND_ROUND_DATE  = srRow.team_ids[0];
+    console.log('[loadProfile] Lock:', MATCHES_LOCK_START, '| 2ªRodada:', SECOND_ROUND_DATE);
+  } catch(e) { console.warn('Erro ao carregar configs:', e); }
+
   // Verificar convite pendente (via URL ?code=XXXX ou localStorage)
   const urlCode = new URLSearchParams(window.location.search).get('code');
   const pendingCode = urlCode || localStorage.getItem('pending_invite');
@@ -4123,11 +4133,11 @@ function buildAdminUI(main){
     // Data de início do bloqueio dos jogos
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem',marginTop:'.5rem'}},'🔒 Data/hora de início do bloqueio dos jogos'));
     cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'A partir desta data, os palpites de placar ficam bloqueados individualmente por jogo. Útil para testar antes da Copa começar.'));
-    const lockInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'},value:''});
-    // Carregar data atual do banco
-    dbQ('real_knockouts',{phase:'matches_lock_start'},'team_ids').then(r=>{
-      if(r?.[0]?.team_ids?.[0]) lockInput.value=new Date(r[0].team_ids[0]).toISOString().substring(0,16);
-    }).catch(()=>{});
+    const lockInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'}});
+    // Preencher com valor atual carregado no início
+    if(MATCHES_LOCK_START){
+      try{ lockInput.value=new Date(MATCHES_LOCK_START).toISOString().substring(0,16); }catch(e){}
+    }
     const lockSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
       const val=lockInput.value;
       if(!val){showToast('Defina a data primeiro','err');return;}
@@ -4145,7 +4155,8 @@ function buildAdminUI(main){
     // Data início 2ª rodada
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'📅 Data/hora início da 2ª rodada'));
     cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'A partir deste momento: palpites de grupos, 3ºs, eliminatórias e artilheiro serão bloqueados e visíveis por todos.'));
-    const dtInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'},value:SECOND_ROUND_DATE?SECOND_ROUND_DATE.replace('Z','').substring(0,16):''});
+    const dtInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'}});
+    if(SECOND_ROUND_DATE){ try{ dtInput.value=new Date(SECOND_ROUND_DATE).toISOString().substring(0,16); }catch(e){} }
     const dtSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
       const val=dtInput.value;
       if(!val){showToast('Defina a data primeiro','err');return;}
@@ -4174,6 +4185,51 @@ function buildAdminUI(main){
       statusDiv.appendChild(el('div',{style:{color:'var(--err)'}},'⚠️ Data não configurada — palpites de grupos/eliminatórias não serão bloqueados'));
     }
     cfgCard.appendChild(statusDiv);
+
+    // Botão Recalcular Tudo — na Config para fácil acesso
+    cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.5rem'}},'🔄 Recalcular todas as pontuações'));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'Atualiza jogos, grupos, 3ºs, fases e artilheiro de todos os participantes com as regras atuais.'));
+    const recalcBtn=el('button',{class:'btn btn-p',style:{width:'100%',padding:'.7rem',fontWeight:'700'},onclick:async()=>{
+      if(!confirm('Recalcular pontuações de TODOS os participantes?\nIsso pode demorar alguns segundos.')) return;
+      recalcBtn.disabled=true; recalcBtn.textContent='⏳ Calculando...';
+      let total=0;
+      try{
+        const [realMatches,realKos] = await Promise.all([
+          dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished'),
+          dbQ('real_knockouts',{},'phase,team_ids'),
+        ]);
+        const matchMap={}; (realMatches||[]).forEach(m=>matchMap[m.match_number]=m);
+        const koMap={}; (realKos||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
+        const realThirds=koMap['best_thirds']||[];
+        const realScName=koMap['top_scorer']?.[0]||null;
+        const rsRows=await SB.from('real_group_standings').select('group_id,position,team_name');
+        const realSt={}; (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
+        const members=await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
+        const userIds=(members||[]).map(m=>m.user_id);
+        for(const uid of userIds){
+          // Jogos
+          const mP=await SB.from('match_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          const mRows=(mP.data||[]).map(p=>{ const r=matchMap[p.match_number]; const pts=r?.is_finished?calcPts(p.predicted_score1,p.predicted_score2,r.real_score1,r.real_score2):0; return {...p,points:pts}; });
+          if(mRows.length>0){ await SB.from('match_predictions').delete().eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id); await SB.from('match_predictions').insert(mRows); total+=mRows.length; }
+          // Grupos
+          const gP=await SB.from('group_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id).neq('group_id','_thirds');
+          for(const p of (gP.data||[])){ const rp=(()=>{ const g=realSt[p.group_id]||{}; if(g[1]===p.team_name)return 1; if(g[2]===p.team_name)return 2; return null; })(); const pts=calcGrpPts(p.position,rp); await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id',p.group_id).eq('position',p.position); total++; }
+          // 3ºs
+          const tP=await SB.from('group_predictions').select('*').eq('user_id',uid).eq('group_id','_thirds');
+          for(const p of (tP.data||[])){ const pts=realThirds.includes(p.team_name)?5:0; await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id','_thirds').eq('team_name',p.team_name); total++; }
+          // KO
+          const kP=await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
+          for(const p of (kP.data||[])){ const pts=(koMap[p.phase]||[]).includes(p.team_name)?(p.phase==='final'||p.phase==='champion'?50:p.phase==='runner_up'?30:p.phase==='third'?15:10):0; await SB.from('knockout_predictions').update({points:pts}).eq('user_id',uid).eq('phase',p.phase).eq('team_name',p.team_name); total++; }
+          // Artilheiro
+          const sP=await SB.from('scorer_predictions').select('*').eq('user_id',uid);
+          for(const p of (sP.data||[])){ const pts=realScName&&p.player_name?.toLowerCase()===realScName.toLowerCase()?30:0; await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid); total++; }
+        }
+        showToast('✅ Recalculado! '+total+' atualizações em '+userIds.length+' participantes.');
+      }catch(e){ showToast('Erro: '+e.message,'err'); console.error(e); }
+      recalcBtn.disabled=false; recalcBtn.textContent='🔄 Recalcular Tudo Agora';
+    }},'🔄 Recalcular Tudo Agora');
+    cfgCard.appendChild(recalcBtn);
     main.appendChild(cfgCard);
   }
 
