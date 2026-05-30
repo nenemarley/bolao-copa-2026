@@ -378,14 +378,14 @@ const KO_MATCH_DATES = {
 };
 
 function canBetKoMatch(matchNum) {
-  // Verificar data da 2ª rodada (bloqueia grupos/elim/artilheiro)
-  if(SECOND_ROUND_DATE){
-    const sr = new Date(SECOND_ROUND_DATE);
-    if(!isNaN(sr) && new Date() >= sr) return false;
+  // Se data global configurada: bloquear todos os jogos KO a partir dela
+  if(MATCHES_LOCK_START){
+    const ls = new Date(MATCHES_LOCK_START);
+    if(!isNaN(ls) && new Date() >= ls) return false;
   }
-  // Verificar data individual do jogo
+  // Sem data global: bloquear 1 dia antes da data do jogo
   const dateStr = KO_MATCH_DATES[matchNum];
-  if(!dateStr) return true; // sem data = liberado
+  if(!dateStr) return true; // sem data individual = liberado
   const today = new Date(); today.setHours(0,0,0,0);
   const matchDay = new Date(dateStr + 'T00:00:00');
   return today < matchDay;
@@ -408,9 +408,12 @@ const KNOCKOUT_DATES = {
 const GROUPS_DEADLINE = '2026-06-18'; // 2ª rodada começa 18/06 na Copa real // 1º jogo da 2ª rodada (Grupo A)
 
 function canBetGroups() {
-  // Usa SECOND_ROUND_DATE configurável pelo admin (fallback: GROUPS_DEADLINE hardcoded)
-  const dateRef = SECOND_ROUND_DATE || (GROUPS_DEADLINE + 'T00:00:00');
-  return new Date() < new Date(dateRef);
+  // Usa SECOND_ROUND_DATE configurável pelo admin
+  // Se não configurada: liberado (sem bloqueio automático)
+  if(!SECOND_ROUND_DATE) return true;
+  const sr = new Date(SECOND_ROUND_DATE);
+  if(isNaN(sr)) return true;
+  return new Date() < sr;
 }
 
 function daysUntilGroupsDeadline() {
@@ -422,17 +425,25 @@ function daysUntilGroupsDeadline() {
 let MATCHES_LOCK_START = null; // data configurável pelo admin para início do bloqueio
 
 function canBet(matchNum) {
-  // Se data de bloqueio global está no passado, bloquear todos os jogos
-  if(MATCHES_LOCK_START && new Date() >= new Date(MATCHES_LOCK_START)) return false;
+  // Se data global configurada: bloquear todos os jogos a partir dela
+  if(MATCHES_LOCK_START){
+    const ls = new Date(MATCHES_LOCK_START);
+    if(!isNaN(ls) && new Date() >= ls) return false;
+  }
+  // Sem data global: bloquear 1 dia antes da data do jogo
   const dateStr = MATCH_DATES[matchNum];
   if(!dateStr) return true;
-  const today = new Date();
-  today.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0,0,0,0);
   const matchDay = new Date(dateStr + 'T00:00:00');
-  return today < matchDay; // só pode apostar ANTES do dia do jogo
+  return today < matchDay; // bloqueia no dia do jogo (1 dia antes = até 23:59 do dia anterior)
 }
 
 function canBetPhase(phase) {
+  // Bloqueado pela data da 2ª rodada (classif. de times)
+  if(SECOND_ROUND_DATE){
+    const sr = new Date(SECOND_ROUND_DATE);
+    if(!isNaN(sr) && new Date() >= sr) return false;
+  }
   const dateStr = KNOCKOUT_DATES[phase];
   if(!dateStr) return true;
   const today = new Date();
@@ -2819,6 +2830,32 @@ function updateKoMatchSaveBar(){
   sb.style.display='flex';
   const inn=el('div',{class:'sbar-in'});
   inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Alterações não salvas'));
+  // Botão diagnóstico rápido
+  inn.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'4px 8px',background:'var(--dk3)',border:'1px solid var(--muted)',color:'var(--muted)'},onclick:()=>{
+    const keys=Object.keys(koMatchPreds);
+    const ko73=keys.filter(n=>parseInt(n)>=73);
+    const bloqueados=ko73.filter(n=>!canBetKoMatch(parseInt(n)));
+    const disponiveis=ko73.filter(n=>canBetKoMatch(parseInt(n)));
+    const sr=SECOND_ROUND_DATE?new Date(SECOND_ROUND_DATE).toLocaleString('pt-BR'):'não configurada';
+    const ml=MATCHES_LOCK_START?new Date(MATCHES_LOCK_START).toLocaleString('pt-BR'):'não configurada';
+    const agora=new Date().toLocaleString('pt-BR');
+    const msg=[
+      'DIAGNOSTICO JOGOS KO',
+      'Agora: '+agora,
+      '2a Rodada: '+sr,
+      'Lock jogos: '+ml,
+      '',
+      'koMatchPreds total: '+keys.length,
+      'Jogos KO (>=73): '+ko73.length,
+      'Disponiveis: '+disponiveis.length,
+      'Bloqueados: '+bloqueados.length,
+      bloqueados.length>0?'IDs bloqueados: '+bloqueados.slice(0,5).join(','):'',
+      '',
+      'Fase atual: '+koMatchPhase,
+      'Bolao: '+(CURRENT_BOLAO?.name||'null'),
+    ].filter(l=>l!==undefined).join('\n');
+    alert(msg);
+  }},'🔍'));
   inn.appendChild(el('button',{class:'btn btn-p',onclick:saveKoMatches},'💾 Salvar Palpites'));
   sb.appendChild(inn);
 }
@@ -3350,7 +3387,9 @@ let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pe
 // canBetGroups definida acima (linha ~406) — usa SECOND_ROUND_DATE
 function isSecondRoundStarted() {
   if(!SECOND_ROUND_DATE) return false;
-  return new Date() >= new Date(SECOND_ROUND_DATE);
+  const sr = new Date(SECOND_ROUND_DATE);
+  if(isNaN(sr)) return false;
+  return new Date() >= sr;
 }
 let adminSaveDirty=false;
 function updateAdminSaveBar(){
