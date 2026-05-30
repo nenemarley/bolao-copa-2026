@@ -2895,10 +2895,11 @@ async function saveKoMatches(){
     koMatchDirty=false;
     showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Recarregar mantendo a sub-fase atual
-    const savedPhase = koMatchPhase; // guardar antes
-    koMatchPhase = savedPhase;       // garantir que está setado
-    setState({page:'ko_matches'});   // agora renderiza com a fase correta
+    // Recarregar só a UI dos jogos KO sem mudar de página
+    const mainEl = document.querySelector('.main');
+    if(mainEl && STATE.page==='ko_matches'){
+      renderKoMatches(mainEl);
+    }
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
     showToast('Erro ao salvar: '+e.message,'err');
