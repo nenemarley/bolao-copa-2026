@@ -2623,7 +2623,7 @@ function renderMine(main){
 
 
 // ── Ko Matches (Jogos Eliminatórios) ───────────────────────────────────────
-let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32', koMatchRealSt={};
+let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32', koMatchRealSt={}, koMatchMainEl=null;
 const KO_PHASE_LABELS = {round32:'Rodada de 32',round16:'Oitavas de Final',quarter:'Quartas de Final',semi:'Semifinal',final:'Final',third:'3º Lugar'};
 
 function resolveSlot(slot, realStandings) {
@@ -2678,6 +2678,7 @@ function renderKoMatches(main){
 function buildKoMatchesUI(main, realSt){
   if(!realSt) realSt=koMatchRealSt||{};
   koMatchRealSt=realSt;
+  koMatchMainEl=main; // guardar referência para uso no save
   main.innerHTML='';
 
   // Tabs de fase
@@ -2901,11 +2902,13 @@ async function saveKoMatches(){
     koMatchDirty=false;
     showToast('✅ Palpites salvos e pontos calculados! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Reconstruir só a parte interna dos jogos KO (sem ir ao banco de novo)
-    // koMatchPreds e koMatchReal já estão atualizados em memória
-    const mainEl = document.querySelector('.main');
-    if(mainEl && STATE.page==='ko_matches'){
-      buildKoMatchesUI(mainEl, koMatchRealSt);
+    // Reconstruir UI usando a referência salva (evita elemento órfão)
+    if(koMatchMainEl && koMatchMainEl.isConnected && STATE.page==='ko_matches'){
+      buildKoMatchesUI(koMatchMainEl, koMatchRealSt);
+    } else if(STATE.page==='ko_matches'){
+      // Fallback: buscar no DOM
+      const mainEl = document.querySelector('.main');
+      if(mainEl) buildKoMatchesUI(mainEl, koMatchRealSt);
     }
   } catch(e){
     console.error('[saveKoMatches] ERRO:', e);
