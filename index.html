@@ -1163,6 +1163,7 @@ function renderBolaos(main) {
       showToast('✅ Bolão "'+nome+'" criado! ('+BOLAO_MODES[selectedMode].label+')');
     } catch(e){ showToast(e.message,'err'); createBtn.disabled=false; createBtn.textContent='Criar Bolão'; }
   }},'🎯 Criar Bolão');
+  createCard.appendChild(createBtn);
   main.appendChild(createCard);
 
   // ── Entrar com código ──
