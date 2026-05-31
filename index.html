@@ -1507,23 +1507,28 @@ function renderMatches(main){
     buildMatchesUI(main);
   }).catch(e=>{ if(e.message!=='timeout'&&PAGE_VERSION===v) console.error('matches:',e); });
 }
-function makeMatchCtrl(initVal, onChange) {
+// onDirty: callback chamado após cada alteração (default: marca matchDirty e atualiza savebar da 1ª fase)
+function makeMatchCtrl(initVal, onChange, disabled=false, onDirty=null) {
   let val = initVal===null||initVal===undefined ? null : initVal;
   const wrap = el('div',{style:{display:'flex',alignItems:'center',gap:'2px'}});
   const mn = el('button',{class:'score-btn'},'-');
   const dsp = el('span',{class:'score-val',style:{color:val===null?'var(--muted)':'var(--txt)'}},val===null?'—':''+val);
   const pl = el('button',{class:'score-btn'},'+');
+  if(disabled){ mn.disabled=true; pl.disabled=true; }
+  const _dirty = onDirty || (()=>{ matchDirty=true; updateSaveBar(); });
   mn.onclick=()=>{ 
+    if(disabled) return;
     if(val===null){val=0;}
     else if(val>0){val--;}
     dsp.textContent=val; dsp.style.color='var(--txt)';
-    onChange(val); matchDirty=true; updateSaveBar(); 
+    onChange(val); _dirty();
   };
   pl.onclick=()=>{ 
+    if(disabled) return;
     if(val===null){val=0;}
     else if(val<9){val++;}
     dsp.textContent=val; dsp.style.color='var(--txt)';
-    onChange(val); matchDirty=true; updateSaveBar(); 
+    onChange(val); _dirty();
   };
   wrap.appendChild(mn); wrap.appendChild(dsp); wrap.appendChild(pl);
   return wrap;
@@ -2714,9 +2719,10 @@ function buildKoMatchesUI(main){
   if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
   const defBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
   defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
-  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }));
+  const _koDefDirty = ()=>{}; // placar padrão não marca dirty
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }, false, _koDefDirty));
   defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
-  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }));
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }, false, _koDefDirty));
   const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
     const ds1=window._koMatchDef.s1, ds2=window._koMatchDef.s2;
     if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
@@ -2768,25 +2774,24 @@ function buildKoMatchesUI(main){
 
     // Controles de placar
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
+    const _koDirty = ()=>{ koMatchDirty=true; updateKoMatchSaveBar(); };
     scoreRow.appendChild(makeMatchCtrl(v1, v=>{
       const cur=koMatchPreds[m.match_number]||{};
       const newS2=cur.s2??0;
       const newPts=m.is_finished?calcPts(v,newS2,m.real_score1,m.real_score2):0;
       koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
-      koMatchDirty=true; updateKoMatchSaveBar();
       const badge=mc.querySelector('.pts-badge');
-      if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+( newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow));
+      if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
+    }, !canBetNow, _koDirty));
     scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
     scoreRow.appendChild(makeMatchCtrl(v2, v=>{
       const cur=koMatchPreds[m.match_number]||{};
       const newS1=cur.s1??0;
       const newPts=m.is_finished?calcPts(newS1,v,m.real_score1,m.real_score2):0;
       koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
-      koMatchDirty=true; updateKoMatchSaveBar();
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow));
+    }, !canBetNow, _koDirty));
     mc.appendChild(scoreRow);
 
     // Resultado real
@@ -2832,7 +2837,7 @@ async function saveKoMatches(){
     const n=parseInt(num);
     if(n<73) return;
     if(!canBetKoMatch(n)) return;
-    if(p.s1===undefined||p.s2===undefined) return;
+    if(p.s1===undefined||p.s1===null||p.s2===undefined||p.s2===null) return;
     const r=koMatchReal[n];
     const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
     koMatchPreds[num].pts=pts;
@@ -2840,15 +2845,20 @@ async function saveKoMatches(){
   });
 
   if(!CURRENT_BOLAO){showToast('Sem bolão selecionado','err');return;}
-  if(rows.length===0){showToast('Nenhum jogo disponível para salvar','err');return;}
+  if(rows.length===0){showToast('Nenhum palpite para salvar — defina os placares primeiro','err');return;}
 
   try{
     await upsertWithReplicate('match_predictions',rows);
     koMatchDirty=false;
-    showToast('✅ Palpites salvos e pontos calculados! ('+rows.length+' jogos)');
+    showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Recarregar — igual à 1ª fase usa setState
-    setState({page:'ko_matches'});
+    // Recarregar in-place: buscar preds atualizados e redesenhar sem trocar de página
+    if(koMatchMainEl){
+      const freshPreds = await dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points');
+      koMatchPreds={};
+      (freshPreds||[]).forEach(p=>{ if(p.match_number>=73) koMatchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points}; });
+      buildKoMatchesUI(koMatchMainEl);
+    }
   }catch(e){ showToast('Erro: '+e.message,'err'); }
 }
 
