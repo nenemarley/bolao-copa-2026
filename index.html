@@ -1424,6 +1424,8 @@ function renderDashboard(main){
     });
     (kp||[]).forEach(r=>{
       if(!totals[r.user_id]) return;
+      // knockout_predictions phases: round32/round16/quarter/semi → Eliminatórias (fk)
+      // final/champion/runner_up/third (vencedor 3ºlugar=15pts) → Finais (fc)
       const finalPhases=['final','champion','runner_up','third'];
       if(finalPhases.includes(r.phase)) totals[r.user_id].fc+=(r.points||0);
       else                              totals[r.user_id].fk+=(r.points||0);
