@@ -2628,7 +2628,7 @@ function renderMine(main){
 
 
 // ── Ko Matches (Jogos Eliminatórios) ───────────────────────────────────────
-let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32', koMatchRealSt={}, koMatchMainEl=null;
+let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchDirtySet=new Set(), koMatchPhase='round32', koMatchRealSt={}, koMatchMainEl=null;
 
 function resolveSlot(slot, realStandings) {
   if(slot.type==='1'||slot.type==='2') {
@@ -2688,7 +2688,7 @@ function renderKoMatches(main){
       if(m.match_number>=73) koMatchReal[m.match_number]=m;
     });
 
-    koMatchDirty=false;
+    koMatchDirty=false; koMatchDirtySet=new Set();
     buildKoMatchesUI(main);
   }).catch(e=>{
     main.innerHTML='';
@@ -2736,6 +2736,8 @@ function buildKoMatchesUI(main){
     }
     if(count===0){showToast('Nenhum jogo disponível nesta fase','err');return;}
     koMatchDirty=true;
+    // Marcar todos como dirty para que o save os inclua
+    for(let n=mn;n<=mx;n++){ if(koMatchReal[n] && canBetKoMatch(n)) koMatchDirtySet.add(n); }
     await saveKoMatches();
   }},'Aplicar a todos');
   defBar.appendChild(applyBtn);
@@ -2774,7 +2776,8 @@ function buildKoMatchesUI(main){
 
     // Controles de placar
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
-    const _koDirty = ()=>{ koMatchDirty=true; updateKoMatchSaveBar(); };
+    const _koDirty = (matchNum)=>()=>{ koMatchDirty=true; koMatchDirtySet.add(matchNum); updateKoMatchSaveBar(); };
+    const _matchDirty = _koDirty(m.match_number);
     scoreRow.appendChild(makeMatchCtrl(v1, v=>{
       const cur=koMatchPreds[m.match_number]||{};
       const newS2=cur.s2??0;
@@ -2782,7 +2785,7 @@ function buildKoMatchesUI(main){
       koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow, _koDirty));
+    }, !canBetNow, _matchDirty));
     scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
     scoreRow.appendChild(makeMatchCtrl(v2, v=>{
       const cur=koMatchPreds[m.match_number]||{};
@@ -2791,7 +2794,7 @@ function buildKoMatchesUI(main){
       koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow, _koDirty));
+    }, !canBetNow, _matchDirty));
     mc.appendChild(scoreRow);
 
     // Resultado real
@@ -2832,15 +2835,18 @@ async function saveKoMatches(){
     (fresh||[]).forEach(m=>{ if(m.match_number>=73) koMatchReal[m.match_number]=m; });
   }catch(e){}
 
+  // Salvar só os jogos alterados nesta sessão (koMatchDirtySet), ou todos se chamado por 'Aplicar a todos'
+  const toSave = koMatchDirtySet.size > 0 ? koMatchDirtySet : new Set(Object.keys(koMatchPreds).map(Number));
   const rows=[];
-  Object.entries(koMatchPreds).forEach(([num,p])=>{
-    const n=parseInt(num);
+  toSave.forEach(n=>{
+    n=parseInt(n);
     if(n<73) return;
     if(!canBetKoMatch(n)) return;
-    if(p.s1===undefined||p.s1===null||p.s2===undefined||p.s2===null) return;
+    const p=koMatchPreds[n];
+    if(!p||p.s1===undefined||p.s1===null||p.s2===undefined||p.s2===null) return;
     const r=koMatchReal[n];
     const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
-    koMatchPreds[num].pts=pts;
+    koMatchPreds[n].pts=pts;
     rows.push({user_id:STATE.profile.id,match_number:n,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
   });
 
@@ -2849,14 +2855,19 @@ async function saveKoMatches(){
 
   try{
     await upsertWithReplicate('match_predictions',rows);
-    koMatchDirty=false;
-    showToast('✅ Palpites salvos! ('+rows.length+' jogos)');
+    koMatchDirty=false; koMatchDirtySet=new Set();
+    showToast('✅ Palpites salvos! ('+rows.length+' jogo'+(rows.length===1?'':'s')+')');
     updateKoMatchSaveBar();
-    // Recarregar in-place: buscar preds atualizados e redesenhar sem trocar de página
+    // Recarregar in-place: rebuscar preds E resultados reais para não perder nomes dos times
     if(koMatchMainEl){
-      const freshPreds = await dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points');
+      const [freshPreds, freshMatches] = await Promise.all([
+        dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points'),
+        dbQ('group_matches',{},'match_number,team1_name,team2_name,real_score1,real_score2,is_finished,group_id'),
+      ]);
       koMatchPreds={};
       (freshPreds||[]).forEach(p=>{ if(p.match_number>=73) koMatchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points}; });
+      koMatchReal={};
+      (freshMatches||[]).forEach(m=>{ if(m.match_number>=73) koMatchReal[m.match_number]=m; });
       buildKoMatchesUI(koMatchMainEl);
     }
   }catch(e){ showToast('Erro: '+e.message,'err'); }
