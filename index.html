@@ -2624,7 +2624,6 @@ function renderMine(main){
 
 // ── Ko Matches (Jogos Eliminatórios) ───────────────────────────────────────
 let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchPhase='round32', koMatchRealSt={}, koMatchMainEl=null;
-const KO_PHASE_LABELS = {round32:'Rodada de 32',round16:'Oitavas de Final',quarter:'Quartas de Final',semi:'Semifinal',final:'Final',third:'3º Lugar'};
 
 function resolveSlot(slot, realStandings) {
   if(slot.type==='1'||slot.type==='2') {
@@ -2635,202 +2634,179 @@ function resolveSlot(slot, realStandings) {
   return '3º ('+slot.thirdGroups.join('/')+')';
 }
 
+// ── Jogos Eliminatórios ────────────────────────────────────────────────────
+// Padrão idêntico à 1ª fase: preds em memória, save direto, setState para recarregar
+
+const KO_PHASE_LABELS = {
+  round32:'Rodada de 32', round16:'Oitavas de Final',
+  quarter:'Quartas de Final', semi:'Semifinal',
+  fin:'Final', third:'3º Lugar'
+};
+const KO_PHASE_KEYS = ['round32','round16','quarter','semi','fin','third'];
+const KO_PHASE_RANGES = {
+  round32:[73,88], round16:[89,96], quarter:[97,100],
+  semi:[101,102], fin:[104,104], third:[103,103]
+};
+
 function renderKoMatches(main){
   const v = PAGE_VERSION;
+  main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'⚔️ Jogos Eliminatórios'));
   if(!CURRENT_BOLAO){
-    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center'}});
-    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
-    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
-    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
-    main.appendChild(w); return;
+    main.appendChild(el('div',{style:{textAlign:'center',padding:'2rem',color:'var(--muted)'}},'Selecione um bolão primeiro'));
+    return;
   }
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKoMatches(main));
-  renderReplicateBar(main, ()=>renderKoMatches(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+
   Promise.all([
-    CURRENT_BOLAO ? dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points') : Promise.resolve([]),
+    dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points'),
     dbQ('group_matches',{},'match_number,team1_name,team2_name,real_score1,real_score2,is_finished,group_id'),
-    dbQ('real_group_standings',{},'group_id,position,team_name'),
     dbQ('real_knockouts',{},'phase,team_ids'),
-  ]).then(([mp,rm,rs,rk])=>{
+  ]).then(([mp,rm,rk])=>{
     if(PAGE_VERSION!==v) return;
-    main.innerHTML='';
-    main.appendChild(el('div',{class:'ch'},'⚔️ Jogos Eliminatórios'));
-    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKoMatches(main));
-    renderReplicateBar(main, ()=>buildKoMatchesUI(main, realSt));
+    // Carregar configs
+    const srRow=(rk||[]).find(r=>r.phase==='second_round_date');
+    if(srRow?.team_ids?.[0]) SECOND_ROUND_DATE=srRow.team_ids[0];
+    const mlRow=(rk||[]).find(r=>r.phase==='matches_lock_start');
+    if(mlRow?.team_ids?.[0]) MATCHES_LOCK_START=mlRow.team_ids[0];
+
+    // Palpites em memória (só jogos KO >= 73)
     koMatchPreds={};
-    (mp||[]).forEach(p=>{ koMatchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points}; });
+    (mp||[]).forEach(p=>{
+      if(p.match_number>=73)
+        koMatchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points};
+    });
+
+    // Resultados reais
     koMatchReal={};
-    (rm||[]).forEach(m=>{ if(m.group_id && m.group_id.startsWith('KO_')) koMatchReal[m.match_number]=m; });
-    // Real standings para resolver slots
-    const realSt={};
-    (rs||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
-    // Real knockouts para saber 8 melhores 3ºs
-    koReal={};
-    (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
+    (rm||[]).forEach(m=>{
+      if(m.match_number>=73) koMatchReal[m.match_number]=m;
+    });
+
     koMatchDirty=false;
-    koMatchRealSt=realSt||{};
-    buildKoMatchesUI(main, koMatchRealSt);
+    buildKoMatchesUI(main);
+  }).catch(e=>{
+    main.innerHTML='';
+    main.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem'}},'Erro ao carregar: '+e.message));
   });
 }
 
-function buildKoMatchesUI(main, realSt){
-  if(!realSt) realSt=koMatchRealSt||{};
-  koMatchRealSt=realSt;
-  koMatchMainEl=main; // guardar referência para uso no save
+function buildKoMatchesUI(main){
+  koMatchMainEl=main;
   main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'⚔️ Jogos Eliminatórios'));
 
   // Tabs de fase
   const tabs=el('div',{class:'tabs',style:{marginBottom:'1rem'}});
-  Object.entries(KO_PHASE_LABELS).forEach(([k,l])=>{
-    tabs.appendChild(el('button',{class:`tb${koMatchPhase===k?' act':''}`,onclick:()=>{koMatchPhase=k;buildKoMatchesUI(main,koMatchRealSt);}},l));
+  KO_PHASE_KEYS.forEach(k=>{
+    tabs.appendChild(el('button',{
+      class:`tb${koMatchPhase===k?' act':''}`,
+      style:{whiteSpace:'nowrap',flexShrink:'0'},
+      onclick:()=>{ koMatchPhase=k; buildKoMatchesUI(main); }
+    },KO_PHASE_LABELS[k]));
   });
   main.appendChild(tabs);
 
-  // Verificar jogos desta fase (group_id='KO_round32' etc)
-  const phaseKey = 'KO_'+koMatchPhase;
-  const phaseMatches = Object.values(koMatchReal).filter(m=>m.group_id===phaseKey);
+  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},
+    'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
+
+  // Placar padrão
+  if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
+  const defBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
+  defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }));
+  defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }));
+  const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
+    const ds1=window._koMatchDef.s1, ds2=window._koMatchDef.s2;
+    if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
+    const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
+    let count=0;
+    for(let n=mn;n<=mx;n++){
+      if(koMatchReal[n] && canBetKoMatch(n)){
+        koMatchPreds[n]={s1:ds1,s2:ds2,pts:0};
+        count++;
+      }
+    }
+    if(count===0){showToast('Nenhum jogo disponível nesta fase','err');return;}
+    koMatchDirty=true;
+    await saveKoMatches();
+  }},'Aplicar a todos');
+  defBar.appendChild(applyBtn);
+  main.appendChild(defBar);
+
+  // Jogos da fase atual
+  const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
+  const phaseMatches=[];
+  for(let n=mn;n<=mx;n++){
+    if(koMatchReal[n]) phaseMatches.push(koMatchReal[n]);
+  }
 
   if(phaseMatches.length===0){
-    // Mostrar chaveamento previsto para qualquer fase
-    const bracket = PHASE_BRACKETS[phaseKey];
-    const adminMatchesMap = {};
-    Object.values(koMatchReal).forEach(m=>{ adminMatchesMap[m.match_number]=m; });
-    const realThirds = (koReal&&koReal['best_thirds']?.team_ids)||[];
-
-    const empty=el('div',{style:{padding:'1rem 0',color:'var(--muted)'}});
-    empty.appendChild(el('div',{style:{fontWeight:'600',color:'var(--txt)',marginBottom:'.4rem',fontSize:'.9rem'}},'📋 Confrontos previstos — '+KO_PHASE_LABELS[koMatchPhase]));
-    empty.appendChild(el('div',{style:{fontSize:'.75rem',marginBottom:'1rem'}},'Os palpites de placar ficam disponíveis quando o Admin confirmar os jogos.'));
-
-    if(bracket && bracket.length>0){
-      const bkt=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
-      bracket.forEach(m=>{
-        const t1=String(resolveMatchSlot(m.slot1,realSt,realThirds,adminMatchesMap)||'?');
-        const t2=String(resolveMatchSlot(m.slot2,realSt,realThirds,adminMatchesMap)||'?');
-        const row=el('div',{style:{background:'var(--card)',border:'1px solid var(--bdr)',borderRadius:'8px',padding:'.6rem .875rem',display:'flex',alignItems:'center',gap:'8px',fontSize:'.82rem'}});
-        row.appendChild(el('span',{style:{color:'var(--muted)',minWidth:'28px',fontSize:'.7rem'}},'#'+String(m.id)));
-        row.appendChild(el('span',{style:{flex:'1',fontWeight:'600'}},t1));
-        row.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
-        row.appendChild(el('span',{style:{flex:'1',fontWeight:'600',textAlign:'right'}},t2));
-        bkt.appendChild(row);
-      });
-      empty.appendChild(bkt);
-    } else {
-      empty.appendChild(el('div',{style:{fontSize:'.85rem',fontStyle:'italic'}},'Chaveamento desta fase não mapeado ainda.'));
-    }
-    main.appendChild(empty);
+    main.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Nenhum jogo cadastrado nesta fase ainda.'));
+    updateKoMatchSaveBar();
     return;
   }
 
-  // Mostrar jogos com palpite de placar
-  main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
-
-  // Placar padrão — aplica a todos os jogos desta fase
-  if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
-  const koDefBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
-  koDefBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
-  koDefBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }));
-  koDefBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
-  koDefBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }));
-  const koApplyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
-    const ds1=window._koMatchDef.s1, ds2=window._koMatchDef.s2;
-    if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
-    koApplyBtn.textContent='⏳...'; koApplyBtn.disabled=true;
-    const openMatches=phaseMatches.filter(m=>canBetKoMatch(m.match_number));
-    if(openMatches.length===0){
-      showToast('⚠️ Todos os jogos desta fase estão bloqueados','err');
-      koApplyBtn.textContent='Aplicar a todos'; koApplyBtn.disabled=false;
-      return;
-    }
-    for(const m of openMatches){
-      koMatchPreds[m.match_number]={s1:ds1,s2:ds2,pts:0};
-    }
-    koMatchDirty=true;
-    await saveKoMatches();
-    koApplyBtn.textContent='Aplicar a todos'; koApplyBtn.disabled=false;
-    buildKoMatchesUI(main,koMatchRealSt);
-  }},'Aplicar a todos');
-  koDefBar.appendChild(koApplyBtn);
-  main.appendChild(koDefBar);
-
-  phaseMatches.sort((a,b)=>a.match_number-b.match_number).forEach(m=>{
+  phaseMatches.forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
-    const hasResult = m.is_finished && m.real_score1!==undefined;
-    const canBetNow = canBetKoMatch(m.match_number); // bloqueia no dia do jogo
-    const locked = !canBetNow; // bloqueado por data OU resultado finalizado
-    const hasPred = p.s1!==undefined;
-    const pts = hasResult && hasPred ? calcPts(p.s1,p.s2||0,m.real_score1,m.real_score2) : 0;
-    const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
-    // pts-badge para atualização em tempo real
-    const daysLeft = daysUntilKoMatch(m.match_number);
+    const v1=p.s1??null, v2=p.s2??null;
+    const canBetNow=canBetKoMatch(m.match_number);
+    const hasResult=m.is_finished;
+    const pts=p.pts||0;
+    const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
 
-    const mc=el('div',{class:'mc'+(locked?' fin':''),style:{display:'block',padding:'.875rem',marginBottom:'8px'}});
+    const mc=el('div',{style:{background:'var(--dk3)',borderRadius:'12px',padding:'1rem',marginBottom:'10px',
+      border: canBetNow ? '1px solid var(--bdr)' : '1px solid rgba(245,158,11,.2)'}});
 
-    // Times
-    const tr2=el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.4rem'}});
-    tr2.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.team1_name]||'🏳'));
-    tr2.appendChild(el('span',{style:{fontSize:'.78rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.team1_name));
-    tr2.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:'0'}},' × '));
-    tr2.appendChild(el('span',{style:{fontSize:'.78rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}},m.team2_name));
-    tr2.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.team2_name]||'🏳'));
-    mc.appendChild(tr2);
+    // Nome dos times
+    const nameRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem'}});
+    nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem'}},(FLAGS[m.team1_name]||'')+' '+m.team1_name));
+    nameRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.8rem'}},'×'));
+    nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem',textAlign:'right'}},m.team2_name+' '+(FLAGS[m.team2_name]||'')));
+    mc.appendChild(nameRow);
 
-    // Placar — bloquear no dia do jogo (por data) ou se já finalizado
-    const v1=hasPred?p.s1:null, v2=hasPred?p.s2:null;
-    const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',marginBottom:'.3rem'}});
-    if(locked){
-      // Jogo bloqueado por data ou finalizado — modo leitura
-      const showS1 = hasPred ? p.s1 : '—';
-      const showS2 = hasPred ? p.s2 : '—';
-      const roRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',fontSize:'.9rem',color:'var(--muted)',margin:'.3rem 0'}});
-      roRow.appendChild(el('span',{style:{fontSize:'.7rem'}},'Meu palpite:'));
-      roRow.appendChild(el('span',{style:{fontWeight:'700',color:'var(--txt)'}},showS1+' × '+showS2));
-      if(!hasPred) roRow.appendChild(el('span',{style:{fontSize:'.7rem',color:'#EF4444'}},' (sem palpite)'));
-      mc.appendChild(roRow);
-    } else {
-      // Jogo ainda aberto — aviso se amanhã
-      if(daysLeft===1){
-        mc.appendChild(el('div',{style:{fontSize:'.7rem',color:'#F59E0B',textAlign:'center',marginBottom:'4px'}},'⚠️ Último dia para palpitar!'));
-      }
-      scoreRow.appendChild(makeMatchCtrl(v1,v=>{
-        const cur=koMatchPreds[m.match_number]||{};
-        const newS2=cur.s2??0;
-        const newPts=m.is_finished?calcPts(v,newS2,m.real_score1,m.real_score2):0;
-        koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
-        koMatchDirty=true; updateKoMatchSaveBar();
-        // Atualizar badge de pontos na tela sem rebuild completo
-        const ptsBadge=mc.querySelector('.pts-badge');
-        if(ptsBadge&&m.is_finished){ ptsBadge.textContent=newPts+'pts'; ptsBadge.className='pts-badge p'+newPts; }
-      }));
-      scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 3px'}},'×'));
-      scoreRow.appendChild(makeMatchCtrl(v2,v=>{
-        const cur=koMatchPreds[m.match_number]||{};
-        const newS1=cur.s1??0;
-        const newPts=m.is_finished?calcPts(newS1,v,m.real_score1,m.real_score2):0;
-        koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
-        koMatchDirty=true; updateKoMatchSaveBar();
-        const ptsBadge=mc.querySelector('.pts-badge');
-        if(ptsBadge&&m.is_finished){ ptsBadge.textContent=newPts+'pts'; ptsBadge.className='pts-badge p'+newPts; }
-      }));
-      mc.appendChild(scoreRow);
-    }
+    // Controles de placar
+    const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
+    scoreRow.appendChild(makeMatchCtrl(v1, v=>{
+      const cur=koMatchPreds[m.match_number]||{};
+      const newS2=cur.s2??0;
+      const newPts=m.is_finished?calcPts(v,newS2,m.real_score1,m.real_score2):0;
+      koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
+      koMatchDirty=true; updateKoMatchSaveBar();
+      const badge=mc.querySelector('.pts-badge');
+      if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+( newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
+    }, !canBetNow));
+    scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+    scoreRow.appendChild(makeMatchCtrl(v2, v=>{
+      const cur=koMatchPreds[m.match_number]||{};
+      const newS1=cur.s1??0;
+      const newPts=m.is_finished?calcPts(newS1,v,m.real_score1,m.real_score2):0;
+      koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
+      koMatchDirty=true; updateKoMatchSaveBar();
+      const badge=mc.querySelector('.pts-badge');
+      if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
+    }, !canBetNow));
+    mc.appendChild(scoreRow);
 
+    // Resultado real
     if(hasResult){
-      const rr=el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.2rem'}});
+      const rr=el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)'}});
       rr.appendChild(document.createTextNode('Resultado real: '));
-      rr.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontFamily:"'Bebas Neue',cursive",fontSize:'.9rem'}},m.real_score1+' — '+m.real_score2));
-      if(hasPred) rr.appendChild(el('span',{class:'pp pts-badge '+ptsCls,style:{marginLeft:'4px',fontSize:'.65rem'}},pts+'pts'));
+      rr.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontSize:'.9rem'}},m.real_score1+' — '+m.real_score2));
+      if(v1!==null&&v2!==null)
+        rr.appendChild(el('span',{class:'pp pts-badge '+ptsCls,style:{marginLeft:'4px',fontSize:'.65rem'}},pts+'pts'));
       mc.appendChild(rr);
     }
+
     main.appendChild(mc);
   });
+
   updateKoMatchSaveBar();
 }
 
 function updateKoMatchSaveBar(){
-  if(STATE.page !== 'ko_matches') return;
-  // Esconder a matches savebar se existir
+  if(STATE.page!=='ko_matches') return;
   const sbm=document.getElementById('savebar-matches');
   if(sbm) sbm.style.display='none';
   let sb=document.getElementById('savebar-ko');
@@ -2840,81 +2816,43 @@ function updateKoMatchSaveBar(){
   sb.style.display='flex';
   const inn=el('div',{class:'sbar-in'});
   inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Alterações não salvas'));
-  // Botão diagnóstico rápido
-  inn.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'4px 8px',background:'var(--dk3)',border:'1px solid var(--muted)',color:'var(--muted)'},onclick:()=>{
-    const keys=Object.keys(koMatchPreds);
-    const ko73=keys.filter(n=>parseInt(n)>=73);
-    const bloqueados=ko73.filter(n=>!canBetKoMatch(parseInt(n)));
-    const disponiveis=ko73.filter(n=>canBetKoMatch(parseInt(n)));
-    const sr=SECOND_ROUND_DATE?new Date(SECOND_ROUND_DATE).toLocaleString('pt-BR'):'não configurada';
-    const ml=MATCHES_LOCK_START?new Date(MATCHES_LOCK_START).toLocaleString('pt-BR'):'não configurada';
-    const agora=new Date().toLocaleString('pt-BR');
-    const msg=[
-      'DIAGNOSTICO JOGOS KO',
-      'Agora: '+agora,
-      '2a Rodada: '+sr,
-      'Lock jogos: '+ml,
-      '',
-      'koMatchPreds total: '+keys.length,
-      'Jogos KO (>=73): '+ko73.length,
-      'Disponiveis: '+disponiveis.length,
-      'Bloqueados: '+bloqueados.length,
-      bloqueados.length>0?'IDs bloqueados: '+bloqueados.slice(0,5).join(','):'',
-      '',
-      'Fase atual: '+koMatchPhase,
-      'Bolao: '+(CURRENT_BOLAO?.name||'null'),
-    ].filter(l=>l!==undefined).join('\n');
-    alert(msg);
-  }},'🔍'));
   inn.appendChild(el('button',{class:'btn btn-p',onclick:saveKoMatches},'💾 Salvar Palpites'));
   sb.appendChild(inn);
 }
 
 async function saveKoMatches(){
-  // Buscar resultados reais frescos do banco antes de calcular pontos
+  // Buscar resultados reais frescos
   try{
-    const freshKo = await dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished,group_id');
-    (freshKo||[]).forEach(m=>{ if(m.group_id?.startsWith('KO_')) koMatchReal[m.match_number]=m; });
-  } catch(e){ /* usa koMatchReal em memória */ }
+    const fresh=await dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished,group_id');
+    (fresh||[]).forEach(m=>{ if(m.match_number>=73) koMatchReal[m.match_number]=m; });
+  }catch(e){}
 
   const rows=[];
-  let blocked=0, noData=0;
-  console.log('[saveKoMatches] koMatchPreds keys:', Object.keys(koMatchPreds).length,
-    'SECOND_ROUND_DATE:', SECOND_ROUND_DATE,
-    'now:', new Date().toISOString());
   Object.entries(koMatchPreds).forEach(([num,p])=>{
-    const matchNum=parseInt(num);
-    if(matchNum<73){ noData++; return; }
-    if(p&&p.s1!==undefined&&p.s2!==undefined){
-      const canBet=canBetKoMatch(matchNum);
-      if(!canBet){ blocked++; console.log('[saveKoMatches] bloqueado: match '+matchNum+' SECOND_ROUND_DATE='+SECOND_ROUND_DATE); return; }
-      const r=koMatchReal[matchNum];
-      const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
-      koMatchPreds[num].pts=pts;
-      rows.push({user_id:STATE.profile.id,match_number:matchNum,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
-    } else { noData++; }
+    const n=parseInt(num);
+    if(n<73) return;
+    if(!canBetKoMatch(n)) return;
+    if(p.s1===undefined||p.s2===undefined) return;
+    const r=koMatchReal[n];
+    const pts=r?.is_finished?calcPts(p.s1,p.s2,r.real_score1,r.real_score2):(p.pts||0);
+    koMatchPreds[num].pts=pts;
+    rows.push({user_id:STATE.profile.id,match_number:n,predicted_score1:p.s1,predicted_score2:p.s2,points:pts});
   });
-  console.log('[saveKoMatches] rows='+rows.length+' blocked='+blocked+' noData='+noData);
-  if(!CURRENT_BOLAO){ showToast('Sem bolão selecionado','err'); return; }
-  if(rows.length===0){ showToast('⚠️ Nenhum jogo disponível (bloqueados='+blocked+', sem dados='+noData+')','err'); return; }
+
+  if(!CURRENT_BOLAO){showToast('Sem bolão selecionado','err');return;}
+  if(rows.length===0){showToast('Nenhum jogo disponível para salvar','err');return;}
+
   try{
-    await upsertWithReplicate('match_predictions', rows);
+    await upsertWithReplicate('match_predictions',rows);
     koMatchDirty=false;
     showToast('✅ Palpites salvos e pontos calculados! ('+rows.length+' jogos)');
     updateKoMatchSaveBar();
-    // Reconstruir UI usando a referência salva (evita elemento órfão)
-    if(koMatchMainEl && koMatchMainEl.isConnected && STATE.page==='ko_matches'){
-      buildKoMatchesUI(koMatchMainEl, koMatchRealSt);
-    } else if(STATE.page==='ko_matches'){
-      // Fallback: buscar no DOM
-      const mainEl = document.querySelector('.main');
-      if(mainEl) buildKoMatchesUI(mainEl, koMatchRealSt);
-    }
-  } catch(e){
-    console.error('[saveKoMatches] ERRO:', e);
-    showToast('Erro ao salvar: '+e.message,'err');
-  }
+    // Recarregar — igual à 1ª fase usa setState
+    setState({page:'ko_matches'});
+  }catch(e){ showToast('Erro: '+e.message,'err'); }
 }
+
+
 // ── Fluxo copiar/colar com Claude ─────────────────────────────────────────
 async function fetchResultsFromAI(main, phase) {
   let panel = document.getElementById('ai-fetch-panel');
