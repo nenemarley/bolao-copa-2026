@@ -206,6 +206,26 @@ const PHASES = [
 ];
 // final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
 
+// ── Modalidades de bolão ──────────────────────────────────────────────────────
+// full:          todas as abas e colunas
+// placares:      só ⚽1ªFase + ⚔️JogosElim.  (palpites de placar)
+// classificados: só 📊Grupos + 🔥Eliminat.    (palpites de classificação + artilheiro)
+const BOLAO_MODES = {
+  full:          { label:'🏆 Completo',        desc:'Todas as abas: placares + classificação' },
+  placares:      { label:'⚽ Só Placares',      desc:'Palpites de placar: 1ª Fase e Jogos Eliminatórios' },
+  classificados: { label:'📊 Só Classificados', desc:'Grupos, Eliminatórias e Artilheiro (sem placares)' },
+};
+// Helper: retorna o mode do bolão atual (default 'full' se não definido)
+function bolaoMode() { return CURRENT_BOLAO?.mode || 'full'; }
+// Helper: verifica se uma aba está habilitada para o mode atual
+function tabEnabled(key) {
+  const m = bolaoMode();
+  if (m === 'full') return true;
+  if (m === 'placares')      return ['bolaos','dashboard','matches','ko_matches','mine','admin'].includes(key);
+  if (m === 'classificados') return ['bolaos','dashboard','standings','knockout','mine','admin'].includes(key);
+  return true;
+}
+
 // ── Chaveamento completo FIFA 2026 (fixo por número de jogo) ─────────────────
 // Rodada de 32: jogos 73-88
 // slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
@@ -711,7 +731,7 @@ async function loadMyBolaos(uid){
     console.log('[loadMyBolaos] Membros encontrados:', members?.length, members?.map(m=>m.bolao_id));
     if(!members||members.length===0){ MY_BOLAOS=[]; CURRENT_BOLAO=null; return; }
     const ids = members.map(m=>m.bolao_id);
-    const groups = await dbQ('bolao_groups',{},'id,name,invite_code,created_by,description');
+    const groups = await dbQ('bolao_groups',{},'id,name,invite_code,created_by,description,mode');
     MY_BOLAOS = groups.filter(g=>ids.includes(g.id)).map(g=>({
       ...g, replicate: members.find(m=>m.bolao_id===g.id)?.replicate_preds??true
     }));
@@ -872,13 +892,13 @@ function renderApp(){
   const nav = el('div',{class:'nav'});
   const navIn = el('div',{class:'nav-in'});
   const navItems = [
-    {key:'bolaos',label:'🎯 Meus Bolões'},
-    {key:'dashboard',label:'🏆 Ranking'},
-    {key:'matches',label:'⚽ 1ª Fase'},
-    {key:'standings',label:'📊 Grupos'},
-    {key:'knockout',label:'🔥 Eliminat.'},
-    {key:'ko_matches',label:'⚔️ Jogos Elim.'},
-    {key:'mine',label:'📋 Meus Pts'},
+    {key:'bolaos',    label:'🎯 Meus Bolões'},
+    {key:'dashboard', label:'🏆 Ranking'},
+    ...(tabEnabled('matches')    ? [{key:'matches',   label:'⚽ 1ª Fase'}]     : []),
+    ...(tabEnabled('standings')  ? [{key:'standings', label:'📊 Grupos'}]      : []),
+    ...(tabEnabled('knockout')   ? [{key:'knockout',  label:'🔥 Eliminat.'}]   : []),
+    ...(tabEnabled('ko_matches') ? [{key:'ko_matches',label:'⚔️ Jogos Elim.'}] : []),
+    {key:'mine', label:'📋 Meus Pts'},
     ...(STATE.profile.is_admin?[{key:'admin',label:'🔧 Admin'}]:[]),
   ];
   navItems.forEach(n=>{
@@ -932,7 +952,7 @@ function renderGroupSelector(main, onSelect) {
     const isAct = CURRENT_BOLAO?.id===b.id;
     const pill = el('button',{
       class:'group-pill'+(isAct?' active':''),
-      onclick:()=>{ CURRENT_BOLAO=b; onSelect(); }
+      onclick:()=>{ CURRENT_BOLAO=b; if(!tabEnabled(STATE.page)) setState({page:'dashboard'}); else onSelect(); }
     }, b.name);
     if(isAct){ pill.style.background='var(--gold)'; pill.style.color='#0A0F1E'; pill.style.borderColor='var(--gold)'; pill.style.fontWeight='700'; }
     bar.appendChild(pill);
@@ -981,6 +1001,9 @@ function renderBolaos(main) {
       const badges = el('div',{style:{display:'flex',gap:'6px',marginTop:'4px',flexWrap:'wrap'}});
       if(isCreator) badges.appendChild(el('span',{class:'bolao-badge'},'👑 Criador'));
       if(CURRENT_BOLAO?.id===b.id) badges.appendChild(el('span',{class:'bolao-badge',style:{background:'rgba(16,185,129,.2)',color:'#6EE7B7',border:'1px solid #10B981'}},'✓ Ativo'));
+      // Badge de modalidade
+      const modeInfo = BOLAO_MODES[b.mode] || BOLAO_MODES['full'];
+      badges.appendChild(el('span',{class:'bolao-badge',style:{background:'rgba(251,191,36,.1)',color:'var(--gold)',border:'1px solid rgba(251,191,36,.3)',fontSize:'.65rem'}},modeInfo.label));
       nameWrap.appendChild(badges);
       hdr.appendChild(nameWrap);
       card.appendChild(hdr);
@@ -1080,7 +1103,45 @@ function renderBolaos(main) {
   createCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.875rem',fontSize:'1.1rem'}},'➕ Criar Novo Bolão'));
   
   const nameI = el('input',{class:'fi',placeholder:'Nome do bolão (ex: Galera da Rua, Bolão Trabalho...)',style:{marginBottom:'.75rem'}});
-  const descI = el('input',{class:'fi',placeholder:'Descrição opcional (ex: Bolão do pessoal do escritório)',style:{marginBottom:'.875rem'}});
+  const descI = el('input',{class:'fi',placeholder:'Descrição opcional (ex: Bolão do pessoal do escritório)',style:{marginBottom:'.5rem'}});
+
+  // ── Seletor de modalidade ──
+  let selectedMode = 'full';
+  createCard.appendChild(nameI);
+  createCard.appendChild(descI);
+  createCard.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'.4rem',marginTop:'.25rem'}},'Modalidade do bolão:'));
+  const modeWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',marginBottom:'.875rem'}});
+  Object.entries(BOLAO_MODES).forEach(([key, info]) => {
+    const isDefault = key === 'full';
+    const row = el('div',{style:{
+      display:'flex',alignItems:'flex-start',gap:'10px',padding:'10px 12px',
+      borderRadius:'8px',border:'2px solid '+(isDefault?'var(--gold)':'var(--bdr)'),
+      background:'var(--dk3)',cursor:'pointer'
+    }});
+    row.dataset.mode = key;
+    const radio = el('div',{style:{
+      width:'16px',height:'16px',borderRadius:'50%',border:'2px solid var(--gold)',
+      flexShrink:'0',marginTop:'2px',
+      background:isDefault?'var(--gold)':'transparent',
+      transition:'background .15s'
+    }});
+    radio.className = 'mode-radio';
+    const txt = el('div');
+    txt.appendChild(el('div',{style:{fontWeight:'600',fontSize:'.82rem',color:'var(--txt)'}},info.label));
+    txt.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)'}},info.desc));
+    row.appendChild(radio);
+    row.appendChild(txt);
+    row.onclick = () => {
+      selectedMode = key;
+      modeWrap.querySelectorAll('[data-mode]').forEach(r => {
+        const sel = r.dataset.mode === selectedMode;
+        r.style.border = '2px solid '+(sel?'var(--gold)':'var(--bdr)');
+        r.querySelector('.mode-radio').style.background = sel?'var(--gold)':'transparent';
+      });
+    };
+    modeWrap.appendChild(row);
+  });
+  createCard.appendChild(modeWrap);
   
   const createBtn = el('button',{class:'btn btn-p',style:{width:'100%'},onclick:async()=>{
     const nome = nameI.value.trim();
@@ -1090,7 +1151,8 @@ function renderBolaos(main) {
       const code = Array.from({length:6},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
       const {data:bg, error:be} = await SB.from('bolao_groups').insert({
         name:nome, description:descI.value.trim()||null,
-        invite_code:code, created_by:STATE.profile.id
+        invite_code:code, created_by:STATE.profile.id,
+        mode: selectedMode,
       }).select().single();
       if(be) throw be;
       await SB.from('bolao_members').insert({bolao_id:bg.id, user_id:STATE.profile.id, replicate_preds:true});
@@ -1098,13 +1160,9 @@ function renderBolaos(main) {
       CURRENT_BOLAO = MY_BOLAOS.find(b=>b.id===bg.id)||MY_BOLAOS[0];
       nameI.value=''; descI.value='';
       renderBolaos(main);
-      showToast('✅ Bolão "'+nome+'" criado!');
+      showToast('✅ Bolão "'+nome+'" criado! ('+BOLAO_MODES[selectedMode].label+')');
     } catch(e){ showToast(e.message,'err'); createBtn.disabled=false; createBtn.textContent='Criar Bolão'; }
   }},'🎯 Criar Bolão');
-  
-  createCard.appendChild(nameI);
-  createCard.appendChild(descI);
-  createCard.appendChild(createBtn);
   main.appendChild(createCard);
 
   // ── Entrar com código ──
@@ -1203,14 +1261,18 @@ async function showUserPalpites(userId, userName) {
   }
 
   const tabs = [
-    ['jogos','⚽ Jogos'],
-    ...(secondStarted ? [
+    ...(tabEnabled('matches') ? [['jogos','⚽ Jogos']] : []),
+    ...(secondStarted && tabEnabled('standings') ? [
       ['grupos','📊 Grupos'],
       ['thirds','🥉 3ºs'],
+    ] : []),
+    ...(secondStarted && tabEnabled('knockout') ? [
       ['fases','🔥 Eliminat.'],
       ['artilheiro','🎯 Artilheiro'],
-    ] : [])
+    ] : []),
   ];
+  // Garantir que activeTab seja uma aba válida
+  if (!tabs.find(t => t[0] === activeTab)) activeTab = tabs[0]?.[0] || 'jogos';
 
   async function renderTab() {
     body.innerHTML = '';
@@ -1447,7 +1509,19 @@ function renderDashboard(main){
     // Tabela com scroll horizontal
     const tableWrap=el('div',{style:{overflowX:'auto'}});
     const t=el('table',{class:'rkt'});
-    const headers=['#','Palpiteiro','Placar\n1ªFase','Placar\nFinais','Classifi-\ncados','Melhores\n3º','Elimina-\ntórias','Finais','Total'];
+
+    // Colunas condicionais por modalidade do bolão
+    const _mode = bolaoMode();
+    const rankCols = [
+      { header:'Placar\n1ªFase',   val: r => r.j1,       show: _mode !== 'classificados' },
+      { header:'Placar\nFinais',   val: r => r.je,       show: _mode !== 'classificados' },
+      { header:'Classifi-\ncados', val: r => r.g,        show: _mode !== 'placares' },
+      { header:'Melhores\n3º',     val: r => r.t3,       show: _mode !== 'placares' },
+      { header:'Elimina-\ntórias', val: r => r.fk,       show: _mode !== 'placares' },
+      { header:'Pódio',            val: r => r.fc + r.s, show: _mode !== 'placares' },
+    ];
+    const visCols = rankCols.filter(c => c.show);
+    const headers = ['#','Palpiteiro',...visCols.map(c=>c.header),'Total'];
     t.appendChild(el('thead',{},el('tr',{},...headers.map(h=>el('th',{style:{whiteSpace:'pre-wrap',fontSize:'.65rem',padding:'5px 3px',textAlign:'center',lineHeight:'1.2'}},h)))));
     const em=['🥇','🥈','🥉'],rc=['r1','r2','r3'];
     const tbody=el('tbody');
@@ -1463,9 +1537,9 @@ function renderDashboard(main){
       nameTd.appendChild(nameSpan);
       if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
       tr.appendChild(nameTd);
-      // Finais = campeão/vice/3ºlugar + artilheiro somados
-      const finais = r.fc + r.s;
-      [r.j1, r.je, r.g, r.t3, r.fk, finais].forEach(v=>{
+      // Pódio = campeão/vice/3ºlugar + artilheiro somados
+      visCols.forEach(c=>{
+        const v=c.val(r);
         const td=el('td',{style:{textAlign:'center',fontSize:'.8rem'}});
         td.appendChild(el('span',{style:{color:v>0?'var(--ok)':'var(--muted)'}},''+v));
         tr.appendChild(td);
@@ -5191,6 +5265,57 @@ async function cleanupTest(main) {
   CURRENT_BOLAO = MY_BOLAOS[0]||null;
   renderTestPage(main);
 }
+
+// ── Self-tests (rodar no console: runTests()) ──────────────────────────────
+window.runTests = function() {
+  let pass = 0, fail = 0;
+  function assert(label, got, expected) {
+    if (got === expected) {
+      console.log('%c✅ ' + label, 'color:green');
+      pass++;
+    } else {
+      console.error('❌ ' + label + ' | got:', got, '| expected:', expected);
+      fail++;
+    }
+  }
+  const origBolao = CURRENT_BOLAO;
+
+  // 1. tabEnabled — mode full
+  CURRENT_BOLAO = { mode: 'full' };
+  assert('full: matches habilitado',    tabEnabled('matches'),    true);
+  assert('full: standings habilitado',  tabEnabled('standings'),  true);
+  assert('full: ko_matches habilitado', tabEnabled('ko_matches'), true);
+  assert('full: knockout habilitado',   tabEnabled('knockout'),   true);
+
+  // 2. tabEnabled — mode placares
+  CURRENT_BOLAO = { mode: 'placares' };
+  assert('placares: matches habilitado',       tabEnabled('matches'),    true);
+  assert('placares: ko_matches habilitado',    tabEnabled('ko_matches'), true);
+  assert('placares: standings DESABILITADO',   tabEnabled('standings'),  false);
+  assert('placares: knockout DESABILITADO',    tabEnabled('knockout'),   false);
+
+  // 3. tabEnabled — mode classificados
+  CURRENT_BOLAO = { mode: 'classificados' };
+  assert('classificados: standings habilitado',    tabEnabled('standings'),  true);
+  assert('classificados: knockout habilitado',     tabEnabled('knockout'),   true);
+  assert('classificados: matches DESABILITADO',    tabEnabled('matches'),    false);
+  assert('classificados: ko_matches DESABILITADO', tabEnabled('ko_matches'), false);
+
+  // 4. bolaoMode fallback
+  CURRENT_BOLAO = {};
+  assert('bolaoMode sem mode → full', bolaoMode(), 'full');
+  CURRENT_BOLAO = null;
+  assert('bolaoMode null → full', bolaoMode(), 'full');
+
+  // 5. BOLAO_MODES tem as 3 chaves
+  assert('BOLAO_MODES.full existe',          !!BOLAO_MODES.full,          true);
+  assert('BOLAO_MODES.placares existe',      !!BOLAO_MODES.placares,      true);
+  assert('BOLAO_MODES.classificados existe', !!BOLAO_MODES.classificados, true);
+
+  CURRENT_BOLAO = origBolao;
+  console.log('\n=== ' + pass + ' passou, ' + fail + ' falhou ===');
+  return { pass, fail };
+};
 
 // ── Start ──────────────────────────────────────────────────────────────────
 init();
