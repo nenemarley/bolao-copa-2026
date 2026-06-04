@@ -722,7 +722,7 @@ async function loadProfile(u){
 
   if(MY_BOLAOS.length>0 && !CURRENT_BOLAO) CURRENT_BOLAO=MY_BOLAOS[0];
   console.log('[loadProfile] Bolão atual:', CURRENT_BOLAO?.name, '| Total bolões:', MY_BOLAOS.length);
-  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
+  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'rules'});
 }
 
 async function loadMyBolaos(uid){
@@ -892,6 +892,7 @@ function renderApp(){
   const nav = el('div',{class:'nav'});
   const navIn = el('div',{class:'nav-in'});
   const navItems = [
+    {key:'rules',     label:'📖 Regras'},
     {key:'bolaos',    label:'🎯 Meus Bolões'},
     {key:'dashboard', label:'🏆 Ranking'},
     ...(tabEnabled('matches')    ? [{key:'matches',   label:'⚽ 1ª Fase'}]     : []),
@@ -931,6 +932,7 @@ function renderApp(){
   else if(page==='knockout') renderKnockout(main);
   else if(page==='ko_matches') renderKoMatches(main);
   else if(page==='mine') renderMine(main);
+  else if(page==='rules') renderRules(main);
   else if(page==='admin'&&STATE.profile.is_admin) renderAdmin(main);
   wrap.appendChild(main);
   return wrap;
@@ -2649,6 +2651,138 @@ async function saveKo(){
 }
 
 // ── My Summary ─────────────────────────────────────────────────────────────
+function renderRules(main){
+  main.innerHTML='';
+  main.appendChild(el('div',{class:'ch'},'📖 Regras do Bolão'));
+
+  // ── Prazo dos palpites ──────────────────────────────────────────
+  const secPrazo = el('div',{class:'card'});
+  secPrazo.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1rem',color:'var(--gold)',letterSpacing:'1px',marginBottom:'12px'}},'⏰ Quando fecham os palpites?'));
+
+  const prazos = [
+    {
+      icon:'⚽',
+      title:'Placares — 1ª Fase',
+      text:'Cada jogo fecha ',
+      hl:'1 dia antes',
+      rest:' do seu horário de início. Você pode alterar o palpite a qualquer momento antes desse prazo.',
+    },
+    {
+      icon:'⚔️',
+      title:'Placares — Jogos Eliminatórios',
+      text:'Idem: cada jogo fecha ',
+      hl:'1 dia antes',
+      rest:' do início da partida.',
+    },
+    {
+      icon:'📊',
+      title:'Classificação, Eliminatórias e Artilheiro',
+      text:'Fecham todos juntos quando começa a ',
+      hl:'2ª rodada da fase de grupos',
+      rest:' (por volta de 18 de junho). Após isso, nenhuma alteração é permitida.',
+    },
+  ];
+
+  prazos.forEach(p=>{
+    const row = el('div',{style:{display:'flex',gap:'10px',marginBottom:'10px',fontSize:'.83rem',lineHeight:'1.5'}});
+    row.appendChild(el('span',{style:{fontSize:'1.1rem',flexShrink:'0',marginTop:'1px'}},p.icon));
+    const txt = el('div');
+    txt.appendChild(el('div',{style:{fontWeight:'700',color:'var(--gold)',marginBottom:'2px'}},p.title));
+    const desc = el('div',{style:{color:'var(--muted)'}});
+    desc.appendChild(document.createTextNode(p.text));
+    desc.appendChild(el('span',{style:{color:'#6EE7B7',fontWeight:'600'}},p.hl));
+    desc.appendChild(document.createTextNode(p.rest));
+    txt.appendChild(desc);
+    row.appendChild(txt);
+    secPrazo.appendChild(row);
+  });
+  main.appendChild(secPrazo);
+
+  // ── Tabela de pontuação ─────────────────────────────────────────
+  const secPts = el('div',{class:'card'});
+  secPts.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1rem',color:'var(--gold)',letterSpacing:'1px',marginBottom:'12px'}},'🎯 Tabela de Pontuação'));
+
+  const cats = [
+    {
+      label:'⚽ Placares — 1ª Fase e Jogos Eliminatórios',
+      rows:[
+        ['Placar exato',                              '10', 'green'],
+        ['Resultado certo + 1 gol certo',             '7',  'gold'],
+        ['Só o resultado (vitória/empate/derrota)',    '5',  'gold'],
+        ['Acertou 1 gol (resultado errado)',           '2',  'blue'],
+      ]
+    },
+    {
+      label:'📊 Classificação de Grupos',
+      rows:[
+        ['1º e 2º do grupo — posições exatas',        '10', 'green'],
+        ['1º e 2º do grupo — posições invertidas',    '5',  'gold'],
+        ['Acertou um dos 8 melhores 3ºs',             '5',  'blue'],
+      ]
+    },
+    {
+      label:'🔥 Fases Eliminatórias',
+      rows:[
+        ['Time certo em R32 / Oitavas / Quartas / Semi / 3º Lugar', '10', 'gold'],
+      ]
+    },
+    {
+      label:'🏆 Pódio & Artilheiro',
+      rows:[
+        ['Acertar o 3º Lugar',      '15', 'blue'],
+        ['Acertar o Vice-Campeão',  '30', 'purple'],
+        ['Acertar o Campeão',       '50', 'red'],
+        ['Acertar o Artilheiro',    '30', 'purple'],
+      ]
+    },
+  ];
+
+  const ptColors = {
+    green:  {bg:'rgba(16,185,129,.2)',  color:'#6EE7B7', border:'#10B981'},
+    gold:   {bg:'rgba(251,191,36,.15)', color:'#FBBF24', border:'#FBBF24'},
+    blue:   {bg:'rgba(59,130,246,.2)',  color:'#93C5FD', border:'#3B82F6'},
+    purple: {bg:'rgba(139,92,246,.2)',  color:'#C4B5FD', border:'#8B5CF6'},
+    red:    {bg:'rgba(239,68,68,.2)',   color:'#FCA5A5', border:'#EF4444'},
+  };
+
+  cats.forEach(cat=>{
+    // Categoria header
+    secPts.appendChild(el('div',{style:{
+      fontSize:'.72rem',textTransform:'uppercase',letterSpacing:'.5px',
+      color:'#64748B',fontWeight:'600',padding:'8px 0 4px'
+    }},cat.label));
+
+    cat.rows.forEach(([desc, pts, color])=>{
+      const c = ptColors[color];
+      const row = el('div',{style:{
+        display:'flex',justifyContent:'space-between',alignItems:'center',
+        padding:'7px 0',borderBottom:'1px solid var(--bdr)',fontSize:'.83rem'
+      }});
+      row.appendChild(el('span',{style:{color:'var(--txt)',paddingRight:'8px'}},desc));
+      const badge = el('span',{style:{
+        background:c.bg, color:c.color,
+        border:'1px solid '+c.border,
+        borderRadius:'999px', padding:'2px 10px',
+        fontWeight:'700', fontSize:'.78rem', whiteSpace:'nowrap', flexShrink:'0'
+      }},pts+' pts');
+      row.appendChild(badge);
+      secPts.appendChild(row);
+    });
+  });
+
+  // Remover borda do último item
+  const lastRow = secPts.lastElementChild;
+  if(lastRow) lastRow.style.borderBottom='none';
+
+  main.appendChild(secPts);
+
+  // ── Rodapé ──────────────────────────────────────────────────────
+  main.appendChild(el('div',{style:{
+    textAlign:'center',fontSize:'.72rem',color:'var(--muted)',
+    padding:'8px 0 16px',lineHeight:'1.6'
+  }},'🌍 Copa do Mundo 2026\n11 de Junho – 19 de Julho\nEstados Unidos · Canadá · México'));
+}
+
 function renderMine(main){
   const v = PAGE_VERSION;
   main.innerHTML='';
