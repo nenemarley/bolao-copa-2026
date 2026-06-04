@@ -304,6 +304,41 @@ const PHASE_BRACKETS = {
 // Resolver slot a partir dos resultados reais cadastrados
 // Retorna {team, label} para um slot do bracket
 // label = ex: "1ºA", "2ºB", "3ºC(1º)", "Venc. J89"
+// Distribui os 8 melhores 3ºs pelos slots corretos do bracket
+// Para cada slot, encontra qual time pertence a um grupo compatível
+// standings: {grupo: {1: time, 2: time, 3: time}} — para saber de qual grupo cada time é 3º
+// thirds: lista ordenada dos 8 melhores 3ºs classificados
+function buildThirdAssignment(thirds, standings) {
+  // Montar mapa time → grupo (baseado em quem é 3º de cada grupo)
+  const teamToGroup = {};
+  Object.entries(standings||{}).forEach(([g, pos]) => {
+    if(pos[3]) teamToGroup[pos[3]] = g;
+  });
+
+  // Slots e seus grupos possíveis (ordem do bracket)
+  const slots = [
+    {matchId:75, groups:['A','B','C','D','F']},
+    {matchId:78, groups:['C','D','F','G','H']},
+    {matchId:79, groups:['C','E','F','H','I']},
+    {matchId:80, groups:['E','H','I','J','K']},
+    {matchId:81, groups:['A','E','H','I','J']},
+    {matchId:82, groups:['B','E','F','I','J']},
+    {matchId:85, groups:['E','F','G','I','J']},
+    {matchId:88, groups:['D','E','I','J','L']},
+  ];
+
+  const assign = {};
+  const used = new Set();
+
+  slots.forEach(slot => {
+    // Encontrar o melhor 3º (maior classificação = menor índice) que pertence a um grupo compatível
+    const match = thirds.find(team => !used.has(team) && slot.groups.includes(teamToGroup[team]||''));
+    if(match) { assign[slot.matchId] = match; used.add(match); }
+  });
+
+  return assign;
+}
+
 function resolveSlotInfo(slot, standings, thirds, thirdAssign, matchId) {
   if(slot.type==='1'||slot.type==='2') {
     const pos=slot.type==='1'?1:2;
@@ -2390,11 +2425,8 @@ function buildKoUI(main){
       // 3. Completar com reais do banco se necessário (também filtrados)
       const realThirdsForSlots = koRealThirds.filter(t=>!userTop2.has(t)&&!validUserThirds.includes(t));
       const thirdsForSlots = [...validUserThirds, ...realThirdsForSlots].slice(0,8);
-      const thirdSlotOrder = [75,78,79,80,81,82,85,88];
-      const thirdAssignment = {};
-      thirdsForSlots.forEach((team,i)=>{
-        if(thirdSlotOrder[i]) thirdAssignment[thirdSlotOrder[i]] = team;
-      });
+      // Distribuir pelos slots corretos baseado no grupo de cada 3º
+      const thirdAssignment = buildThirdAssignment(thirdsForSlots, userSt);
 
       // Montar confrontos garantindo que nenhum time aparece em mais de 1 jogo
       const usedTeams = new Set();
@@ -3577,23 +3609,12 @@ async function propagateKoMatchTeams(){
     const mw = {}; // matchId → {t1, t2, winner}
 
     // R32
+    const _pTop2=new Set(); Object.values(adminStandings).forEach(p=>{if(p[1])_pTop2.add(p[1]);if(p[2])_pTop2.add(p[2]);});
+    const _pValidThirds=(adminKo['best_thirds']?.team_ids||[]).filter(t=>!_pTop2.has(t));
+    const _pThirdAssign=buildThirdAssignment(_pValidThirds, adminStandings);
     ROUND32_BRACKET.forEach(m=>{
-      const i1=resolveSlotInfo(m.slot1,adminStandings,
-        (adminKo['best_thirds']?.team_ids||[]).filter(t=>!Object.values(adminStandings).some(p=>p[1]===t||p[2]===t)),
-        (() => {
-          const top2=new Set(); Object.values(adminStandings).forEach(p=>{if(p[1])top2.add(p[1]);if(p[2])top2.add(p[2]);});
-          const vt=(adminKo['best_thirds']?.team_ids||[]).filter(t=>!top2.has(t));
-          const order=[75,78,79,80,81,82,85,88]; const assign={};
-          vt.slice(0,8).forEach((t,i)=>{if(order[i])assign[order[i]]=t;}); return assign;
-        })(), m.id);
-      const i2=resolveSlotInfo(m.slot2,adminStandings,
-        (adminKo['best_thirds']?.team_ids||[]).filter(t=>!Object.values(adminStandings).some(p=>p[1]===t||p[2]===t)),
-        (() => {
-          const top2=new Set(); Object.values(adminStandings).forEach(p=>{if(p[1])top2.add(p[1]);if(p[2])top2.add(p[2]);});
-          const vt=(adminKo['best_thirds']?.team_ids||[]).filter(t=>!top2.has(t));
-          const order=[75,78,79,80,81,82,85,88]; const assign={};
-          vt.slice(0,8).forEach((t,i)=>{if(order[i])assign[order[i]]=t;}); return assign;
-        })(), m.id);
+      const i1=resolveSlotInfo(m.slot1,adminStandings,_pValidThirds,_pThirdAssign,m.id);
+      const i2=resolveSlotInfo(m.slot2,adminStandings,_pValidThirds,_pThirdAssign,m.id);
       const t1=i1.team||null, t2=i2.team||null;
       const r32sel=adminKo['round32']?.team_ids||[];
       mw[m.id]={t1,t2,winner:r32sel.find(t=>t===t1||t===t2)||null};
@@ -4221,11 +4242,8 @@ function buildAdminUI(main){
       const top2Teams = new Set();
       Object.values(adminStandings).forEach(pos=>{ if(pos[1]) top2Teams.add(pos[1]); if(pos[2]) top2Teams.add(pos[2]); });
       const validThirds = realThirdsR32.filter(t=>!top2Teams.has(t));
-      const adminThirdSlotOrder = [75,78,79,80,81,82,85,88];
-      const adminThirdAssign = {};
-      validThirds.slice(0,8).forEach((team,i)=>{
-        if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]] = team;
-      });
+      // Distribuir pelos slots corretos baseado no grupo de cada 3º
+      const adminThirdAssign = buildThirdAssignment(validThirds, adminStandings);
 
       ROUND32_BRACKET.forEach((m,idx)=>{
         const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
@@ -4266,9 +4284,8 @@ function buildAdminUI(main){
     const _top2 = new Set();
     Object.values(adminStandings).forEach(pos=>{ if(pos[1]) _top2.add(pos[1]); if(pos[2]) _top2.add(pos[2]); });
     const validThirds = (adminKo['best_thirds']?.team_ids||[]).filter(t=>!_top2.has(t));
-    const adminThirdSlotOrder = [75,78,79,80,81,82,85,88];
-    const adminThirdAssign = {};
-    validThirds.slice(0,8).forEach((team,i)=>{ if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]]=team; });
+    // Distribuir pelos slots corretos baseado no grupo de cada 3º
+    const adminThirdAssign = buildThirdAssignment(validThirds, adminStandings);
 
     PHASES.forEach(ph=>{
       if(ph.key==='round32') return; // round32 é gerenciado por "quem passa" pelos usuários
