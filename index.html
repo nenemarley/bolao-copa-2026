@@ -2390,7 +2390,7 @@ function buildKoUI(main){
       // 3. Completar com reais do banco se necessário (também filtrados)
       const realThirdsForSlots = koRealThirds.filter(t=>!userTop2.has(t)&&!validUserThirds.includes(t));
       const thirdsForSlots = [...validUserThirds, ...realThirdsForSlots].slice(0,8);
-      const thirdSlotOrder = [74,77,79,80,81,82,85,87];
+      const thirdSlotOrder = [75,78,79,80,81,82,85,88];
       const thirdAssignment = {};
       thirdsForSlots.forEach((team,i)=>{
         if(thirdSlotOrder[i]) thirdAssignment[thirdSlotOrder[i]] = team;
@@ -2919,22 +2919,27 @@ function renderKoMatches(main){
       if(m.match_number>=73) koMatchReal[m.match_number]=m;
     });
 
-    // Resolver best_thirds: mapear grupo → time (ex: {D:'Austrália', E:'Costa do Marfim'...})
+    // Resolver best_thirds: mapear grupo → 3º colocado
+    // best_thirds é lista de nomes; precisamos saber de qual grupo cada time é 3º
+    // Fonte: real_group_standings (position=3) OU adminStandings
     const bestThirdsRow=(rk||[]).find(r=>r.phase==='best_thirds');
     koMatchRealSt={ bestThirds:{} };
     if(bestThirdsRow?.team_ids?.length) {
-      // best_thirds é lista de times; precisamos saber de qual grupo cada um é 3º
-      // Buscar real_group_standings para mapear grupo → time do 3º lugar
       dbQ('real_group_standings',{},'group_id,position,team_name').then(gs=>{
         const thirds={};
         (gs||[]).forEach(r=>{ if(r.position===3) thirds[r.group_id]=r.team_name; });
-        koMatchRealSt.bestThirds=thirds;
+        // Só manter os que estão na lista best_thirds
+        const bestList = bestThirdsRow.team_ids;
+        Object.keys(thirds).forEach(g=>{ if(!bestList.includes(thirds[g])) delete thirds[g]; });
+        koMatchRealSt.bestThirds = thirds;
         buildKoMatchesUI(main);
-      }).catch(()=>{});
+      }).catch(()=>{ buildKoMatchesUI(main); });
+    } else {
+      buildKoMatchesUI(main);
     }
 
     koMatchDirty=false; koMatchDirtySet=new Set();
-    buildKoMatchesUI(main);
+    // buildKoMatchesUI é chamado dentro do callback de best_thirds acima
   }).catch(e=>{
     main.innerHTML='';
     main.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem'}},'Erro ao carregar: '+e.message));
@@ -4118,7 +4123,7 @@ function buildAdminUI(main){
       const top2Teams = new Set();
       Object.values(adminStandings).forEach(pos=>{ if(pos[1]) top2Teams.add(pos[1]); if(pos[2]) top2Teams.add(pos[2]); });
       const validThirds = realThirdsR32.filter(t=>!top2Teams.has(t));
-      const adminThirdSlotOrder = [74,77,79,80,81,82,85,87];
+      const adminThirdSlotOrder = [75,78,79,80,81,82,85,88];
       const adminThirdAssign = {};
       validThirds.slice(0,8).forEach((team,i)=>{
         if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]] = team;
