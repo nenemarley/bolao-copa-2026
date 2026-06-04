@@ -230,49 +230,50 @@ function tabEnabled(key) {
 // Rodada de 32: jogos 73-88
 // slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
 const ROUND32_BRACKET = [
-  // Jogo 73: 2A vs 2B (Runner-up A vs Runner-up B)
+  // Jogo 73: 2A vs 2B — dom 28/06
   {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
-  // Jogo 74: 1E vs 3º(A/B/C/D/F)
-  {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',thirdGroups:['A','B','C','D','F']}},
-  // Jogo 75: 1F vs 2C
-  {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
-  // Jogo 76: 1C vs 2F
-  {id:76, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
-  // Jogo 77: 1I vs 3º(C/D/F/G/H)
-  {id:77, slot1:{type:'1',group:'I'}, slot2:{type:'3',thirdGroups:['C','D','F','G','H']}},
-  // Jogo 78: 2E vs 2I
-  {id:78, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
-  // Jogo 79: 1A vs 3º(C/E/F/H/I)
+  // Jogo 74: 1C vs 2F — seg 29/06
+  {id:74, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
+  // Jogo 75: 1E vs 3º(A/B/C/D/F) — seg 29/06
+  {id:75, slot1:{type:'1',group:'E'}, slot2:{type:'3',thirdGroups:['A','B','C','D','F']}},
+  // Jogo 76: 1F vs 2C — seg 29/06
+  {id:76, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
+  // Jogo 77: 2E vs 2I — ter 30/06
+  {id:77, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
+  // Jogo 78: 1I vs 3º(C/D/F/G/H) — ter 30/06
+  {id:78, slot1:{type:'1',group:'I'}, slot2:{type:'3',thirdGroups:['C','D','F','G','H']}},
+  // Jogo 79: 1A vs 3º(C/E/F/H/I) — ter 30/06
   {id:79, slot1:{type:'1',group:'A'}, slot2:{type:'3',thirdGroups:['C','E','F','H','I']}},
-  // Jogo 80: 1L vs 3º(E/H/I/J/K)
+  // Jogo 80: 1L vs 3º(E/H/I/J/K) — qua 01/07
   {id:80, slot1:{type:'1',group:'L'}, slot2:{type:'3',thirdGroups:['E','H','I','J','K']}},
-  // Jogo 81: 1D vs 3º(B/E/F/I/J)
-  {id:81, slot1:{type:'1',group:'D'}, slot2:{type:'3',thirdGroups:['B','E','F','I','J']}},
-  // Jogo 82: 1G vs 3º(A/E/H/I/J)
-  {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',thirdGroups:['A','E','H','I','J']}},
-  // Jogo 83: 2K vs 2L
-  {id:83, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
-  // Jogo 84: 1H vs 2J
-  {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
-  // Jogo 85: 1B vs 3º(E/F/G/I/J)
+  // Jogo 81: 1G vs 3º(A/E/H/I/J) — qua 01/07
+  {id:81, slot1:{type:'1',group:'G'}, slot2:{type:'3',thirdGroups:['A','E','H','I','J']}},
+  // Jogo 82: 1D vs 3º(B/E/F/I/J) — qua 01/07
+  {id:82, slot1:{type:'1',group:'D'}, slot2:{type:'3',thirdGroups:['B','E','F','I','J']}},
+  // Jogo 83: 1H vs 2J — qui 02/07
+  {id:83, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
+  // Jogo 84: 2K vs 2L — qui 02/07
+  {id:84, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
+  // Jogo 85: 1B vs 3º(E/F/G/I/J) — sex 03/07
   {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',thirdGroups:['E','F','G','I','J']}},
-  // Jogo 86: 1J vs 2H
-  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
-  // Jogo 87: 1K vs 3º(D/E/I/J/L)
-  {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',thirdGroups:['D','E','I','J','L']}},
-  // Jogo 88: 2D vs 2G
-  {id:88, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
+  // Jogo 86: 2D vs 2G — sex 03/07
+  {id:86, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
+  // Jogo 87: 1J vs 2H — sex 03/07
+  {id:87, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
+  // Jogo 88: 1K vs 3º(D/E/I/J/L) — sex 03/07
+  {id:88, slot1:{type:'1',group:'K'}, slot2:{type:'3',thirdGroups:['D','E','I','J','L']}},
 ];
-// Oitavas de Final: jogos 89-96 (vencedor de X vs vencedor de Y)
+// Oitavas de Final: jogos 89-96
+// J1-J16 = posição na R32 (J1=73, J2=74 ... J16=88)
 const ROUND16_BRACKET = [
-  {id:89, slot1:{type:'W',matchId:74}, slot2:{type:'W',matchId:77}},
-  {id:90, slot1:{type:'W',matchId:73}, slot2:{type:'W',matchId:75}},
-  {id:91, slot1:{type:'W',matchId:76}, slot2:{type:'W',matchId:78}},
-  {id:92, slot1:{type:'W',matchId:79}, slot2:{type:'W',matchId:80}},
-  {id:93, slot1:{type:'W',matchId:83}, slot2:{type:'W',matchId:84}},
-  {id:94, slot1:{type:'W',matchId:81}, slot2:{type:'W',matchId:82}},
-  {id:95, slot1:{type:'W',matchId:86}, slot2:{type:'W',matchId:88}},
-  {id:96, slot1:{type:'W',matchId:85}, slot2:{type:'W',matchId:87}},
+  {id:89, slot1:{type:'W',matchId:73}, slot2:{type:'W',matchId:75}}, // VJ1 vs VJ3
+  {id:90, slot1:{type:'W',matchId:74}, slot2:{type:'W',matchId:77}}, // VJ2 vs VJ5
+  {id:91, slot1:{type:'W',matchId:76}, slot2:{type:'W',matchId:78}}, // VJ4 vs VJ6
+  {id:92, slot1:{type:'W',matchId:79}, slot2:{type:'W',matchId:80}}, // VJ7 vs VJ8
+  {id:93, slot1:{type:'W',matchId:83}, slot2:{type:'W',matchId:84}}, // VJ11 vs VJ12
+  {id:94, slot1:{type:'W',matchId:81}, slot2:{type:'W',matchId:82}}, // VJ9 vs VJ10
+  {id:95, slot1:{type:'W',matchId:86}, slot2:{type:'W',matchId:88}}, // VJ14 vs VJ16
+  {id:96, slot1:{type:'W',matchId:85}, slot2:{type:'W',matchId:87}}, // VJ13 vs VJ15
 ];
 // Quartas de Final: jogos 97-100
 const QUARTER_BRACKET = [
@@ -2655,33 +2656,51 @@ function renderRules(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'📖 Regras do Bolão'));
 
+  const _mode = bolaoMode();
+  const showPlacares      = _mode === 'full' || _mode === 'placares';
+  const showClassificados = _mode === 'full' || _mode === 'classificados';
+
+  // Badge de modalidade
+  const modeInfo = BOLAO_MODES[_mode] || BOLAO_MODES['full'];
+  const modeBadge = el('div',{style:{
+    display:'flex',alignItems:'center',gap:'8px',
+    background:'rgba(251,191,36,.08)',border:'1px solid rgba(251,191,36,.25)',
+    borderRadius:'10px',padding:'8px 14px',marginBottom:'12px',fontSize:'.82rem'
+  }});
+  modeBadge.appendChild(el('span',{style:{fontSize:'1.1rem'}},modeInfo.label.split(' ')[0]));
+  const modeTxt = el('div');
+  modeTxt.appendChild(el('div',{style:{fontWeight:'700',color:'var(--gold)',fontSize:'.8rem'}},'Modalidade: '+modeInfo.label.replace(/^\S+\s/,'')));
+  modeTxt.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.75rem'}},modeInfo.desc));
+  modeBadge.appendChild(modeTxt);
+  main.appendChild(modeBadge);
+
   // ── Prazo dos palpites ──────────────────────────────────────────
   const secPrazo = el('div',{class:'card'});
   secPrazo.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1rem',color:'var(--gold)',letterSpacing:'1px',marginBottom:'12px'}},'⏰ Quando fecham os palpites?'));
 
   const prazos = [
     {
-      icon:'⚽',
+      icon:'⚽', show: showPlacares,
       title:'Placares — 1ª Fase',
       text:'Cada jogo fecha ',
       hl:'1 dia antes',
       rest:' do seu horário de início. Você pode alterar o palpite a qualquer momento antes desse prazo.',
     },
     {
-      icon:'⚔️',
+      icon:'⚔️', show: showPlacares,
       title:'Placares — Jogos Eliminatórios',
       text:'Idem: cada jogo fecha ',
       hl:'1 dia antes',
       rest:' do início da partida.',
     },
     {
-      icon:'📊',
+      icon:'📊', show: showClassificados,
       title:'Classificação, Eliminatórias e Artilheiro',
       text:'Fecham todos juntos quando começa a ',
       hl:'2ª rodada da fase de grupos',
       rest:' (por volta de 18 de junho). Após isso, nenhuma alteração é permitida.',
     },
-  ];
+  ].filter(p => p.show);
 
   prazos.forEach(p=>{
     const row = el('div',{style:{display:'flex',gap:'10px',marginBottom:'10px',fontSize:'.83rem',lineHeight:'1.5'}});
@@ -2704,6 +2723,7 @@ function renderRules(main){
 
   const cats = [
     {
+      show: showPlacares,
       label:'⚽ Placares — 1ª Fase e Jogos Eliminatórios',
       rows:[
         ['Placar exato',                              '10', 'green'],
@@ -2713,6 +2733,7 @@ function renderRules(main){
       ]
     },
     {
+      show: showClassificados,
       label:'📊 Classificação de Grupos',
       rows:[
         ['1º e 2º do grupo — posições exatas',        '10', 'green'],
@@ -2721,12 +2742,14 @@ function renderRules(main){
       ]
     },
     {
+      show: showClassificados,
       label:'🔥 Fases Eliminatórias',
       rows:[
         ['Time certo em R32 / Oitavas / Quartas / Semi / 3º Lugar', '10', 'gold'],
       ]
     },
     {
+      show: showClassificados,
       label:'🏆 Pódio & Artilheiro',
       rows:[
         ['Acertar o 3º Lugar',      '15', 'blue'],
@@ -2735,7 +2758,7 @@ function renderRules(main){
         ['Acertar o Artilheiro',    '30', 'purple'],
       ]
     },
-  ];
+  ].filter(c => c.show);
 
   const ptColors = {
     green:  {bg:'rgba(16,185,129,.2)',  color:'#6EE7B7', border:'#10B981'},
@@ -2746,12 +2769,10 @@ function renderRules(main){
   };
 
   cats.forEach(cat=>{
-    // Categoria header
     secPts.appendChild(el('div',{style:{
       fontSize:'.72rem',textTransform:'uppercase',letterSpacing:'.5px',
       color:'#64748B',fontWeight:'600',padding:'8px 0 4px'
     }},cat.label));
-
     cat.rows.forEach(([desc, pts, color])=>{
       const c = ptColors[color];
       const row = el('div',{style:{
@@ -2759,30 +2780,24 @@ function renderRules(main){
         padding:'7px 0',borderBottom:'1px solid var(--bdr)',fontSize:'.83rem'
       }});
       row.appendChild(el('span',{style:{color:'var(--txt)',paddingRight:'8px'}},desc));
-      const badge = el('span',{style:{
-        background:c.bg, color:c.color,
-        border:'1px solid '+c.border,
-        borderRadius:'999px', padding:'2px 10px',
-        fontWeight:'700', fontSize:'.78rem', whiteSpace:'nowrap', flexShrink:'0'
-      }},pts+' pts');
-      row.appendChild(badge);
+      row.appendChild(el('span',{style:{
+        background:c.bg,color:c.color,border:'1px solid '+c.border,
+        borderRadius:'999px',padding:'2px 10px',
+        fontWeight:'700',fontSize:'.78rem',whiteSpace:'nowrap',flexShrink:'0'
+      }},pts+' pts'));
       secPts.appendChild(row);
     });
   });
 
-  // Remover borda do último item
   const lastRow = secPts.lastElementChild;
   if(lastRow) lastRow.style.borderBottom='none';
-
   main.appendChild(secPts);
 
-  // ── Rodapé ──────────────────────────────────────────────────────
   main.appendChild(el('div',{style:{
     textAlign:'center',fontSize:'.72rem',color:'var(--muted)',
     padding:'8px 0 16px',lineHeight:'1.6'
   }},'🌍 Copa do Mundo 2026\n11 de Junho – 19 de Julho\nEstados Unidos · Canadá · México'));
 }
-
 function renderMine(main){
   const v = PAGE_VERSION;
   main.innerHTML='';
