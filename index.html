@@ -3568,6 +3568,93 @@ async function cascadeAdminKo(fromPhase){
       adminKo[ph].team_ids = filtered;
     }
   }
+  // Propagar times para group_matches (Jogos Elim.)
+  await propagateKoMatchTeams();
+}
+
+// Propaga os times selecionados pelo admin para group_matches (jogos 73-104)
+// para que a aba "Jogos Elim." mostre os mesmos confrontos das Eliminatórias
+async function propagateKoMatchTeams(){
+  try{
+    // Construir mapa de vencedores por jogo, propagando pelo bracket
+    const mw = {}; // matchId → {t1, t2, winner}
+
+    // R32
+    ROUND32_BRACKET.forEach(m=>{
+      const i1=resolveSlotInfo(m.slot1,adminStandings,
+        (adminKo['best_thirds']?.team_ids||[]).filter(t=>!Object.values(adminStandings).some(p=>p[1]===t||p[2]===t)),
+        (() => {
+          const top2=new Set(); Object.values(adminStandings).forEach(p=>{if(p[1])top2.add(p[1]);if(p[2])top2.add(p[2]);});
+          const vt=(adminKo['best_thirds']?.team_ids||[]).filter(t=>!top2.has(t));
+          const order=[75,78,79,80,81,82,85,88]; const assign={};
+          vt.slice(0,8).forEach((t,i)=>{if(order[i])assign[order[i]]=t;}); return assign;
+        })(), m.id);
+      const i2=resolveSlotInfo(m.slot2,adminStandings,
+        (adminKo['best_thirds']?.team_ids||[]).filter(t=>!Object.values(adminStandings).some(p=>p[1]===t||p[2]===t)),
+        (() => {
+          const top2=new Set(); Object.values(adminStandings).forEach(p=>{if(p[1])top2.add(p[1]);if(p[2])top2.add(p[2]);});
+          const vt=(adminKo['best_thirds']?.team_ids||[]).filter(t=>!top2.has(t));
+          const order=[75,78,79,80,81,82,85,88]; const assign={};
+          vt.slice(0,8).forEach((t,i)=>{if(order[i])assign[order[i]]=t;}); return assign;
+        })(), m.id);
+      const t1=i1.team||null, t2=i2.team||null;
+      const r32sel=adminKo['round32']?.team_ids||[];
+      mw[m.id]={t1,t2,winner:r32sel.find(t=>t===t1||t===t2)||null};
+    });
+
+    // Oitavas → Quartas → Semi → Final/3º
+    const chain=[
+      {bracket:ROUND16_BRACKET, phase:'round16'},
+      {bracket:QUARTER_BRACKET, phase:'quarter'},
+      {bracket:SEMI_BRACKET,    phase:'semi'},
+    ];
+    chain.forEach(({bracket,phase})=>{
+      bracket.forEach(m=>{
+        const t1=mw[m.slot1.matchId]?.winner||null;
+        const t2=mw[m.slot2.matchId]?.winner||null;
+        const sel=adminKo[phase]?.team_ids||[];
+        mw[m.id]={t1,t2,winner:sel.find(t=>t===t1||t===t2)||null};
+      });
+    });
+    // Final
+    FINAL_BRACKET.forEach(m=>{
+      const t1=mw[m.slot1.matchId]?.winner||null;
+      const t2=mw[m.slot2.matchId]?.winner||null;
+      mw[m.id]={t1,t2,winner:null};
+    });
+    // 3º lugar
+    THIRD_BRACKET.forEach(m=>{
+      const s1=mw[m.slot1.matchId], s2=mw[m.slot2.matchId];
+      const semiSel1=adminKo['semi']?.team_ids||[];
+      const t1=s1?( semiSel1.includes(s1.t1)?s1.t2:s1.t1 ):null;
+      const t2=s2?( semiSel1.includes(s2.t1)?s2.t2:s2.t1 ):null;
+      mw[m.id]={t1,t2,winner:null};
+    });
+
+    // Montar upserts para group_matches 73-104
+    const allBrackets=[...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
+    const upserts=[];
+    allBrackets.forEach(m=>{
+      const {t1,t2}=mw[m.id]||{};
+      if(t1&&t2){
+        upserts.push({
+          match_number: m.id,
+          team1_name: t1,
+          team2_name: t2,
+        });
+      }
+    });
+
+    if(upserts.length>0){
+      // Upsert em lotes para não ultrapassar limites
+      for(let i=0;i<upserts.length;i+=20){
+        const batch=upserts.slice(i,i+20);
+        await SB.from('group_matches').upsert(batch,{onConflict:'match_number',ignoreDuplicates:false});
+      }
+    }
+  }catch(e){
+    console.warn('[propagateKoMatchTeams] erro:', e.message);
+  }
 }
 
 // Sincroniza real_knockouts quando a classificação real de um grupo muda
@@ -3601,6 +3688,8 @@ async function syncAdminKoWithStandings(changedGroup){
       }
     }
   }
+  // Propagar times atualizados para group_matches
+  await propagateKoMatchTeams();
 }
 
 // ── Admin ──────────────────────────────────────────────────────────────────
@@ -4261,17 +4350,55 @@ function buildAdminUI(main){
       });
 
       if(adminBracket) {
+        // Resolver confrontos usando os times selecionados pelo admin (adminKo),
+        // propagando fase a fase — igual ao participante usa koPreds
+        const adminMatchWinners = {};
+
+        // R32: mapear jogo → time selecionado pelo admin
+        ROUND32_BRACKET.forEach(m=>{
+          const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
+          const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds,adminThirdAssign,m.id);
+          const t1=i1.team||i1.label, t2=i2.team||i2.label;
+          const r32sel = adminKo['round32']?.team_ids||[];
+          const winner = r32sel.find(t=>t===t1||t===t2)||null;
+          adminMatchWinners[m.id]={winner,t1,t2};
+        });
+        // Oitavas: propagar vencedores da R32
+        ROUND16_BRACKET.forEach(m=>{
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+          const r16sel = adminKo['round16']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:r16sel.find(t=>t===t1||t===t2)||null,t1,t2};
+        });
+        // Quartas
+        QUARTER_BRACKET.forEach(m=>{
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+          const qsel = adminKo['quarter']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:qsel.find(t=>t===t1||t===t2)||null,t1,t2};
+        });
+        // Semi
+        SEMI_BRACKET.forEach(m=>{
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+          const ssel = adminKo['semi']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:ssel.find(t=>t===t1||t===t2)||null,t1,t2};
+        });
+
         const matchesWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
         adminBracket.forEach(m=>{
-          // Resolver os dois times deste confronto
           let t1,t2;
-          const w1=adminWinMap[m.slot1.matchId], w2=adminWinMap[m.slot2.matchId];
           if(ph.key==='third'){
-            t1=adminWinMap[m.slot1.matchId]?.loser||'Perd. J'+m.slot1.matchId;
-            t2=adminWinMap[m.slot2.matchId]?.loser||'Perd. J'+m.slot2.matchId;
+            // 3º lugar: perdedores das semis
+            const s1=SEMI_BRACKET[0], s2=SEMI_BRACKET[1];
+            const semi1sel=adminKo['semi']?.team_ids||[];
+            const semi1t1=adminMatchWinners[s1.id]?.t1||'?', semi1t2=adminMatchWinners[s1.id]?.t2||'?';
+            const semi2t1=adminMatchWinners[s2.id]?.t1||'?', semi2t2=adminMatchWinners[s2.id]?.t2||'?';
+            t1=semi1sel.includes(semi1t1)?semi1t2:semi1t1;
+            t2=semi1sel.includes(semi2t1)?semi2t2:semi2t1;
           } else {
-            t1=w1?.winner||'Venc. J'+m.slot1.matchId;
-            t2=w2?.winner||'Venc. J'+m.slot2.matchId;
+            t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+            t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
           }
           const t1Known=!t1.startsWith('Venc.')&&!t1.startsWith('Perd.');
           const t2Known=!t2.startsWith('Venc.')&&!t2.startsWith('Perd.');
