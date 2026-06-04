@@ -2861,8 +2861,13 @@ function resolveSlot(slot, realStandings) {
     const pos = slot.type==='1'?1:2;
     return realStandings?.[slot.group]?.[pos] || (slot.type+'º do Grupo '+slot.group);
   }
-  // tipo 3: melhor terceiro — admin define via real_knockouts 'best_thirds'
-  return '3º ('+slot.thirdGroups.join('/')+')';
+  // tipo 3: melhor terceiro — cruzar grupos possíveis com best_thirds definidos pelo admin
+  const thirds = koMatchRealSt?.bestThirds || {};
+  // Procurar qual dos grupos possíveis tem um 3º classificado
+  const resolved = slot.thirdGroups.map(g => thirds[g]).filter(Boolean);
+  if(resolved.length === 1) return resolved[0]; // exatamente 1 match → nome do time
+  if(resolved.length > 1) return resolved[0];   // múltiplos (não deveria) → pega o primeiro
+  return '3º('+slot.thirdGroups.join('/')+')';  // ainda não definido
 }
 
 // ── Jogos Eliminatórios ────────────────────────────────────────────────────
@@ -2913,6 +2918,20 @@ function renderKoMatches(main){
     (rm||[]).forEach(m=>{
       if(m.match_number>=73) koMatchReal[m.match_number]=m;
     });
+
+    // Resolver best_thirds: mapear grupo → time (ex: {D:'Austrália', E:'Costa do Marfim'...})
+    const bestThirdsRow=(rk||[]).find(r=>r.phase==='best_thirds');
+    koMatchRealSt={ bestThirds:{} };
+    if(bestThirdsRow?.team_ids?.length) {
+      // best_thirds é lista de times; precisamos saber de qual grupo cada um é 3º
+      // Buscar real_group_standings para mapear grupo → time do 3º lugar
+      dbQ('real_group_standings',{},'group_id,position,team_name').then(gs=>{
+        const thirds={};
+        (gs||[]).forEach(r=>{ if(r.position===3) thirds[r.group_id]=r.team_name; });
+        koMatchRealSt.bestThirds=thirds;
+        buildKoMatchesUI(main);
+      }).catch(()=>{});
+    }
 
     koMatchDirty=false; koMatchDirtySet=new Set();
     buildKoMatchesUI(main);
