@@ -4227,15 +4227,20 @@ function buildAdminUI(main){
         if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]] = team;
       });
 
-      ROUND32_BRACKET.forEach(m=>{
+      ROUND32_BRACKET.forEach((m,idx)=>{
         const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
         const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds,adminThirdAssign,m.id);
         const t1=i1.team||i1.label, t2=i2.team||i2.label;
         const l1=i1.label, l2=i2.label;
         const t1Known=!!(i1.team); const t2Known=!!(i2.team);
         const sel1=currR32.includes(t1), sel2=currR32.includes(t2);
-        const isFull32=currR32.length>=16;
 
+        // Label do jogo (Jogo 1, Jogo 2...)
+        const jogNum = idx+1;
+        const jogLabel = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},'Jogo '+jogNum);
+
+        const wrap=el('div',{style:{marginBottom:'6px'}});
+        wrap.appendChild(jogLabel);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
         const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.45'},
@@ -4249,7 +4254,8 @@ function buildAdminUI(main){
           onclick:()=>toggleR32(t2,t1)},
           (FLAGS[t2]||'')+' '+t2+(l2?' ('+l2+')':'')+(sel2?' ✓':''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
-        r32Wrap.appendChild(row);
+        wrap.appendChild(row);
+        r32Wrap.appendChild(wrap);
       });
       round32Card.appendChild(r32Wrap);
     }
@@ -4369,99 +4375,109 @@ function buildAdminUI(main){
         else if(m.real_score2>m.real_score1) adminWinMap[m.match_number]={winner:m.team2_name,loser:m.team1_name};
       });
 
-      if(adminBracket) {
-        // Resolver confrontos usando os times selecionados pelo admin (adminKo),
-        // propagando fase a fase — igual ao participante usa koPreds
+      if(adminBracket || ph.key==='final' || ph.key==='third') {
+        // Resolver confrontos propagando pelo bracket (igual ao participante)
         const adminMatchWinners = {};
-
-        // R32: mapear jogo → time selecionado pelo admin
+        // R32
         ROUND32_BRACKET.forEach(m=>{
           const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
           const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds,adminThirdAssign,m.id);
-          const t1=i1.team||i1.label, t2=i2.team||i2.label;
-          const r32sel = adminKo['round32']?.team_ids||[];
-          const winner = r32sel.find(t=>t===t1||t===t2)||null;
-          adminMatchWinners[m.id]={winner,t1,t2};
+          const t1=i1.team||null, t2=i2.team||null;
+          const r32sel=adminKo['round32']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:r32sel.find(t=>t===t1||t===t2)||null,t1,t2};
         });
-        // Oitavas: propagar vencedores da R32
+        // Oitavas
         ROUND16_BRACKET.forEach(m=>{
-          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
-          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
-          const r16sel = adminKo['round16']?.team_ids||[];
-          adminMatchWinners[m.id]={winner:r16sel.find(t=>t===t1||t===t2)||null,t1,t2};
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||null;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||null;
+          const sel=adminKo['round16']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:sel.find(t=>t===t1||t===t2)||null,t1,t2};
         });
         // Quartas
         QUARTER_BRACKET.forEach(m=>{
-          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
-          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
-          const qsel = adminKo['quarter']?.team_ids||[];
-          adminMatchWinners[m.id]={winner:qsel.find(t=>t===t1||t===t2)||null,t1,t2};
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||null;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||null;
+          const sel=adminKo['quarter']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:sel.find(t=>t===t1||t===t2)||null,t1,t2};
         });
         // Semi
         SEMI_BRACKET.forEach(m=>{
-          const t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
-          const t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
-          const ssel = adminKo['semi']?.team_ids||[];
-          adminMatchWinners[m.id]={winner:ssel.find(t=>t===t1||t===t2)||null,t1,t2};
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||null;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||null;
+          const sel=adminKo['semi']?.team_ids||[];
+          adminMatchWinners[m.id]={winner:sel.find(t=>t===t1||t===t2)||null,t1,t2};
+        });
+        // Final: vencedores das semis
+        FINAL_BRACKET.forEach(m=>{
+          const t1=adminMatchWinners[m.slot1.matchId]?.winner||null;
+          const t2=adminMatchWinners[m.slot2.matchId]?.winner||null;
+          adminMatchWinners[m.id]={winner:null,t1,t2};
+        });
+        // 3º lugar: perdedores das semis
+        THIRD_BRACKET.forEach(m=>{
+          const s1=adminMatchWinners[m.slot1.matchId], s2=adminMatchWinners[m.slot2.matchId];
+          const ssel=adminKo['semi']?.team_ids||[];
+          const t1=s1?(ssel.includes(s1.t1)?s1.t2:s1.t1):null;
+          const t2=s2?(ssel.includes(s2.t1)?s2.t2:s2.t1):null;
+          adminMatchWinners[m.id]={winner:null,t1,t2};
         });
 
-        const matchesWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
-        adminBracket.forEach(m=>{
-          let t1,t2;
-          if(ph.key==='third'){
-            // 3º lugar: perdedores das semis
-            const s1=SEMI_BRACKET[0], s2=SEMI_BRACKET[1];
-            const semi1sel=adminKo['semi']?.team_ids||[];
-            const semi1t1=adminMatchWinners[s1.id]?.t1||'?', semi1t2=adminMatchWinners[s1.id]?.t2||'?';
-            const semi2t1=adminMatchWinners[s2.id]?.t1||'?', semi2t2=adminMatchWinners[s2.id]?.t2||'?';
-            t1=semi1sel.includes(semi1t1)?semi1t2:semi1t1;
-            t2=semi1sel.includes(semi2t1)?semi2t2:semi2t1;
-          } else {
-            t1=adminMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
-            t2=adminMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
-          }
-          const t1Known=!t1.startsWith('Venc.')&&!t1.startsWith('Perd.');
-          const t2Known=!t2.startsWith('Venc.')&&!t2.startsWith('Perd.');
-          const currR=(rp?.team_ids||[]);
-          const sel1=currR.includes(t1), sel2=currR.includes(t2);
-          const isFull2=currR.length>=ph.count;
+        // Label de chaveamento
+        function bracketLabel(matchId) {
+          if(matchId>=73&&matchId<=88)  return 'VJ'+(matchId-72);
+          if(matchId>=89&&matchId<=96)  return 'VO'+(matchId-88);
+          if(matchId>=97&&matchId<=100) return 'VQ'+(matchId-96);
+          if(matchId>=101&&matchId<=102)return 'VS'+(matchId-100);
+          return 'J'+matchId;
+        }
+        function thirdLabel(matchId) {
+          if(matchId>=101&&matchId<=102) return 'PS'+(matchId-100); // Perdedor Semi
+          return 'P'+matchId;
+        }
 
+        const bracketToRender = ph.key==='final'?FINAL_BRACKET : ph.key==='third'?THIRD_BRACKET : adminBracket;
+
+        const matchesWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+        bracketToRender.forEach((m,idx)=>{
+          let t1,t2,lbl1,lbl2;
+          if(ph.key==='third'){
+            const mw=adminMatchWinners[m.id]||{};
+            t1=mw.t1||null; t2=mw.t2||null;
+            lbl1=thirdLabel(m.slot1.matchId); lbl2=thirdLabel(m.slot2.matchId);
+          } else {
+            t1=adminMatchWinners[m.slot1.matchId]?.winner||null;
+            t2=adminMatchWinners[m.slot2.matchId]?.winner||null;
+            lbl1=bracketLabel(m.slot1.matchId); lbl2=bracketLabel(m.slot2.matchId);
+          }
+          const t1Known=!!t1, t2Known=!!t2;
+          const currR=(rp?.team_ids||[]);
+          const sel1=t1&&currR.includes(t1), sel2=t2&&currR.includes(t2);
+
+          // Label do jogo
+          const phPrefix = ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':ph.key==='final'?'Final':'3º Lugar';
+          const jogLabel = bracketToRender.length>1
+            ? el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPrefix+' '+(idx+1))
+            : el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPrefix);
+
+          const wrap=el('div');
+          wrap.appendChild(jogLabel);
           const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
-          const cls1=sel1?'btn-s':'btn-o';
-          const cls2=sel2?'btn-s':'btn-o';
-          const b1=el('button',{class:'btn btn-sm '+cls1,
+          const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
             style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
             disabled:!t1Known,
-            onclick:()=>toggleAdminTeam(t1,t2)},
-            (FLAGS[t1]||'')+' '+t1+(sel1?' ✓':''));
+            onclick:()=>t1&&toggleAdminTeam(t1,t2)},
+            (t1Known?(FLAGS[t1]||'')+' '+t1:lbl1)+(t1Known?' ('+lbl1+')':'')+(sel1?' ✓':''));
           const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
-          const b2=el('button',{class:'btn btn-sm '+cls2,
+          const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),
             style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
             disabled:!t2Known,
-            onclick:()=>toggleAdminTeam(t2,t1)},
-            (FLAGS[t2]||'')+' '+t2+(sel2?' ✓':''));
+            onclick:()=>t2&&toggleAdminTeam(t2,t1)},
+            (t2Known?(FLAGS[t2]||'')+' '+t2:lbl2)+(t2Known?' ('+lbl2+')':'')+(sel2?' ✓':''));
           row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
-          matchesWrap.appendChild(row);
+          wrap.appendChild(row);
+          matchesWrap.appendChild(wrap);
         });
         card.appendChild(matchesWrap);
-      } else if(ph.key==='final' || ph.key==='third') {
-        // Final e 3º lugar: confronto de 2 times (pool de adminAvailTeams)
-        const ta=adminAvailTeams[0], tb=adminAvailTeams[1];
-        const currR2=(rp?.team_ids||[]);
-        const matchWrap=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
-        [ta,tb].forEach((team,idx)=>{
-          if(!team) return;
-          const isSel=currR2.includes(team);
-          const cls=isSel?'btn-s':'btn-o';
-          const opp=idx===0?tb:ta;
-          const b=el('button',{class:'btn btn-sm '+cls,
-            style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
-            onclick:()=>toggleAdminTeam(team,opp)},
-            (FLAGS[team]||'')+' '+team+(isSel?' ✓':''));
-          if(matchWrap.children.length>0) matchWrap.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×'));
-          matchWrap.appendChild(b);
-        });
-        card.appendChild(matchWrap);
       } else {
         // Fallback — lista de botões para fases sem bracket
         adminAvailTeams.forEach(team=>{
