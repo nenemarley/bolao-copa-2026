@@ -349,10 +349,13 @@ function resolveSlotInfo(slot, standings, thirds, thirdAssign, matchId) {
     const team = thirdAssign?.[matchId];
     const order = thirds.indexOf(team);
     const orderLabel = order>=0 ? (order+1)+'º' : '?º';
-    const grp = team ? Object.keys(standings||{}).find(g=>standings[g]?.[3]===team)||'?' : '?';
+    const grp = team ? Object.keys(standings||{}).find(g=>standings[g]?.[3]===team)||'?' : null;
+    const possibleGroups = (slot.thirdGroups||[]).join('/');
     return {
-      team: team||('3º('+( slot.thirdGroups||[]).join('/')+')'),
-      label: team ? '3º'+grp+'('+orderLabel+')' : '3º?'
+      team: team||null,
+      label: team
+        ? '3º'+grp+'('+orderLabel+')'           // ex: 3ºD(3º) — grupo e ranking
+        : '3º('+possibleGroups+')'               // ex: 3º(A/B/C/D/F) — grupos possíveis
     };
   }
   if(slot.type==='W'||slot.type==='L') {
@@ -2464,52 +2467,69 @@ function buildKoUI(main){
         userMatchWinners[m.id]={winner:spicks.find(t=>t===t1||t===t2)||null,t1,t2};
       });
 
+      // Helpers de label (mesmos do admin)
+      function pBracketLabel(matchId) {
+        if(matchId>=73&&matchId<=88)  return 'VJ'+(matchId-72);
+        if(matchId>=89&&matchId<=96)  return 'VO'+(matchId-88);
+        if(matchId>=97&&matchId<=100) return 'VQ'+(matchId-96);
+        if(matchId>=101&&matchId<=102)return 'VS'+(matchId-100);
+        return 'J'+matchId;
+      }
+      const phPrefix = ph.key==='round32'?'Jogo':ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':'Jogo';
+
       // Renderizar confrontos
-      const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
-      bracket.forEach(m=>{
+      const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+      bracket.forEach((m,idx)=>{
         let t1,t2,l1='',l2='';
         if(ph.key==='round32'){
-          // Usar userMatchWinners que já resolveu via resolveSlotInfo (sem duplicatas)
           const mw = userMatchWinners[m.id];
           t1=mw?.t1||'?'; t2=mw?.t2||'?';
           l1=mw?.l1||''; l2=mw?.l2||'';
         } else {
-          t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
-          t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+          t1=userMatchWinners[m.slot1.matchId]?.winner||null;
+          t2=userMatchWinners[m.slot2.matchId]?.winner||null;
+          l1=pBracketLabel(m.slot1.matchId); l2=pBracketLabel(m.slot2.matchId);
         }
         const sel1=sel.find(x=>x.team===t1);
         const sel2=sel.find(x=>x.team===t2);
         const real1=rp?.team_ids?.includes(t1);
         const real2=rp?.team_ids?.includes(t2);
-        const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º')&&t1!=='?';
-        const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º')&&t2!=='?';
+        const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º(')&&t1!=='?'&&t1!==null;
+        const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º(')&&t2!==null&&t2!=='?';
 
+        // Label do jogo
+        const jogNumLabel = bracket.length>1 ? phPrefix+' '+(idx+1) : phPrefix;
+        const jogLabel = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},jogNumLabel);
+
+        const wrap=el('div');
+        wrap.appendChild(jogLabel);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
 
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
-        const lbl1 = l1 ? ' ('+l1+')' : '';
+        const lbl1txt = l1 ? ' ('+l1+')' : '';
         const b1=el('button',{
           class:`btn btn-sm ${cls1}`,
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},
           disabled:!t1Known,
-          onclick:()=>pickTeam(t1,t2)
-        },(FLAGS[t1]||'')+' '+t1+lbl1+(sel1?pts1:''));
+          onclick:()=>pickTeam(t1||'',t2||'')
+        },(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
 
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
 
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
-        const lbl2 = l2 ? ' ('+l2+')' : '';
+        const lbl2txt = l2 ? ' ('+l2+')' : '';
         const b2=el('button',{
           class:`btn btn-sm ${cls2}`,
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},
           disabled:!t2Known,
-          onclick:()=>pickTeam(t2,t1)
-        },(FLAGS[t2]||'')+' '+t2+lbl2+(sel2?pts2:''));
+          onclick:()=>pickTeam(t2||'',t1||'')
+        },(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
 
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
-        matchesWrap.appendChild(row);
+        wrap.appendChild(row);
+        matchesWrap.appendChild(wrap);
       });
       card.appendChild(matchesWrap);
     } else {
@@ -2640,17 +2660,19 @@ async function saveKo(){
 
     const targetBolaos2=REPLICATE_ALL?MY_BOLAOS:[CURRENT_BOLAO];
     for(const bolao of targetBolaos2){
-      // Upsert knockout: atualiza se já existe (user_id+phase+team_name+bolao_id), insere se não existe
       if(rows.length>0){
         const tagged=rows.map(r=>({...r,bolao_id:bolao.id}));
-        const {error:kErr}=await SB.from('knockout_predictions')
-          .upsert(tagged,{onConflict:'user_id,phase,team_name,bolao_id'});
-        if(kErr){
-          // Fallback: DELETE+INSERT se upsert falhar (PK diferente no banco)
-          console.warn('upsert KO falhou, usando DELETE+INSERT:', kErr.message);
-          await SB.from('knockout_predictions').delete().eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id);
-          await SB.from('knockout_predictions').insert(tagged);
+        // DELETE fases alteradas antes de inserir — garante que times antigos não persistam
+        const phasesToSave=[...new Set(rows.map(r=>r.phase))];
+        for(const phase of phasesToSave){
+          await SB.from('knockout_predictions')
+            .delete()
+            .eq('user_id',STATE.profile.id)
+            .eq('bolao_id',bolao.id)
+            .eq('phase',phase);
         }
+        const {error:kErr}=await SB.from('knockout_predictions').insert(tagged);
+        if(kErr) console.warn('insert KO falhou:', kErr.message);
       }
       // Scorer: UPDATE se existe, INSERT se não existe
       if(koScorer.trim()){
