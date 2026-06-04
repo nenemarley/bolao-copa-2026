@@ -4254,6 +4254,16 @@ function buildAdminUI(main){
       round32Card.appendChild(r32Wrap);
     }
     main.appendChild(round32Card);
+
+    // ── Fases pós-R32 (Oitavas, Quartas, Semi, Final, 3º) ──
+    // validThirds/adminThirdAssign para uso no adminBracket abaixo
+    const _top2 = new Set();
+    Object.values(adminStandings).forEach(pos=>{ if(pos[1]) _top2.add(pos[1]); if(pos[2]) _top2.add(pos[2]); });
+    const validThirds = (adminKo['best_thirds']?.team_ids||[]).filter(t=>!_top2.has(t));
+    const adminThirdSlotOrder = [75,78,79,80,81,82,85,88];
+    const adminThirdAssign = {};
+    validThirds.slice(0,8).forEach((team,i)=>{ if(adminThirdSlotOrder[i]) adminThirdAssign[adminThirdSlotOrder[i]]=team; });
+
     PHASES.forEach(ph=>{
       if(ph.key==='round32') return; // round32 é gerenciado por "quem passa" pelos usuários
       const rp=adminKo[ph.key];
