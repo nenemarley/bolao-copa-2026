@@ -3021,9 +3021,17 @@ function buildKoUI(main){
       }
       const phPrefix = ph.key==='round32'?'Jogo':ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':'Jogo';
 
-      // Renderizar confrontos
-      const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
-      bracket.forEach((m,idx)=>{
+      // Dividir bracket em Lado Esquerdo e Lado Direito
+      // R32: J1-8 (idx 0-7) = esq, J9-16 (idx 8-15) = dir
+      // R16: O1-4 (idx 0-3) = esq, O5-8 (idx 4-7) = dir
+      // Q: Q1-2 (idx 0-1) = esq, Q3-4 (idx 2-3) = dir
+      // Semi: S1 (idx 0) = esq, S2 (idx 1) = dir
+      const splitIdx = bracket.length >= 8 ? Math.ceil(bracket.length/2) : (bracket.length>=4 ? 2 : (bracket.length>=2?1:0));
+      const hasSides = bracket.length >= 2;
+      const leftBracket  = bracket.slice(0, splitIdx);
+      const rightBracket = bracket.slice(splitIdx);
+
+      function renderMatchRow(m, idx, globalIdx) {
         let t1,t2,l1='',l2='';
         if(ph.key==='round32'){
           const mw = userMatchWinners[m.id];
@@ -3040,42 +3048,62 @@ function buildKoUI(main){
         const real2=rp?.team_ids?.includes(t2);
         const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º(')&&t1!=='?'&&t1!==null;
         const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º(')&&t2!==null&&t2!=='?';
-
-        // Label do jogo
-        const jogNumLabel = bracket.length>1 ? phPrefix+' '+(idx+1) : phPrefix;
+        const jogNumLabel = bracket.length>1 ? phPrefix+' '+(globalIdx+1) : phPrefix;
         const jogLabel = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},jogNumLabel);
-
         const wrap=el('div');
         wrap.appendChild(jogLabel);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
-
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
         const lbl1txt = l1 ? ' ('+l1+')' : '';
-        const b1=el('button',{
-          class:`btn btn-sm ${cls1}`,
-          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},
-          disabled:!t1Known,
-          onclick:()=>pickTeam(t1||'',t2||'')
-        },(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
-
+        const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
-
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
         const lbl2txt = l2 ? ' ('+l2+')' : '';
-        const b2=el('button',{
-          class:`btn btn-sm ${cls2}`,
-          style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},
-          disabled:!t2Known,
-          onclick:()=>pickTeam(t2||'',t1||'')
-        },(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
-
+        const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         wrap.appendChild(row);
-        matchesWrap.appendChild(wrap);
-      });
-      card.appendChild(matchesWrap);
+        return wrap;
+      }
+
+      // Renderizar com divisão Esquerdo / Direito
+      if(hasSides && rightBracket.length > 0) {
+        const sideLabel = (txt) => el('div',{style:{
+          fontSize:'.7rem',fontWeight:'700',color:'var(--gold)',letterSpacing:'1px',
+          textTransform:'uppercase',marginBottom:'8px',marginTop:'4px',
+          paddingBottom:'4px',borderBottom:'1px solid var(--bdr)'
+        }},txt);
+
+        const leftWrap  = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+        leftWrap.appendChild(sideLabel('◀ Chave A'));
+        leftBracket.forEach((m,i) => leftWrap.appendChild(renderMatchRow(m, i, i)));
+
+        const divider = el('div',{style:{
+          width:'100%',height:'1px',background:'var(--bdr)',
+          margin:'8px 0',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'
+        }});
+        const divLabel = el('span',{style:{
+          background:'var(--dk2)',padding:'2px 10px',fontSize:'.68rem',
+          color:'var(--muted)',borderRadius:'999px',border:'1px solid var(--bdr)',
+          fontWeight:'600',letterSpacing:'.5px'
+        }},'⚔️  CHAVE B  ▶');
+        divider.appendChild(divLabel);
+
+        const rightWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',marginTop:'8px'}});
+        rightBracket.forEach((m,i) => rightWrap.appendChild(renderMatchRow(m, i, splitIdx+i)));
+
+        const matchesWrap = el('div');
+        matchesWrap.appendChild(leftWrap);
+        matchesWrap.appendChild(divider);
+        matchesWrap.appendChild(rightWrap);
+        card.appendChild(matchesWrap);
+      } else {
+        // Fase com jogo único (Final) — sem divisão
+        const matchesWrap = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+        bracket.forEach((m,idx) => matchesWrap.appendChild(renderMatchRow(m, idx, idx)));
+        card.appendChild(matchesWrap);
+      }
     } else {
       // Fallback: lista de botões (para fases sem bracket mapeado)
       avail.forEach(team=>{
@@ -4809,11 +4837,12 @@ function buildAdminUI(main){
       Object.values(adminStandings).forEach(pos=>{ if(pos[1]) top2Teams.add(pos[1]); if(pos[2]) top2Teams.add(pos[2]); });
       // Usar letras dos grupos dos 8 melhores 3ºs (de adminKo['best_thirds'].team_ids que agora são grupos)
       const thirdsGroups = (adminKo['best_thirds']?.team_ids||[]);
+      const validThirds_r32 = thirdsGroups; // alias para uso no ROUND32_BRACKET
       const adminThirdAssign = buildThirdAssignment(thirdsGroups, adminStandings);
 
       ROUND32_BRACKET.forEach((m,idx)=>{
-        const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds,adminThirdAssign,m.id);
-        const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds,adminThirdAssign,m.id);
+        const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds_r32,adminThirdAssign,m.id);
+        const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds_r32,adminThirdAssign,m.id);
         const t1=i1.team||i1.label, t2=i2.team||i2.label;
         const l1=i1.label, l2=i2.label;
         const t1Known=!!(i1.team); const t2Known=!!(i2.team);
@@ -5020,8 +5049,14 @@ function buildAdminUI(main){
 
         const bracketToRender = ph.key==='final'?FINAL_BRACKET : ph.key==='third'?THIRD_BRACKET : adminBracket;
 
-        const matchesWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
-        bracketToRender.forEach((m,idx)=>{
+        // Dividir em Chave A (esq) e Chave B (dir)
+        const bLen = bracketToRender.length;
+        const splitAt = bLen >= 8 ? Math.ceil(bLen/2) : (bLen>=4?2:(bLen>=2?1:0));
+        const hasSidesAdmin = bLen >= 2;
+        const leftB  = bracketToRender.slice(0, splitAt);
+        const rightB = bracketToRender.slice(splitAt);
+
+        function renderAdminMatchRow(m, globalIdx) {
           let t1,t2,lbl1,lbl2;
           if(ph.key==='third'){
             const mw=adminMatchWinners[m.id]||{};
@@ -5035,32 +5070,37 @@ function buildAdminUI(main){
           const t1Known=!!t1, t2Known=!!t2;
           const currR=(rp?.team_ids||[]);
           const sel1=t1&&currR.includes(t1), sel2=t2&&currR.includes(t2);
-
-          // Label do jogo
-          const phPrefix = ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':ph.key==='final'?'Final':'3º Lugar';
-          const jogLabel = bracketToRender.length>1
-            ? el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPrefix+' '+(idx+1))
-            : el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPrefix);
-
+          const phPfx = ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':ph.key==='final'?'Final':'3º Lugar';
+          const jogLabel = bLen>1
+            ? el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPfx+' '+(globalIdx+1))
+            : el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPfx);
           const wrap=el('div');
           wrap.appendChild(jogLabel);
           const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
-          const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
-            style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},
-            disabled:!t1Known,
-            onclick:()=>t1&&toggleAdminTeam(t1,t2)},
-            (t1Known?(FLAGS[t1]||'')+' '+t1:lbl1)+(t1Known?' ('+lbl1+')':'')+(sel1?' ✓':''));
+          const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t1Known?'1':'0.45'},disabled:!t1Known,onclick:()=>t1&&toggleAdminTeam(t1,t2)},(t1Known?(FLAGS[t1]||'')+' '+t1:lbl1)+(t1Known?' ('+lbl1+')':'')+(sel1?' ✓':''));
           const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
-          const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),
-            style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},
-            disabled:!t2Known,
-            onclick:()=>t2&&toggleAdminTeam(t2,t1)},
-            (t2Known?(FLAGS[t2]||'')+' '+t2:lbl2)+(t2Known?' ('+lbl2+')':'')+(sel2?' ✓':''));
+          const b2=el('button',{class:'btn btn-sm '+(sel2?'btn-s':'btn-o'),style:{flex:'1',textAlign:'center',fontSize:'.78rem',opacity:t2Known?'1':'0.45'},disabled:!t2Known,onclick:()=>t2&&toggleAdminTeam(t2,t1)},(t2Known?(FLAGS[t2]||'')+' '+t2:lbl2)+(t2Known?' ('+lbl2+')':'')+(sel2?' ✓':''));
           row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
           wrap.appendChild(row);
-          matchesWrap.appendChild(wrap);
-        });
-        card.appendChild(matchesWrap);
+          return wrap;
+        }
+
+        if(hasSidesAdmin && rightB.length > 0) {
+          const sideLabel = (txt) => el('div',{style:{fontSize:'.7rem',fontWeight:'700',color:'var(--gold)',letterSpacing:'1px',textTransform:'uppercase',marginBottom:'8px',marginTop:'4px',paddingBottom:'4px',borderBottom:'1px solid var(--bdr)'}},txt);
+          const leftW = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+          leftW.appendChild(sideLabel('◀ Chave A'));
+          leftB.forEach((m,i) => leftW.appendChild(renderAdminMatchRow(m, i)));
+          const div = el('div',{style:{width:'100%',height:'1px',background:'var(--bdr)',margin:'8px 0',display:'flex',alignItems:'center',justifyContent:'center'}});
+          div.appendChild(el('span',{style:{background:'var(--dk2)',padding:'2px 10px',fontSize:'.68rem',color:'var(--muted)',borderRadius:'999px',border:'1px solid var(--bdr)',fontWeight:'600',letterSpacing:'.5px'}},'⚔️  CHAVE B  ▶'));
+          const rightW = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',marginTop:'8px'}});
+          rightB.forEach((m,i) => rightW.appendChild(renderAdminMatchRow(m, splitAt+i)));
+          const mw=el('div'); mw.appendChild(leftW); mw.appendChild(div); mw.appendChild(rightW);
+          card.appendChild(mw);
+        } else {
+          const mw=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+          bracketToRender.forEach((m,idx) => mw.appendChild(renderAdminMatchRow(m, idx)));
+          card.appendChild(mw);
+        }
       } else {
         // Fallback — lista de botões para fases sem bracket
         adminAvailTeams.forEach(team=>{
