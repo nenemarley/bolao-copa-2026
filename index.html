@@ -3553,7 +3553,6 @@ async function applyAIResults(data, log) {
 // Cascata admin: ao mudar qualquer fase, limpa as posteriores e recalcula pontos
 async function cascadeAdminKo(fromPhase){
   // Cascata: limpa fases posteriores do real_knockouts quando uma fase muda
-  // NÃO toca em knockout_predictions — isso é feito pelo botão "Salvar e Recalcular"
   const order = ['round32','round16','quarter','semi','final','third'];
   const startIdx = order.indexOf(fromPhase);
   if(startIdx<0) return;
@@ -3568,8 +3567,6 @@ async function cascadeAdminKo(fromPhase){
       adminKo[ph].team_ids = filtered;
     }
   }
-  // Propagar times para group_matches (Jogos Elim.)
-  await propagateKoMatchTeams();
 }
 
 // Propaga os times selecionados pelo admin para group_matches (jogos 73-104)
@@ -3646,10 +3643,23 @@ async function propagateKoMatchTeams(){
     });
 
     if(upserts.length>0){
-      // Upsert em lotes para não ultrapassar limites
-      for(let i=0;i<upserts.length;i+=20){
-        const batch=upserts.slice(i,i+20);
-        await SB.from('group_matches').upsert(batch,{onConflict:'match_number',ignoreDuplicates:false});
+      // Para cada jogo: tentar UPDATE (só team names). Se não existir, INSERT com campos mínimos.
+      for(const u of upserts){
+        const {error:ue} = await SB.from('group_matches')
+          .update({team1_name:u.team1_name, team2_name:u.team2_name})
+          .eq('match_number', u.match_number);
+        if(ue){
+          // Registro não existe — criar com campos mínimos
+          await SB.from('group_matches').insert({
+            match_number: u.match_number,
+            team1_name: u.team1_name,
+            team2_name: u.team2_name,
+            group_id: 'KO',
+            is_finished: false,
+            real_score1: null,
+            real_score2: null,
+          }).select();
+        }
       }
     }
   }catch(e){
@@ -3688,8 +3698,6 @@ async function syncAdminKoWithStandings(changedGroup){
       }
     }
   }
-  // Propagar times atualizados para group_matches
-  await propagateKoMatchTeams();
 }
 
 // ── Admin ──────────────────────────────────────────────────────────────────
@@ -3976,6 +3984,7 @@ function buildAdminUI(main){
               if(!adminKo['best_thirds'])adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
               adminKo['best_thirds'].team_ids=next;
               await syncAdminKoWithStandings(null);
+              propagateKoMatchTeams(); // atualizar group_matches em background
               showToast('✅ Atualizado!'); buildAdminUI(main);
             }catch(e){ showToast(e.message,'err'); }
           }},orderTag+(FLAGS[team]||'')+' '+team);
@@ -4305,6 +4314,7 @@ function buildAdminUI(main){
           }
           await cascadeAdminKo(ph.key);
           buildAdminUI(main); // rerender sem toast (troca é imediata)
+          propagateKoMatchTeams(); // atualizar group_matches em background (fire & forget)
         }catch(e){ showToast(e.message,'err'); }
       }
 
