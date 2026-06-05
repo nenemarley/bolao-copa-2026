@@ -2279,12 +2279,12 @@ function buildMatchesUI(main){
     const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
     // pts-badge para atualização em tempo real
     const dateStr2 = MATCH_DATES[m.num];
-    const dateLabel = dateStr2 ? new Date(dateStr2+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
+    const dateLabel = dateStr2 ? new Date(dateStr2+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'}) : '';
 
     const mc = el('div',{class:'mc'+(hasResult?' fin':'')+(locked&&!hasResult?' locked':'')});
 
-    // Date row
-    if(dateLabel) mc.appendChild(el('div',{style:{fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},dateLabel));
+    // Date row — centralizada
+    if(dateLabel) mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},dateLabel));
 
     // Teams row
     const teamsRow = el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.4rem'}});
@@ -2651,7 +2651,7 @@ function buildStandingsUI(main){
       else if(isSel) cls='btn-p';
 
       // Mostrar letra do grupo antes do nome (ex: "G · Brasil")
-      const orderTag = isSel ? g+' · ' : '';
+      const orderTag = g+' · '; // mostrar letra do grupo em todos os botões
       const ptsTag = isSel&&isReal ? ' · 5p' : '';
       const label = orderTag+(FLAGS[third3]||'🏳')+' '+third3+ptsTag;
 
@@ -3658,6 +3658,14 @@ function buildKoMatchesUI(main){
     nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem',textAlign:'right'}},m.team2_name+' '+(FLAGS[m.team2_name]||'')));
     mc.appendChild(nameRow);
 
+    // Data do jogo — centralizada acima do placar
+    const dateStr = KO_MATCH_DATES[m.match_number];
+    if(dateStr){
+      const d = new Date(dateStr+'T00:00:00');
+      const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+      mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.4rem'}},formatted));
+    }
+
     // Controles de placar
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
     const _koDirty = (matchNum)=>()=>{ koMatchDirty=true; koMatchDirtySet.add(matchNum); updateKoMatchSaveBar(); };
@@ -4592,7 +4600,7 @@ function buildAdminUI(main){
       thirdsPool.forEach(team=>{
         const isR=currThirds.includes(team);
         const grpLetter=teamToGrp[team]||'?';
-        const orderTag=isR?grpLetter+' · ':'';
+        const orderTag=grpLetter+' · '; // mostrar letra do grupo em todos os botões
         const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),
           disabled:!isR&&currThirds.length>=8,
           style:(!isR&&currThirds.length>=8)?{opacity:'0.3',cursor:'not-allowed'}:{},
@@ -4689,6 +4697,14 @@ function buildAdminUI(main){
       hdr.appendChild(el('span',{},(FLAGS[m.team2_name]||'')+' '+m.team2_name));
       card.appendChild(hdr);
 
+      // Data do jogo — centralizada acima do placar
+      const dateStr = KO_MATCH_DATES[m.match_number];
+      if(dateStr){
+        const d = new Date(dateStr+'T00:00:00');
+        const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.4rem'}},formatted));
+      }
+
       // Controles +/-
       function mkBtn(label,cb){ return el('button',{class:'btn btn-sm btn-o',style:{minWidth:'32px',padding:'4px 10px',fontWeight:'700',fontSize:'.9rem'},onclick:cb},label); }
       function mkVal(v){ return el('span',{style:{minWidth:'32px',textAlign:'center',fontWeight:'700',fontSize:'1.1rem'}},v===null?'—':String(v)); }
@@ -4703,14 +4719,6 @@ function buildAdminUI(main){
       ctrlRow.appendChild(mkBtn('+',()=>{ scores[m.match_number].s2=(scores[m.match_number].s2||0)+1; buildAdminUI(main); }));
       card.appendChild(ctrlRow);
 
-      // Data do jogo
-      const dateStr = KO_MATCH_DATES[m.match_number];
-      if(dateStr){
-        const d = new Date(dateStr+'T00:00:00');
-        const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.72rem',color:'var(--muted)',marginTop:'4px'}},
-          '📅 '+formatted));
-      }
       matchesWrap.appendChild(card);
     });
     main.appendChild(matchesWrap);
