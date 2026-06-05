@@ -4395,7 +4395,7 @@ function buildAdminUI(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
-  [['matches','⚽ Jogos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
+  [['matches','⚽ 1ª Fase'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
     tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,style:{whiteSpace:'nowrap',flexShrink:'0'},onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
   });
   main.appendChild(tabs);
@@ -4464,6 +4464,14 @@ function buildAdminUI(main){
       const initS2 = window._adminScores[m.num]?.s2 ?? (hasSc ? real.real_score2 : null);
 
       const mc=el('div',{class:'mc'+(hasSc?' fin':''),style:{display:'block',padding:'.875rem',marginBottom:'8px'}});
+
+      // Data do jogo — acima dos times, centralizada
+      const dateStr3 = MATCH_DATES[m.num];
+      if(dateStr3){
+        const d3 = new Date(dateStr3+'T00:00:00');
+        const fmt3 = d3.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+        mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},fmt3));
+      }
 
       // Times
       const tr=el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.5rem'}});
