@@ -231,70 +231,69 @@ function tabEnabled(key) {
 // slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
 const ROUND32_BRACKET = [
   // ── CHAVE A (LADO ESQUERDO) ───────────────────────────────────────────────
-  // Par Oitava 1: J1(73) e J4(76) → vencedores se enfrentam na O1
-  // Jogo 1: 2A vs 2B — dom 28/06
-  {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
-  // Jogo 4: 1C vs 2F — seg 29/06
-  {id:76, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
-  // Par Oitava 2: J2(74) e J3(75)
-  // Jogo 2: 1E vs 3º(vaga dinâmica) — seg 29/06
-  {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',slotKey:'74'}},
-  // Jogo 3: 1F vs 2C — seg 29/06
-  {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
-  // Par Oitava 3: J5(77) e J6(78)
-  // Jogo 5: 1I vs 3º(vaga dinâmica) — ter 30/06
+  // Par Oitava 5: J5(77) e J2(74) → vencedores se enfrentam na O5
+  // Jogo 5: 1I vs 3º(vaga dinâmica)
   {id:77, slot1:{type:'1',group:'I'}, slot2:{type:'3',slotKey:'77'}},
-  // Jogo 6: 2E vs 2I — ter 30/06
-  {id:78, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
-  // Par Oitava 4: J7(79) e J8(80)
-  // Jogo 7: 1A vs 3º(vaga dinâmica) — ter 30/06
-  {id:79, slot1:{type:'1',group:'A'}, slot2:{type:'3',slotKey:'79'}},
-  // Jogo 8: 1L vs 3º(vaga dinâmica) — qua 01/07
-  {id:80, slot1:{type:'1',group:'L'}, slot2:{type:'3',slotKey:'80'}},
-  // ── CHAVE B (LADO DIREITO) ────────────────────────────────────────────────
-  // Par Oitava 5: J10(82) e J9(81) — visual: 1ºG antes de 1ºD
-  // Jogo 10: 1G vs 3º(vaga dinâmica) — qua 01/07
-  {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',slotKey:'82'}},
-  // Jogo 9: 1D vs 3º(vaga dinâmica) — qua 01/07
-  {id:81, slot1:{type:'1',group:'D'}, slot2:{type:'3',slotKey:'81'}},
-  // Par Oitava 6: J12(84) e J11(83) — visual: 1ºH antes de 2ºK
-  // Jogo 12: 1H vs 2J — qui 02/07
-  {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
-  // Jogo 11: 2K vs 2L — qui 02/07
+  // Jogo 2: 1E vs 3º(vaga dinâmica)
+  {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',slotKey:'74'}},
+  // Par Oitava 6: J1(73) e J3(75)
+  // Jogo 1: 2A vs 2B
+  {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
+  // Jogo 3: 1F vs 2C
+  {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
+  // Par Oitava 7: J11(83) e J12(84)
+  // Jogo 11: 2K vs 2L
   {id:83, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
-  // Par Oitava 7: J13(85) e J16(88) — sem mudança
-  // Jogo 13: 1B vs 3º(vaga dinâmica) — sex 03/07
-  {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',slotKey:'85'}},
-  // Jogo 16: 2D vs 2G — sex 03/07
-  {id:88, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
-  // Par Oitava 8: J16(88)→J14 e J15 — visual: 2ºD×2ºG antes de 1ºJ e 1ºK
-  // Jogo 14: 1J vs 2H — sex 03/07
-  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
-  // Jogo 15: 1K vs 3º(vaga dinâmica) — sex 03/07
+  // Jogo 12: 1H vs 2J
+  {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
+  // Par Oitava 8: J9(81) e J10(82)
+  // Jogo 9: 1D vs 3º(vaga dinâmica)
+  {id:81, slot1:{type:'1',group:'D'}, slot2:{type:'3',slotKey:'81'}},
+  // Jogo 10: 1G vs 3º(vaga dinâmica)
+  {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',slotKey:'82'}},
+  // ── CHAVE B (LADO DIREITO) ────────────────────────────────────────────────
+  // Par Oitava 1: J15(87) e J13(85) → vencedores se enfrentam na O1
+  // Jogo 15: 1K vs 3º(vaga dinâmica)
   {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',slotKey:'87'}},
+  // Jogo 13: 1B vs 3º(vaga dinâmica)
+  {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',slotKey:'85'}},
+  // Par Oitava 2: J16(88) e J14(86)
+  // Jogo 16: 2D vs 2G
+  {id:88, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
+  // Jogo 14: 1J vs 2H
+  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
+  // Par Oitava 3: J8(80) e J7(79)
+  // Jogo 8: 1L vs 3º(vaga dinâmica)
+  {id:80, slot1:{type:'1',group:'L'}, slot2:{type:'3',slotKey:'80'}},
+  // Jogo 7: 1A vs 3º(vaga dinâmica)
+  {id:79, slot1:{type:'1',group:'A'}, slot2:{type:'3',slotKey:'79'}},
+  // Par Oitava 4: J6(78) e J4(76)
+  // Jogo 6: 2E vs 2I
+  {id:78, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
+  // Jogo 4: 1C vs 2F
+  {id:76, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
 ];
-// Oitavas de Final: jogos 89-96
 // Oitavas de Final — linear e engessado por IDs
 const ROUND16_BRACKET = [
-  // LADO ESQUERDO
-  {id:89, slot1:{type:'W',matchId:73}, slot2:{type:'W',matchId:76}}, // W73 vs W76
-  {id:90, slot1:{type:'W',matchId:74}, slot2:{type:'W',matchId:75}}, // W74 vs W75
-  {id:91, slot1:{type:'W',matchId:77}, slot2:{type:'W',matchId:78}}, // W77 vs W78
-  {id:92, slot1:{type:'W',matchId:79}, slot2:{type:'W',matchId:80}}, // W79 vs W80
-  // LADO DIREITO
-  {id:93, slot1:{type:'W',matchId:81}, slot2:{type:'W',matchId:82}}, // W81 vs W82
-  {id:94, slot1:{type:'W',matchId:83}, slot2:{type:'W',matchId:84}}, // W83 vs W84
-  {id:95, slot1:{type:'W',matchId:85}, slot2:{type:'W',matchId:88}}, // W85 vs W88
-  {id:96, slot1:{type:'W',matchId:86}, slot2:{type:'W',matchId:87}}, // W86 vs W87
+  // CHAVE A
+  {id:89, slot1:{type:'W',matchId:77}, slot2:{type:'W',matchId:74}}, // O5: W-J5 vs W-J2
+  {id:90, slot1:{type:'W',matchId:73}, slot2:{type:'W',matchId:75}}, // O6: W-J1 vs W-J3
+  {id:91, slot1:{type:'W',matchId:83}, slot2:{type:'W',matchId:84}}, // O7: W-J11 vs W-J12
+  {id:92, slot1:{type:'W',matchId:81}, slot2:{type:'W',matchId:82}}, // O8: W-J9 vs W-J10
+  // CHAVE B
+  {id:93, slot1:{type:'W',matchId:87}, slot2:{type:'W',matchId:85}}, // O1: W-J15 vs W-J13
+  {id:94, slot1:{type:'W',matchId:88}, slot2:{type:'W',matchId:86}}, // O2: W-J16 vs W-J14
+  {id:95, slot1:{type:'W',matchId:80}, slot2:{type:'W',matchId:79}}, // O3: W-J8 vs W-J7
+  {id:96, slot1:{type:'W',matchId:78}, slot2:{type:'W',matchId:76}}, // O4: W-J6 vs W-J4
 ];
 // Quartas de Final: jogos 97-100
 const QUARTER_BRACKET = [
-  // LADO ESQUERDO
-  {id:97, slot1:{type:'W',matchId:89}, slot2:{type:'W',matchId:90}},
-  {id:98, slot1:{type:'W',matchId:91}, slot2:{type:'W',matchId:92}},
-  // LADO DIREITO
-  {id:99, slot1:{type:'W',matchId:93}, slot2:{type:'W',matchId:94}},
-  {id:100,slot1:{type:'W',matchId:95}, slot2:{type:'W',matchId:96}},
+  // CHAVE A
+  {id:97, slot1:{type:'W',matchId:89}, slot2:{type:'W',matchId:90}},  // Q1: WO5 vs WO6
+  {id:98, slot1:{type:'W',matchId:91}, slot2:{type:'W',matchId:92}},  // Q2: WO7 vs WO8
+  // CHAVE B
+  {id:99, slot1:{type:'W',matchId:93}, slot2:{type:'W',matchId:94}},  // Q3: WO1 vs WO2
+  {id:100,slot1:{type:'W',matchId:95}, slot2:{type:'W',matchId:96}},  // Q4: WO3 vs WO4
 ];
 // Semifinais: jogos 101-102
 const SEMI_BRACKET = [
@@ -2651,9 +2650,8 @@ function buildStandingsUI(main){
       else if(isSel && realThirdsReal.length>0 && !isReal) cls='btn-d';
       else if(isSel) cls='btn-p';
 
-      // Mostrar posição de ordem (1º, 2º... 8º) antes do nome
-      const orderIdx = selectedThirdsClean.indexOf(third3);
-      const orderTag = isSel ? (orderIdx+1)+'º · ' : '';
+      // Mostrar letra do grupo antes do nome (ex: "G · Brasil")
+      const orderTag = isSel ? g+' · ' : '';
       const ptsTag = isSel&&isReal ? ' · 5p' : '';
       const label = orderTag+(FLAGS[third3]||'🏳')+' '+third3+ptsTag;
 
@@ -4581,17 +4579,20 @@ function buildAdminUI(main){
     } else {
       const orderInfo=el('div',{style:{fontSize:'.78rem',color:currThirds.length===8?'var(--ok)':'var(--muted)',marginBottom:'.5rem',fontWeight:'600'}},currThirds.length+'/8 definidos'+(currThirds.length===8?' ✓':''));
       card.appendChild(orderInfo);
-      // Mostrar ordem dos selecionados
+      // Construir mapa team → grupo para exibir letra do grupo
+      const teamToGrp={};
+      Object.entries(adminStandings).forEach(([g,pos])=>{ if(pos[3]) teamToGrp[pos[3]]=g; });
+      // Mostrar grupos dos selecionados
       if(currThirds.length>0){
         const orderDiv=el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}});
-        orderDiv.textContent='Ordem: '+currThirds.map((t,i)=>(i+1)+'º '+t).join(' · ');
+        orderDiv.textContent='Grupos: '+currThirds.map(t=>(teamToGrp[t]||'?')+' '+t).join(' · ');
         card.appendChild(orderDiv);
       }
       const btns=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px'}});
       thirdsPool.forEach(team=>{
         const isR=currThirds.includes(team);
-        const orderIdx=currThirds.indexOf(team);
-        const orderTag=isR?(orderIdx+1)+'º · ':'';
+        const grpLetter=teamToGrp[team]||'?';
+        const orderTag=isR?grpLetter+' · ':'';
         const b=el('button',{class:'btn btn-sm '+(isR?'btn-s':'btn-o'),
           disabled:!isR&&currThirds.length>=8,
           style:(!isR&&currThirds.length>=8)?{opacity:'0.3',cursor:'not-allowed'}:{},
