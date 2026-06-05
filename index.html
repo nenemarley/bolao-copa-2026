@@ -4703,10 +4703,13 @@ function buildAdminUI(main){
       ctrlRow.appendChild(mkBtn('+',()=>{ scores[m.match_number].s2=(scores[m.match_number].s2||0)+1; buildAdminUI(main); }));
       card.appendChild(ctrlRow);
 
-      // Resultado salvo
-      if(m.is_finished && m.real_score1!==null && m.real_score2!==null){
-        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.75rem',color:'var(--ok)',marginTop:'4px'}},
-          'Resultado real: '+m.real_score1+' — '+m.real_score2));
+      // Data do jogo
+      const dateStr = KO_MATCH_DATES[m.match_number];
+      if(dateStr){
+        const d = new Date(dateStr+'T00:00:00');
+        const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.72rem',color:'var(--muted)',marginTop:'4px'}},
+          '📅 '+formatted));
       }
       matchesWrap.appendChild(card);
     });
