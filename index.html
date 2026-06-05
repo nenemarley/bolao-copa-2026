@@ -3651,20 +3651,20 @@ function buildKoMatchesUI(main){
     const mc=el('div',{style:{background:'var(--dk3)',borderRadius:'12px',padding:'1rem',marginBottom:'10px',
       border: canBetNow ? '1px solid var(--bdr)' : '1px solid rgba(245,158,11,.2)'}});
 
+    // Data do jogo — acima dos times
+    const dateStr = KO_MATCH_DATES[m.match_number];
+    if(dateStr){
+      const d = new Date(dateStr+'T00:00:00');
+      const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+      mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},formatted));
+    }
+
     // Nome dos times
     const nameRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem'}});
     nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem'}},(FLAGS[m.team1_name]||'')+' '+m.team1_name));
     nameRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.8rem'}},'×'));
     nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem',textAlign:'right'}},m.team2_name+' '+(FLAGS[m.team2_name]||'')));
     mc.appendChild(nameRow);
-
-    // Data do jogo — centralizada acima do placar
-    const dateStr = KO_MATCH_DATES[m.match_number];
-    if(dateStr){
-      const d = new Date(dateStr+'T00:00:00');
-      const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-      mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.4rem'}},formatted));
-    }
 
     // Controles de placar
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
@@ -4690,20 +4690,20 @@ function buildAdminUI(main){
       const sc=scores[m.match_number]||{s1:null,s2:null};
       const card=el('div',{class:'card',style:{padding:'.75rem'}});
 
+      // Data do jogo — acima dos times
+      const dateStr = KO_MATCH_DATES[m.match_number];
+      if(dateStr){
+        const d = new Date(dateStr+'T00:00:00');
+        const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},formatted));
+      }
+
       // Times
       const hdr=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'.6rem',fontSize:'.85rem',fontWeight:'600'}});
       hdr.appendChild(el('span',{},(FLAGS[m.team1_name]||'')+' '+m.team1_name));
       hdr.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.75rem'}},'×'));
       hdr.appendChild(el('span',{},(FLAGS[m.team2_name]||'')+' '+m.team2_name));
       card.appendChild(hdr);
-
-      // Data do jogo — centralizada acima do placar
-      const dateStr = KO_MATCH_DATES[m.match_number];
-      if(dateStr){
-        const d = new Date(dateStr+'T00:00:00');
-        const formatted = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-        card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)',marginBottom:'.4rem'}},formatted));
-      }
 
       // Controles +/-
       function mkBtn(label,cb){ return el('button',{class:'btn btn-sm btn-o',style:{minWidth:'32px',padding:'4px 10px',fontWeight:'700',fontSize:'.9rem'},onclick:cb},label); }
