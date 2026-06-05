@@ -4833,7 +4833,8 @@ function buildAdminUI(main){
           if(!adminKo['round32'])adminKo['round32']={phase:'round32',team_ids:[]};
           adminKo['round32'].team_ids=next;
           await cascadeAdminKo('round32');
-          buildAdminUI(main); // sem toast, troca imediata
+          propagateKoMatchTeams(); // atualizar Jogos Elim. em background
+          buildAdminUI(main);
         }catch(e){showToast(e.message,'err');}
       }
 
@@ -4852,6 +4853,15 @@ function buildAdminUI(main){
       const adminThirdAssign = buildThirdAssignment(thirdsGroups, adminStandings);
 
       ROUND32_BRACKET.forEach((m,idx)=>{
+        // Inserir label de chave antes do 1º e 9º jogo
+        if(idx===0){
+          r32Wrap.appendChild(el('div',{style:{fontSize:'.7rem',fontWeight:'700',color:'var(--gold)',letterSpacing:'1px',textTransform:'uppercase',marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid var(--bdr)'}},'◀ Chave A'));
+        }
+        if(idx===8){
+          r32Wrap.appendChild(el('div',{style:{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',margin:'8px 0'}},
+            el('span',{style:{background:'var(--dk2)',padding:'2px 10px',fontSize:'.68rem',color:'var(--muted)',borderRadius:'999px',border:'1px solid var(--bdr)',fontWeight:'600',letterSpacing:'.5px'}},'⚔️  CHAVE B  ▶')
+          ));
+        }
         const i1=resolveSlotInfo(m.slot1,adminStandings,validThirds_r32,adminThirdAssign,m.id);
         const i2=resolveSlotInfo(m.slot2,adminStandings,validThirds_r32,adminThirdAssign,m.id);
         const t1=i1.team||i1.label, t2=i2.team||i2.label;
