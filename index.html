@@ -230,40 +230,48 @@ function tabEnabled(key) {
 // Rodada de 32: jogos 73-88
 // slot: {type:'1'|'2'|'3', group:'A'..'L'} ou {type:'W'|'L', matchId:N} para fases seguintes
 const ROUND32_BRACKET = [
-  // LADO ESQUERDO
-  // Jogo 73: 2A vs 2B — dom 28/06
+  // ── CHAVE A (LADO ESQUERDO) ───────────────────────────────────────────────
+  // Par Oitava 1: J1(73) e J4(76) → vencedores se enfrentam na O1
+  // Jogo 1: 2A vs 2B — dom 28/06
   {id:73, slot1:{type:'2',group:'A'}, slot2:{type:'2',group:'B'}},
-  // Jogo 74: 1E vs 3º(vaga dinâmica) — seg 29/06
-  {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',slotKey:'74'}},
-  // Jogo 75: 1F vs 2C — seg 29/06
-  {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
-  // Jogo 76: 1C vs 2F — seg 29/06
+  // Jogo 4: 1C vs 2F — seg 29/06
   {id:76, slot1:{type:'1',group:'C'}, slot2:{type:'2',group:'F'}},
-  // Jogo 77: 1I vs 3º(vaga dinâmica) — ter 30/06
+  // Par Oitava 2: J2(74) e J3(75)
+  // Jogo 2: 1E vs 3º(vaga dinâmica) — seg 29/06
+  {id:74, slot1:{type:'1',group:'E'}, slot2:{type:'3',slotKey:'74'}},
+  // Jogo 3: 1F vs 2C — seg 29/06
+  {id:75, slot1:{type:'1',group:'F'}, slot2:{type:'2',group:'C'}},
+  // Par Oitava 3: J5(77) e J6(78)
+  // Jogo 5: 1I vs 3º(vaga dinâmica) — ter 30/06
   {id:77, slot1:{type:'1',group:'I'}, slot2:{type:'3',slotKey:'77'}},
-  // Jogo 78: 2E vs 2I — ter 30/06
+  // Jogo 6: 2E vs 2I — ter 30/06
   {id:78, slot1:{type:'2',group:'E'}, slot2:{type:'2',group:'I'}},
-  // Jogo 79: 1A vs 3º(vaga dinâmica) — ter 30/06
+  // Par Oitava 4: J7(79) e J8(80)
+  // Jogo 7: 1A vs 3º(vaga dinâmica) — ter 30/06
   {id:79, slot1:{type:'1',group:'A'}, slot2:{type:'3',slotKey:'79'}},
-  // Jogo 80: 1L vs 3º(vaga dinâmica) — qua 01/07
+  // Jogo 8: 1L vs 3º(vaga dinâmica) — qua 01/07
   {id:80, slot1:{type:'1',group:'L'}, slot2:{type:'3',slotKey:'80'}},
-  // LADO DIREITO
-  // Jogo 81: 1D vs 3º(vaga dinâmica) — qua 01/07
+  // ── CHAVE B (LADO DIREITO) ────────────────────────────────────────────────
+  // Par Oitava 5: J9(81) e J10(82)
+  // Jogo 9: 1D vs 3º(vaga dinâmica) — qua 01/07
   {id:81, slot1:{type:'1',group:'D'}, slot2:{type:'3',slotKey:'81'}},
-  // Jogo 82: 1G vs 3º(vaga dinâmica) — qua 01/07
+  // Jogo 10: 1G vs 3º(vaga dinâmica) — qua 01/07
   {id:82, slot1:{type:'1',group:'G'}, slot2:{type:'3',slotKey:'82'}},
-  // Jogo 83: 2K vs 2L — qui 02/07
+  // Par Oitava 6: J11(83) e J12(84)
+  // Jogo 11: 2K vs 2L — qui 02/07
   {id:83, slot1:{type:'2',group:'K'}, slot2:{type:'2',group:'L'}},
-  // Jogo 84: 1H vs 2J — qui 02/07
+  // Jogo 12: 1H vs 2J — qui 02/07
   {id:84, slot1:{type:'1',group:'H'}, slot2:{type:'2',group:'J'}},
-  // Jogo 85: 1B vs 3º(vaga dinâmica) — sex 03/07
+  // Par Oitava 7: J13(85) e J16(88)
+  // Jogo 13: 1B vs 3º(vaga dinâmica) — sex 03/07
   {id:85, slot1:{type:'1',group:'B'}, slot2:{type:'3',slotKey:'85'}},
-  // Jogo 86: 1J vs 2H — sex 03/07
-  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
-  // Jogo 87: 1K vs 3º(vaga dinâmica) — sex 03/07
-  {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',slotKey:'87'}},
-  // Jogo 88: 2D vs 2G — sex 03/07
+  // Jogo 16: 2D vs 2G — sex 03/07
   {id:88, slot1:{type:'2',group:'D'}, slot2:{type:'2',group:'G'}},
+  // Par Oitava 8: J14(86) e J15(87)
+  // Jogo 14: 1J vs 2H — sex 03/07
+  {id:86, slot1:{type:'1',group:'J'}, slot2:{type:'2',group:'H'}},
+  // Jogo 15: 1K vs 3º(vaga dinâmica) — sex 03/07
+  {id:87, slot1:{type:'1',group:'K'}, slot2:{type:'3',slotKey:'87'}},
 ];
 // Oitavas de Final: jogos 89-96
 // Oitavas de Final — linear e engessado por IDs
@@ -3048,7 +3056,9 @@ function buildKoUI(main){
         const real2=rp?.team_ids?.includes(t2);
         const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º(')&&t1!=='?'&&t1!==null;
         const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º(')&&t2!==null&&t2!=='?';
-        const jogNumLabel = bracket.length>1 ? phPrefix+' '+(globalIdx+1) : phPrefix;
+        // Label do jogo: usar ID do jogo (não índice do array, pois bracket foi reordenado)
+        const jogNum = ph.key==='round32' ? (m.id - 72) : (globalIdx + 1);
+        const jogNumLabel = bracket.length>1 ? phPrefix+' '+jogNum : phPrefix;
         const jogLabel = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},jogNumLabel);
         const wrap=el('div');
         wrap.appendChild(jogLabel);
@@ -4848,12 +4858,11 @@ function buildAdminUI(main){
         const t1Known=!!(i1.team); const t2Known=!!(i2.team);
         const sel1=currR32.includes(t1), sel2=currR32.includes(t2);
 
-        // Label do jogo (Jogo 1, Jogo 2...)
-        const jogNum = idx+1;
-        const jogLabel = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},'Jogo '+jogNum);
+        // Label do jogo — usar ID para numerar corretamente (bracket reordenado)
+        const jogNum = el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}},'Jogo '+(m.id-72));
 
         const wrap=el('div',{style:{marginBottom:'6px'}});
-        wrap.appendChild(jogLabel);
+        wrap.appendChild(jogNum);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
         const b1=el('button',{class:'btn btn-sm '+(sel1?'btn-s':'btn-o'),
           style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.45'},
@@ -5071,8 +5080,10 @@ function buildAdminUI(main){
           const currR=(rp?.team_ids||[]);
           const sel1=t1&&currR.includes(t1), sel2=t2&&currR.includes(t2);
           const phPfx = ph.key==='round16'?'Oitava':ph.key==='quarter'?'Quarta':ph.key==='semi'?'Semi':ph.key==='final'?'Final':'3º Lugar';
+          // Para R32, usar o ID do jogo como número (não índice do array reordenado)
+          const jogNumAdmin = ph.key==='round32' ? (m.id - 72) : (globalIdx + 1);
           const jogLabel = bLen>1
-            ? el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPfx+' '+(globalIdx+1))
+            ? el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPfx+' '+jogNumAdmin)
             : el('div',{style:{fontSize:'.65rem',color:'var(--muted)',fontWeight:'600',marginBottom:'3px',letterSpacing:'.3px'}}, phPfx);
           const wrap=el('div');
           wrap.appendChild(jogLabel);
