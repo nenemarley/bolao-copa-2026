@@ -100,8 +100,8 @@ select option{background:var(--dk3)}
 .invite-code:hover{border-color:var(--gold)}
 .code-input{width:100%;padding:14px;background:var(--dk3);border:2px solid var(--bdr);border-radius:8px;color:var(--gold);font-family:'Bebas Neue',cursive;font-size:1.8rem;letter-spacing:6px;text-align:center;outline:none;text-transform:uppercase}
 .code-input:focus{border-color:var(--gold)}
-.group-selector{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin-bottom:1rem;align-items:center;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.group-selector::-webkit-scrollbar{display:none}
-.group-pill{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
+.group-selector{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin-bottom:1rem;align-items:center;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(to right,transparent 0,black 8px,black calc(100% - 8px),transparent 100%)}.group-selector::-webkit-scrollbar{display:none}
+.group-pill{padding:6px 14px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s;white-space:nowrap;flex-shrink:0;line-height:1.2;height:32px;display:flex;align-items:center}
 .group-pill.active{background:var(--gold);color:var(--dk);border-color:var(--gold)}
 .group-pill:hover{border-color:var(--gold);color:var(--gold)}
 .replicate-bar{display:flex;align-items:center;gap:10px;background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem}
