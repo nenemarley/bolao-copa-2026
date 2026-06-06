@@ -2033,8 +2033,6 @@ async function showUserPalpites(userId, userName) {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function renderDashboard(main){
   const v = PAGE_VERSION;
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
-  if(MY_BOLAOS.length>1) renderReplicateBar(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
   const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
@@ -2048,6 +2046,8 @@ function renderDashboard(main){
   ]).then(([mp,gp,kp,sp,members,freshProfiles])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
+    // Seletor de bolão — aparece após o loading para não piscar
+    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
     if(freshProfiles && freshProfiles.length>0) STATE.profiles = freshProfiles;
 
     const memberIds = new Set((members||[]).map(m=>m.user_id));
