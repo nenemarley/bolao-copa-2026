@@ -100,7 +100,7 @@ select option{background:var(--dk3)}
 .invite-code:hover{border-color:var(--gold)}
 .code-input{width:100%;padding:14px;background:var(--dk3);border:2px solid var(--bdr);border-radius:8px;color:var(--gold);font-family:'Bebas Neue',cursive;font-size:1.8rem;letter-spacing:6px;text-align:center;outline:none;text-transform:uppercase}
 .code-input:focus{border-color:var(--gold)}
-.group-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
+.group-selector{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin-bottom:1rem;align-items:center;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.group-selector::-webkit-scrollbar{display:none}
 .group-pill{padding:5px 12px;border-radius:9999px;border:1px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;transition:all .2s}
 .group-pill.active{background:var(--gold);color:var(--dk);border-color:var(--gold)}
 .group-pill:hover{border-color:var(--gold);color:var(--gold)}
@@ -2034,6 +2034,7 @@ async function showUserPalpites(userId, userName) {
 function renderDashboard(main){
   const v = PAGE_VERSION;
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
+  if(MY_BOLAOS.length>1) renderReplicateBar(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
   const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
@@ -2227,8 +2228,7 @@ function buildMatchesUI(main){
       isToday?'Prazo encerrado para esses jogos.':'Palpite agora antes que bloqueie!'));
     main.appendChild(alertDiv);
   }
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMatches(main));
-  renderReplicateBar(main, ()=>buildMatchesUI(main));
+  if(MY_BOLAOS.length>1) {} // seletor de bolão fica só no Ranking
   
   // Default score bar - use module-level ref to persist values
   if(!window._def) window._def = {s1:1, s2:0};
