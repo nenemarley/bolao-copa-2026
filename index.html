@@ -2033,6 +2033,7 @@ async function showUserPalpites(userId, userName) {
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function renderDashboard(main){
   const v = PAGE_VERSION;
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
   const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
@@ -2046,9 +2047,7 @@ function renderDashboard(main){
   ]).then(([mp,gp,kp,sp,members,freshProfiles])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
-    // Seletor de bolão e replicar — ficam no topo do ranking
     if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
-    if(MY_BOLAOS.length>1) renderReplicateBar(main, ()=>renderDashboard(main));
     if(freshProfiles && freshProfiles.length>0) STATE.profiles = freshProfiles;
 
     const memberIds = new Set((members||[]).map(m=>m.user_id));
@@ -2229,7 +2228,8 @@ function buildMatchesUI(main){
       isToday?'Prazo encerrado para esses jogos.':'Palpite agora antes que bloqueie!'));
     main.appendChild(alertDiv);
   }
-  if(MY_BOLAOS.length>1) {} // seletor de bolão fica só no Ranking
+  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMatches(main));
+  renderReplicateBar(main, ()=>buildMatchesUI(main));
   
   // Default score bar - use module-level ref to persist values
   if(!window._def) window._def = {s1:1, s2:0};
