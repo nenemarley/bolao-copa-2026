@@ -2034,6 +2034,7 @@ async function showUserPalpites(userId, userName) {
 function renderDashboard(main){
   const v = PAGE_VERSION;
   if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
+  if(MY_BOLAOS.length>1) renderReplicateBar(main, ()=>renderDashboard(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   const bolaoId = CURRENT_BOLAO?.id;
   const mFilter = bolaoId ? {bolao_id:bolaoId} : {};
@@ -2227,8 +2228,6 @@ function buildMatchesUI(main){
       isToday?'Prazo encerrado para esses jogos.':'Palpite agora antes que bloqueie!'));
     main.appendChild(alertDiv);
   }
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderMatches(main));
-  renderReplicateBar(main, ()=>buildMatchesUI(main));
   
   // Default score bar - use module-level ref to persist values
   if(!window._def) window._def = {s1:1, s2:0};
@@ -2393,8 +2392,6 @@ function renderStandings(main){
     w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
     main.appendChild(w); return;
   }
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
-  renderReplicateBar(main, ()=>renderStandings(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   Promise.all([
     CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'group_id,position,team_name,points') : Promise.resolve([]),
@@ -2408,8 +2405,6 @@ function renderStandings(main){
     if(mlRow?.team_ids?.[0]) MATCHES_LOCK_START=mlRow.team_ids[0];
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'📊 Classificação dos Grupos'));
-    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderStandings(main));
-    renderReplicateBar(main, ()=>buildStandingsUI(main));
     grpPreds={};
     (gp||[]).forEach(p=>{
       if(p.group_id === '_thirds') {
@@ -2766,8 +2761,6 @@ function renderKnockout(main){
     w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
     main.appendChild(w); return;
   }
-  if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKnockout(main));
-  renderReplicateBar(main, ()=>renderKnockout(main));
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   Promise.all([
     CURRENT_BOLAO ? dbQ('knockout_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'phase,team_name,points') : Promise.resolve([]),
@@ -2780,8 +2773,6 @@ function renderKnockout(main){
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
     main.appendChild(el('div',{class:'ch'},'🔥 Fases Eliminatórias'));
-    if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderKnockout(main));
-    renderReplicateBar(main, ()=>buildKoUI(main));
     koPreds={};
     (kp||[]).forEach(p=>{ if(!koPreds[p.phase])koPreds[p.phase]=[]; koPreds[p.phase].push({team:p.team_name,pts:p.points}); });
     PHASES.forEach(ph=>{ if(koPreds[ph.key]&&koPreds[ph.key].length>ph.count) koPreds[ph.key]=koPreds[ph.key].slice(0,ph.count); });
