@@ -4183,6 +4183,50 @@ async function applyAIResults(data, log) {
 }
 
 
+// ── Recálculo centralizado de pontos (todos os bolões) ────────────────────
+
+// Recalcula pontos de match_predictions para um jogo (todos os bolões)
+async function recalcMatchPts(matchNumber, realS1, realS2) {
+  const preds = await dbQ('match_predictions',{match_number:matchNumber});
+  for(const p of preds){
+    const pts = (realS1===null||realS1===undefined) ? 0 : calcPts(p.predicted_score1,p.predicted_score2,realS1,realS2);
+    if(p.points!==pts)
+      await SB.from('match_predictions').update({points:pts}).eq('user_id',p.user_id).eq('match_number',matchNumber).eq('bolao_id',p.bolao_id);
+  }
+}
+
+// Recalcula pontos de group_predictions para um grupo/posição (todos os bolões)
+async function recalcGroupPts(groupId, position, realStandings, realThirds) {
+  const filter = position ? {group_id:groupId,position:position} : {group_id:groupId};
+  const preds = await dbQ('group_predictions', filter);
+  for(const p of preds){
+    let pts = 0;
+    if(groupId==='_thirds'){
+      pts = (realThirds||[]).includes(p.team_name) ? 5 : 0;
+    } else {
+      const rm = realStandings[groupId]||{};
+      const rp = rm[1]===p.team_name?1:rm[2]===p.team_name?2:(realThirds||[]).includes(p.team_name)?3:null;
+      pts = (p.position<=3&&rp!==null) ? calcGrpPts(p.position,rp) : 0;
+    }
+    if(p.points!==pts)
+      await SB.from('group_predictions').update({points:pts})
+        .eq('user_id',p.user_id).eq('group_id',p.group_id).eq('position',p.position).eq('bolao_id',p.bolao_id);
+  }
+}
+
+// Recalcula pontos de knockout_predictions para uma fase (todos os bolões)
+async function recalcKnockoutPts(phase, realTeamIds) {
+  const preds = await dbQ('knockout_predictions',{phase:phase});
+  const pts_map = {final:50,champion:50,runner_up:30,third:15};
+  const basePts = pts_map[phase]||10;
+  for(const p of preds){
+    const newPts = (realTeamIds||[]).includes(p.team_name) ? basePts : 0;
+    if(p.points!==newPts)
+      await SB.from('knockout_predictions').update({points:newPts})
+        .eq('user_id',p.user_id).eq('phase',phase).eq('team_name',p.team_name).eq('bolao_id',p.bolao_id);
+  }
+}
+
 // Cascata admin: ao mudar qualquer fase, limpa as posteriores e recalcula pontos
 async function cascadeAdminKo(fromPhase){
   // Cascata: limpa fases posteriores do real_knockouts quando uma fase muda
@@ -4358,7 +4402,7 @@ async function saveAllAdminScores(){
       const t1=m.team1_name||m.t1; const t2=m.team2_name||m.t2; const grp=m.group_id||m.group;
       await dbUpsert('group_matches',{match_number:num,real_score1:v.s1,real_score2:v.s2,is_finished:true,team1_name:t1,team2_name:t2,group_id:grp});
       const preds=await dbQ('match_predictions',{match_number:num});
-      if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,v.s1,v.s2)})));
+      if(preds.length>0) await recalcMatchPts(num, v.s1, v.s2);
       adminMatches[num]={...adminMatches[num],real_score1:v.s1,real_score2:v.s2,is_finished:true};
       saved++;
     }catch(e){ showToast(e.message,'err'); }
@@ -4419,8 +4463,7 @@ function buildAdminUI(main){
       for(const m of MATCHES.filter(x=>x.group===adminGrp)){
         try{
           await dbUpsert('group_matches',{match_number:m.num,real_score1:ds1,real_score2:ds2,is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group});
-          const preds=await dbQ('match_predictions',{match_number:m.num});
-          if(preds.length>0) await dbUpsert('match_predictions',preds.map(p=>({...p,points:calcPts(p.predicted_score1,p.predicted_score2,ds1,ds2)})));
+          await recalcMatchPts(m.num, ds1, ds2);
           adminMatches[m.num]={...adminMatches[m.num],real_score1:ds1,real_score2:ds2,is_finished:true};
           saved++;
         }catch(e){}
@@ -4441,7 +4484,7 @@ function buildAdminUI(main){
         try{
           await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.num);
           // Zerar pontos dos palpites dos usuários
-          await SB.from('match_predictions').update({points:0}).eq('match_number',m.num);
+          await recalcMatchPts(m.num, null, null); // zerar todos os bolões
           if(adminMatches[m.num]){ adminMatches[m.num].real_score1=null; adminMatches[m.num].real_score2=null; adminMatches[m.num].is_finished=false; }
           if(window._adminScores?.[m.num]){ window._adminScores[m.num]={s1:null,s2:null}; }
         }catch(e){}
@@ -4518,9 +4561,12 @@ function buildAdminUI(main){
     clearAllDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
       if(!confirm('Limpar TODA a classificação de grupos e zerar pontos dos participantes?')) return;
       try{
-        await SB.from('real_group_standings').delete().neq('group_id','__none__');
-        await SB.from('group_predictions').update({points:0}).neq('group_id','__none__');
-        Object.keys(adminStandings).forEach(g=>{ adminStandings[g]={}; });
+        for(const g of Object.keys(GROUPS)){
+          await SB.from('real_group_standings').delete().eq('group_id',g);
+          await recalcGroupPts(g, null, {}, []);
+          adminStandings[g]={};
+        }
+        await recalcGroupPts('_thirds', null, {}, []);
         showToast('🗑️ Classificação de grupos limpa!'); buildAdminUI(main);
       }catch(e){ showToast(e.message,'err'); }
     }},'🗑️ Limpar tudo'));
@@ -4549,17 +4595,7 @@ function buildAdminUI(main){
           try{
             await dbUpsert('real_group_standings',{group_id:g,position:pos,team_name:sel.value});
             // Recalcular pontos dos palpites
-            const preds=await dbQ('group_predictions',{group_id:g,position:pos});
-            if(preds.length>0){
-              const rm=adminStandings[g];
-              const realThirdsAdm=adminKo['best_thirds']?.team_ids||[];
-              for(const p of preds){
-                let pts=0;
-                const rp=(()=>{if(rm[1]===p.team_name)return 1;if(rm[2]===p.team_name)return 2;if(realThirdsAdm.includes(p.team_name))return 3;return null;})();
-                if(p.position<=3&&rp!==null) pts=calcGrpPts(p.position,rp);
-                if(p.points!==pts) await SB.from('group_predictions').update({points:pts}).eq('user_id',p.user_id).eq('group_id',g).eq('position',pos).eq('team_name',p.team_name);
-              }
-            }
+            await recalcGroupPts(g, pos, adminStandings, adminKo['best_thirds']?.team_ids||[]);
             // Se mudou o 3º de um grupo, verificar se o time antigo estava em best_thirds
             if(pos===3 && adminKo['best_thirds']?.team_ids){
               const oldTeamInPos = adminStandings[g]?.[3];
@@ -4642,11 +4678,7 @@ function buildAdminUI(main){
             if(next.length>8){showToast('Máximo 8 times!','err');return;}
             try{
               await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:next});
-              const thirdsP=await dbQ('group_predictions',{group_id:'_thirds'});
-              for(const p of thirdsP){
-                const newPts=next.includes(p.team_name)?5:0;
-                if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
-              }
+              await recalcGroupPts('_thirds', null, {}, next);
               if(!adminKo['best_thirds'])adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
               adminKo['best_thirds'].team_ids=next;
               await syncAdminKoWithStandings(null);
@@ -4724,7 +4756,7 @@ function buildAdminUI(main){
         try{
           await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.match_number);
           // Zerar pontos dos palpites dos usuários
-          await SB.from('match_predictions').update({points:0}).eq('match_number',m.match_number);
+          await recalcMatchPts(m.match_number, null, null);
           adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:null,real_score2:null,is_finished:false};
           scores[m.match_number]={s1:null,s2:null};
         }catch(e){}
@@ -4788,12 +4820,7 @@ function buildAdminUI(main){
             match_number:m.match_number, real_score1:sc.s1, real_score2:sc.s2,
             is_finished:true, team1_name:m.team1_name, team2_name:m.team2_name, group_id:m.group_id
           });
-          const preds=await dbQ('match_predictions',{match_number:m.match_number});
-          if(preds.length>0){
-            await dbUpsert('match_predictions',preds.map(p=>({
-              ...p, points:calcPts(p.predicted_score1,p.predicted_score2,sc.s1,sc.s2)
-            })));
-          }
+          await recalcMatchPts(m.match_number, sc.s1, sc.s2);
           adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:sc.s1,real_score2:sc.s2,is_finished:true};
           saved++;
         }catch(e){ errs++; }
@@ -4817,7 +4844,14 @@ function buildAdminUI(main){
           await dbUpsert('real_knockouts',{phase:ph,team_ids:[]});
           if(adminKo[ph]) adminKo[ph].team_ids=[];
         }
-        await SB.from('knockout_predictions').update({points:0}).neq('phase','__none__');
+        // Zerar knockout_predictions por fase real
+        const koPhases=['round32','round16','quarter','semi','final','champion','runner_up','third'];
+        for(const ph of koPhases){ await recalcKnockoutPts(ph, []); }
+        // Zerar scorer_predictions
+        const allSc=await dbQ('scorer_predictions',{},'user_id,bolao_id');
+        for(const sc of allSc){
+          await SB.from('scorer_predictions').update({points:0}).eq('user_id',sc.user_id).eq('bolao_id',sc.bolao_id);
+        }
         showToast('🗑️ Eliminatórias limpas!'); buildAdminUI(main);
       }catch(e){ showToast(e.message,'err'); }
     }},'🗑️ Limpar tudo'));
@@ -5579,7 +5613,8 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
     scorerHdr.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
       if(!confirm('Limpar artilheiro e zerar pontos dos participantes?')) return;
       await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[]});
-      await SB.from('scorer_predictions').update({points:0}).neq('user_id','__none__');
+      const allScPreds=await dbQ('scorer_predictions',{},'user_id,bolao_id');
+        for(const sc of allScPreds){ await SB.from('scorer_predictions').update({points:0}).eq('user_id',sc.user_id).eq('bolao_id',sc.bolao_id); }
       if(adminKo['top_scorer']) adminKo['top_scorer'].team_ids=[];
       showToast('🗑️ Artilheiro limpo!'); buildAdminUI(main);
     }},'🗑️ Limpar'));
