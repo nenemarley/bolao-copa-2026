@@ -4431,6 +4431,24 @@ function buildAdminUI(main){
       buildAdminUI(main);
     }},'Aplicar a todos');
     defBar.appendChild(adminApplyBtn);
+
+    // Botão limpar resultados do grupo
+    const clearGrpBtn=el('button',{class:'btn btn-sm',style:{marginLeft:'4px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent',padding:'4px 10px',fontSize:'.72rem'},onclick:async()=>{
+      if(!confirm('Limpar todos os resultados do Grupo '+adminGrp+'?')) return;
+      clearGrpBtn.textContent='⏳...'; clearGrpBtn.disabled=true;
+      const grpMs=MATCHES.filter(m=>m.group===adminGrp);
+      for(const m of grpMs){
+        try{
+          await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.num);
+          if(adminMatches[m.num]){ adminMatches[m.num].real_score1=null; adminMatches[m.num].real_score2=null; adminMatches[m.num].is_finished=false; }
+          if(window._adminScores?.[m.num]){ window._adminScores[m.num]={s1:null,s2:null}; }
+        }catch(e){}
+      }
+      showToast('🗑️ Resultados do Grupo '+adminGrp+' limpos!');
+      clearGrpBtn.textContent='🗑️ Limpar grupo'; clearGrpBtn.disabled=false;
+      buildAdminUI(main);
+    }},'🗑️ Limpar grupo');
+    defBar.appendChild(clearGrpBtn);
     main.appendChild(defBar);
 
     const gb=el('div',{class:'gb'});
@@ -4681,6 +4699,25 @@ function buildAdminUI(main){
       buildAdminUI(main);
     }},'Aplicar a todos');
     koDefBar.appendChild(koApplyBtn);
+
+    // Botão limpar resultados da fase
+    const koClearBtn=el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',padding:'4px 10px',fontSize:'.72rem'},onclick:async()=>{
+      const phLabel=KO_PHASE_LABELS[adminKoPhase]||adminKoPhase;
+      if(!confirm('Limpar todos os resultados de '+phLabel+'?')) return;
+      koClearBtn.textContent='⏳...'; koClearBtn.disabled=true;
+      for(const m of phMatches){
+        try{
+          await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.match_number);
+          adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:null,real_score2:null,is_finished:false};
+          scores[m.match_number]={s1:null,s2:null};
+        }catch(e){}
+      }
+      showToast('🗑️ Resultados de '+phLabel+' limpos!');
+      koClearBtn.textContent='🗑️ Limpar fase'; koClearBtn.disabled=false;
+      delete window._adminKoScores;
+      buildAdminUI(main);
+    }},'🗑️ Limpar fase');
+    koDefBar.appendChild(koClearBtn);
     main.appendChild(koDefBar);
 
     // Confrontos com botões +/-
