@@ -4440,6 +4440,8 @@ function buildAdminUI(main){
       for(const m of grpMs){
         try{
           await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.num);
+          // Zerar pontos dos palpites dos usuários
+          await SB.from('match_predictions').update({points:0}).eq('match_number',m.num);
           if(adminMatches[m.num]){ adminMatches[m.num].real_score1=null; adminMatches[m.num].real_score2=null; adminMatches[m.num].is_finished=false; }
           if(window._adminScores?.[m.num]){ window._adminScores[m.num]={s1:null,s2:null}; }
         }catch(e){}
@@ -4512,6 +4514,17 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='standings'){
+    const clearAllDiv=el('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:'.75rem'}});
+    clearAllDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
+      if(!confirm('Limpar TODA a classificação de grupos e zerar pontos dos participantes?')) return;
+      try{
+        await SB.from('real_group_standings').delete().neq('group_id','__none__');
+        await SB.from('group_predictions').update({points:0}).neq('group_id','__none__');
+        Object.keys(adminStandings).forEach(g=>{ adminStandings[g]={}; });
+        showToast('🗑️ Classificação de grupos limpa!'); buildAdminUI(main);
+      }catch(e){ showToast(e.message,'err'); }
+    }},'🗑️ Limpar tudo'));
+    main.appendChild(clearAllDiv);
     main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},'Defina a classificação real de cada grupo. Salva automaticamente ao selecionar.'));
     const grid=el('div',{class:'sg'});
     Object.entries(GROUPS).forEach(([g,teams])=>{
@@ -4586,11 +4599,13 @@ function buildAdminUI(main){
     // Recalcular Tudo movido para aba Config
     // Botão Limpar
     thirdsActions.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
-      if(!confirm('Limpar todos os 8 melhores 3ºs do banco?')) return;
+      if(!confirm('Limpar os 8 melhores 3ºs e zerar pontos dos participantes?')) return;
       await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:[]});
+      // Zerar pontos dos palpites de melhores 3ºs
+      await SB.from('group_predictions').update({points:0}).eq('group_id','_thirds');
       if(!adminKo['best_thirds']) adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
       adminKo['best_thirds'].team_ids=[];
-      showToast('✅ Best thirds limpos!'); buildAdminUI(main);
+      showToast('🗑️ Melhores 3ºs limpos!'); buildAdminUI(main);
     }},'🗑 Limpar'));
     thirdsHeader.appendChild(thirdsActions);
     card.appendChild(thirdsHeader);
@@ -4708,6 +4723,8 @@ function buildAdminUI(main){
       for(const m of phMatches){
         try{
           await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.match_number);
+          // Zerar pontos dos palpites dos usuários
+          await SB.from('match_predictions').update({points:0}).eq('match_number',m.match_number);
           adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:null,real_score2:null,is_finished:false};
           scores[m.match_number]={s1:null,s2:null};
         }catch(e){}
@@ -4790,6 +4807,21 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='knockout'){
+    // Botão limpar todas as eliminatórias
+    const koClrDiv=el('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:'.75rem'}});
+    koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
+      if(!confirm('Limpar TODAS as fases eliminatórias e zerar pontos dos participantes?')) return;
+      try{
+        const phases=['round32','round16','quarter','semi','final','third','best_thirds','top_scorer'];
+        for(const ph of phases){
+          await dbUpsert('real_knockouts',{phase:ph,team_ids:[]});
+          if(adminKo[ph]) adminKo[ph].team_ids=[];
+        }
+        await SB.from('knockout_predictions').update({points:0}).neq('phase','__none__');
+        showToast('🗑️ Eliminatórias limpas!'); buildAdminUI(main);
+      }catch(e){ showToast(e.message,'err'); }
+    }},'🗑️ Limpar tudo'));
+    main.appendChild(koClrDiv);
     // Card especial para round32: selecionar os 16 que realmente passaram para oitavas
     const round32Card=el('div',{class:'card',style:{marginBottom:'1rem'}});
     round32Card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.3rem'}},'RODADA DE 32 — QUEM REALMENTE PASSOU PARA AS OITAVAS?'));
@@ -5542,16 +5574,38 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
 
   if(adminTab==='scorer'){
     const card=el('div',{class:'card'});
-    card.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Definir Artilheiro Real'));
+    const scorerHdr=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem'}});
+    scorerHdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)'}},'⚽ Definir Artilheiro Real'));
+    scorerHdr.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
+      if(!confirm('Limpar artilheiro e zerar pontos dos participantes?')) return;
+      await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[]});
+      await SB.from('scorer_predictions').update({points:0}).neq('user_id','__none__');
+      if(adminKo['top_scorer']) adminKo['top_scorer'].team_ids=[];
+      showToast('🗑️ Artilheiro limpo!'); buildAdminUI(main);
+    }},'🗑️ Limpar'));
+    card.appendChild(scorerHdr);
     const inp=el('input',{class:'fi',placeholder:'Nome do artilheiro',value:adminKo['top_scorer']?.team_ids?.[0]||''});
     const savB=el('button',{class:'btn btn-s',style:{marginTop:'8px'},onclick:async()=>{
+      savB.textContent='⏳...'; savB.disabled=true;
       try{
-        const name=inp.value.trim(); if(!name) return;
-        await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:[name]});
+        const name=inp.value.trim();
+        // Salvar artilheiro real (pode ser vazio para limpar)
+        await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:name?[name]:[]});
+        // Atualizar pontos dos palpites via UPDATE (evita RLS do INSERT)
         const preds=await dbQ('scorer_predictions');
-        if(preds.length>0) await dbUpsert('scorer_predictions',preds.map(p=>({...p,points:p.player_name?.toLowerCase()===name.toLowerCase()?30:0})));
-        showToast('✅ Artilheiro salvo!');
+        for(const p of preds){
+          const pts = name && p.player_name?.toLowerCase()===name.toLowerCase() ? 30 : 0;
+          if(p.points !== pts){
+            await SB.from('scorer_predictions')
+              .update({points:pts})
+              .eq('user_id',p.user_id)
+              .eq('bolao_id',p.bolao_id);
+          }
+        }
+        adminKo['top_scorer']={phase:'top_scorer',team_ids:name?[name]:[]};
+        showToast(name?'✅ Artilheiro salvo!':'✅ Artilheiro limpo!');
       }catch(e){ showToast(e.message,'err'); }
+      savB.textContent='Salvar'; savB.disabled=false;
     }},'Salvar');
     card.appendChild(inp); card.appendChild(savB); main.appendChild(card);
   }
