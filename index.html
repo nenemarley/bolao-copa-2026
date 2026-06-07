@@ -3179,8 +3179,32 @@ function buildKoUI(main){
   // ── Artilheiro ──
   const scard=el('div',{class:'card',style:{marginBottom:'4rem'}});
   scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Artilheiro'));
-  const si=el('input',{class:'fi',placeholder:'Ex: Mbappé, Vinicius Jr...',value:koScorer});
-  si.oninput=()=>{ koScorer=si.value; koDirty=true; };
+  const SCORER_LIST = [
+    {name:'Aktürkoğlu',   flag:'🇹🇷'}, {name:'Cristiano Ronaldo', flag:'🇵🇹'},
+    {name:'Estêvão',      flag:'🇧🇷'}, {name:'Gakpo',             flag:'🇳🇱'},
+    {name:'Gyökeres',     flag:'🇸🇪'}, {name:'Hakimi',            flag:'🇲🇦'},
+    {name:'Haaland',      flag:'🇳🇴'}, {name:'Havertz',           flag:'🇩🇪'},
+    {name:'Julián Álvarez',flag:'🇦🇷'}, {name:'Kane',             flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
+    {name:'Lautaro Martínez',flag:'🇦🇷'},{name:'Luis Díaz',       flag:'🇨🇴'},
+    {name:'Lukaku',       flag:'🇧🇪'}, {name:'Marmoush',          flag:'🇪🇬'},
+    {name:'Mbappé',       flag:'🇫🇷'}, {name:'Memphis',           flag:'🇳🇱'},
+    {name:'Messi',        flag:'🇦🇷'}, {name:'Musiala',           flag:'🇩🇪'},
+    {name:'Neymar',       flag:'🇧🇷'}, {name:'Nico Williams',     flag:'🇪🇸'},
+    {name:'Olise',        flag:'🇫🇷'}, {name:'Raphinha',          flag:'🇧🇷'},
+    {name:'Saka',         flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'}, {name:'Salah',            flag:'🇪🇬'},
+    {name:'Son Heung-min',flag:'🇰🇷'}, {name:'Sørloth',          flag:'🇳🇴'},
+    {name:'Vinícius Jr.', flag:'🇧🇷'}, {name:'Weghorst',          flag:'🇳🇱'},
+    {name:'Wirtz',        flag:'🇩🇪'}, {name:'Yamal',             flag:'🇪🇸'},
+  ].sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+
+  const si=el('select',{class:'ps'});
+  si.appendChild(el('option',{value:''},'— Selecione o artilheiro —'));
+  SCORER_LIST.forEach(({name,flag})=>{
+    const o=el('option',{value:name},flag+' '+name);
+    if(koScorer===name) o.selected=true;
+    si.appendChild(o);
+  });
+  si.onchange=()=>{ koScorer=si.value; koDirty=true; };
   scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
   if(koReal['top_scorer']){
     const realScorer=koReal['top_scorer'].team_ids?.[0]||'-';
@@ -3250,21 +3274,18 @@ async function saveKo(){
         const {error:kErr}=await SB.from('knockout_predictions').insert(tagged);
         if(kErr) console.warn('insert KO falhou:', kErr.message);
       }
-      // Scorer: UPDATE se existe, INSERT se não existe — sempre filtrado por bolao_id
+      // Scorer: DELETE + INSERT garante que sempre atualiza corretamente
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
         const pts=rp?.team_ids?.[0]?.trim().toLowerCase()===koScorer.trim().toLowerCase()?30:0;
-        const existing=await SB.from('scorer_predictions').select('id')
-          .eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id).limit(1);
-        if(existing.data?.length>0){
-          await SB.from('scorer_predictions')
-            .update({player_name:koScorer.trim(),points:pts})
-            .eq('user_id',STATE.profile.id)
-            .eq('bolao_id',bolao.id);
-        } else {
-          await SB.from('scorer_predictions')
-            .insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
-        }
+        // Deletar entrada anterior (se existir) e inserir nova
+        await SB.from('scorer_predictions')
+          .delete()
+          .eq('user_id',STATE.profile.id)
+          .eq('bolao_id',bolao.id);
+        const {error:sErr}=await SB.from('scorer_predictions')
+          .insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
+        if(sErr) console.warn('scorer insert falhou:', sErr.message);
       }
     }
     koDirty=false;
@@ -5652,7 +5673,31 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
       showToast('🗑️ Artilheiro limpo!'); buildAdminUI(main);
     }},'🗑️ Limpar'));
     card.appendChild(scorerHdr);
-    const inp=el('input',{class:'fi',placeholder:'Nome do artilheiro',value:adminKo['top_scorer']?.team_ids?.[0]||''});
+    const SCORER_LIST_ADM = [
+      {name:'Aktürkoğlu',flag:'🇹🇷'},{name:'Cristiano Ronaldo',flag:'🇵🇹'},
+      {name:'Estêvão',flag:'🇧🇷'},{name:'Gakpo',flag:'🇳🇱'},
+      {name:'Gyökeres',flag:'🇸🇪'},{name:'Hakimi',flag:'🇲🇦'},
+      {name:'Haaland',flag:'🇳🇴'},{name:'Havertz',flag:'🇩🇪'},
+      {name:'Julián Álvarez',flag:'🇦🇷'},{name:'Kane',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
+      {name:'Lautaro Martínez',flag:'🇦🇷'},{name:'Luis Díaz',flag:'🇨🇴'},
+      {name:'Lukaku',flag:'🇧🇪'},{name:'Marmoush',flag:'🇪🇬'},
+      {name:'Mbappé',flag:'🇫🇷'},{name:'Memphis',flag:'🇳🇱'},
+      {name:'Messi',flag:'🇦🇷'},{name:'Musiala',flag:'🇩🇪'},
+      {name:'Neymar',flag:'🇧🇷'},{name:'Nico Williams',flag:'🇪🇸'},
+      {name:'Olise',flag:'🇫🇷'},{name:'Raphinha',flag:'🇧🇷'},
+      {name:'Saka',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},{name:'Salah',flag:'🇪🇬'},
+      {name:'Son Heung-min',flag:'🇰🇷'},{name:'Sørloth',flag:'🇳🇴'},
+      {name:'Vinícius Jr.',flag:'🇧🇷'},{name:'Weghorst',flag:'🇳🇱'},
+      {name:'Wirtz',flag:'🇩🇪'},{name:'Yamal',flag:'🇪🇸'},
+    ].sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+    const currentScorer=adminKo['top_scorer']?.team_ids?.[0]||'';
+    const inp=el('select',{class:'ps',style:{marginBottom:'8px'}});
+    inp.appendChild(el('option',{value:''},'— Selecione o artilheiro real —'));
+    SCORER_LIST_ADM.forEach(({name,flag})=>{
+      const o=el('option',{value:name},flag+' '+name);
+      if(currentScorer===name) o.selected=true;
+      inp.appendChild(o);
+    });
     const savB=el('button',{class:'btn btn-s',style:{marginTop:'8px'},onclick:async()=>{
       savB.textContent='⏳...'; savB.disabled=true;
       try{
