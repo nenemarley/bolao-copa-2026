@@ -5223,7 +5223,60 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='config'){
-    const cfgCard=el('div',{class:'card'});
+
+    // ── LIMPAR TUDO (nuclear) ──────────────────────────────────────────────
+    const nuclearCard=el('div',{class:'card',style:{marginBottom:'1rem',border:'1px solid var(--err)'}});
+    nuclearCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--err)',marginBottom:'.5rem'}},'🗑️ Limpar TODOS os Resultados e Pontuações'));
+    nuclearCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Zera ABSOLUTAMENTE TUDO — placares, classificações, eliminatórias e pontos de todos os usuários em todos os bolões. Use para resetar o bolão de teste.'));
+    const nuclearBtn=el('button',{class:'btn',style:{background:'var(--err)',color:'#fff',width:'100%',fontWeight:'700'},onclick:async()=>{
+      if(!confirm('⚠️ ATENÇÃO: Isso vai zerar TODOS os resultados e pontos de TODOS os usuários em TODOS os bolões. Tem certeza?')) return;
+      if(!confirm('Confirme novamente: apagar TUDO?')) return;
+      nuclearBtn.textContent='⏳ Limpando...'; nuclearBtn.disabled=true;
+      let errs=0;
+      try{
+        // 1. Limpar match_predictions (placar 1ª fase e jogos elim)
+        const allMP = await dbQ('match_predictions',{},'user_id,match_number,bolao_id');
+        for(const p of allMP){
+          const {error}=await SB.from('match_predictions').update({points:0}).eq('user_id',p.user_id).eq('match_number',p.match_number).eq('bolao_id',p.bolao_id);
+          if(error) errs++;
+        }
+        // 2. Limpar group_predictions (classificados e melhores 3ºs)
+        const allGP = await dbQ('group_predictions',{},'user_id,group_id,position,bolao_id');
+        for(const p of allGP){
+          const {error}=await SB.from('group_predictions').update({points:0}).eq('user_id',p.user_id).eq('group_id',p.group_id).eq('position',p.position).eq('bolao_id',p.bolao_id);
+          if(error) errs++;
+        }
+        // 3. Limpar knockout_predictions (eliminatórias e pódio)
+        const allKP = await dbQ('knockout_predictions',{},'user_id,phase,team_name,bolao_id');
+        for(const p of allKP){
+          const {error}=await SB.from('knockout_predictions').update({points:0}).eq('user_id',p.user_id).eq('phase',p.phase).eq('team_name',p.team_name).eq('bolao_id',p.bolao_id);
+          if(error) errs++;
+        }
+        // 4. Limpar scorer_predictions (artilheiro)
+        const allSP = await dbQ('scorer_predictions',{},'user_id,bolao_id');
+        for(const p of allSP){
+          const {error}=await SB.from('scorer_predictions').update({points:0}).eq('user_id',p.user_id).eq('bolao_id',p.bolao_id);
+          if(error) errs++;
+        }
+        // 5. Limpar resultados reais
+        for(const g of Object.keys(GROUPS)){
+          await SB.from('real_group_standings').delete().eq('group_id',g);
+        }
+        await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).gte('match_number',1);
+        const phases=['round32','round16','quarter','semi','final','third','best_thirds','top_scorer','matches_lock_start'];
+        for(const ph of phases){
+          await dbUpsert('real_knockouts',{phase:ph,team_ids:[]});
+          if(adminKo[ph]) adminKo[ph].team_ids=[];
+        }
+        Object.keys(adminStandings).forEach(g=>{ adminStandings[g]={}; });
+        adminMatches={};
+        showToast(errs>0?'⚠️ Limpeza concluída com '+errs+' erros':'✅ Tudo zerado com sucesso!', errs>0?'err':'');
+      }catch(e){ showToast('❌ Erro: '+e.message,'err'); }
+      nuclearBtn.textContent='🗑️ Limpar TUDO'; nuclearBtn.disabled=false;
+      buildAdminUI(main);
+    }},'🗑️ LIMPAR TUDO MESMO');
+    nuclearCard.appendChild(nuclearBtn);
+    main.appendChild(nuclearCard);
     cfgCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.8rem',fontSize:'1.1rem'}},'⚙️ Configurações do Bolão'));
 
     // Data de início do bloqueio dos jogos
