@@ -5232,38 +5232,12 @@ function buildAdminUI(main){
       if(!confirm('⚠️ ATENÇÃO: Isso vai zerar TODOS os resultados e pontos de TODOS os usuários em TODOS os bolões. Tem certeza?')) return;
       if(!confirm('Confirme novamente: apagar TUDO?')) return;
       nuclearBtn.textContent='⏳ Limpando...'; nuclearBtn.disabled=true;
-      let errs=0;
       try{
-        // 1. Zerar match_predictions por match_number (1 update por jogo = ~104 chamadas)
-        const allMatchNums = [...MATCHES.map(m=>m.num), ...Array.from({length:32},(_,i)=>73+i)];
-        for(const mn of allMatchNums){
-          const {error}=await SB.from('match_predictions').update({points:0}).eq('match_number',mn);
-          if(error) errs++;
-        }
-        // 2. Zerar group_predictions por group_id+position (1 update por combinação)
-        const grpIds=[...Object.keys(GROUPS).flatMap(g=>[1,2,3,4].map(pos=>({g,pos})))
-          ,{g:'_thirds',pos:3},{g:'_thirds',pos:4}];
-        for(const {g,pos} of grpIds){
-          const {error}=await SB.from('group_predictions').update({points:0}).eq('group_id',g).eq('position',pos);
-          if(error) errs++;
-        }
-        // 3. Zerar knockout_predictions por fase
-        const koPhases=['round32','round16','quarter','semi','final','champion','runner_up','third'];
-        for(const ph of koPhases){
-          const {error}=await SB.from('knockout_predictions').update({points:0}).eq('phase',ph);
-          if(error) errs++;
-        }
-        // 4. Zerar scorer_predictions por bolão
-        const allBolaos = await dbQ('bolao_groups',{},'id');
-        for(const b of allBolaos){
-          const {error}=await SB.from('scorer_predictions').update({points:0}).eq('bolao_id',b.id);
-          if(error) errs++;
-        }
-        // 5. Limpar resultados reais
-        for(const g of Object.keys(GROUPS)){
-          await SB.from('real_group_standings').delete().eq('group_id',g);
-        }
-        await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).gte('match_number',1);
+        // Uma única chamada RPC — função PostgreSQL SECURITY DEFINER que bypassa RLS
+        const {error} = await SB.rpc('admin_reset_all_points');
+        if(error) throw new Error(error.message);
+
+        // Limpar real_knockouts por fase
         const phases=['round32','round16','quarter','semi','final','third','best_thirds','top_scorer','matches_lock_start'];
         for(const ph of phases){
           await dbUpsert('real_knockouts',{phase:ph,team_ids:[]});
@@ -5271,8 +5245,27 @@ function buildAdminUI(main){
         }
         Object.keys(adminStandings).forEach(g=>{ adminStandings[g]={}; });
         adminMatches={};
-        showToast(errs>0?'⚠️ Limpeza com '+errs+' erros':'✅ Tudo zerado!', errs>0?'err':'');
-      }catch(e){ showToast('❌ Erro: '+e.message,'err'); errs++; }
+
+        // ── Verificação pós-reset ────────────────────────────────────────
+        const checks = await Promise.all([
+          SB.from('match_predictions').select('points',{count:'exact'}).gt('points',0).limit(1),
+          SB.from('group_predictions').select('points',{count:'exact'}).gt('points',0).limit(1),
+          SB.from('knockout_predictions').select('points',{count:'exact'}).gt('points',0).limit(1),
+          SB.from('scorer_predictions').select('points',{count:'exact'}).gt('points',0).limit(1),
+          SB.from('real_group_standings').select('id',{count:'exact'}).limit(1),
+          SB.from('group_matches').select('match_number',{count:'exact'}).eq('is_finished',true).limit(1),
+        ]);
+        const labels=['match_predictions','group_predictions','knockout_predictions','scorer_predictions','real_group_standings','group_matches(finished)'];
+        const dirty=checks.map((r,i)=>({t:labels[i],n:(r.data||[]).length})).filter(r=>r.n>0);
+        if(dirty.length>0){
+          console.warn('[Reset] Ainda com dados:',dirty);
+          showToast('⚠️ Reset parcial — ainda há dados em: '+dirty.map(d=>d.t).join(', '),'err');
+        } else {
+          showToast('✅ Verificado: tudo zerado com sucesso!');
+        }
+      }catch(e){
+        showToast('❌ Erro: '+e.message+' — Crie a função admin_reset_all_points no SQL Editor do Supabase','err');
+      }
       nuclearBtn.textContent='🗑️ LIMPAR TUDO MESMO'; nuclearBtn.disabled=false;
       buildAdminUI(main);
     }},'🗑️ LIMPAR TUDO MESMO');
