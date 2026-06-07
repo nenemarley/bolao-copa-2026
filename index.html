@@ -1943,7 +1943,7 @@ async function showUserPalpites(userId, userName) {
       });
 
     } else if(activeTab==='thirds') {
-      const gp = await dbQ('group_predictions',{user_id:userId},'group_id,position,team_name,points');
+      const gp = await dbQ('group_predictions',{user_id:userId,bolao_id:CURRENT_BOLAO?.id},'group_id,position,team_name,points');
       const rk = await dbQ('real_knockouts',{phase:'best_thirds'},'team_ids');
       body.innerHTML='';
       const realThirds=rk?.[0]?.team_ids||[];
@@ -1989,7 +1989,7 @@ async function showUserPalpites(userId, userName) {
       });
 
     } else if(activeTab==='artilheiro') {
-      const sp = await dbQ('scorer_predictions',{user_id:userId},'player_name,points');
+      const sp = await dbQ('scorer_predictions',{user_id:userId,bolao_id:CURRENT_BOLAO?.id},'player_name,points');
       body.innerHTML='';
       const s=sp?.[0];
       if(!s){ body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Artilheiro não palpitado.')); return; }
@@ -2711,8 +2711,13 @@ async function saveStandings(){
     });
   });
   // Salvar os 8 melhores terceiros palpitados (group_id='_thirds', position=índice 1..8)
+  // Primeiro deletar entradas antigas para evitar fantasmas quando reduz seleção
   const thirds = grpPreds['_thirds']||[];
   const realThirds = grpReal['_thirds_real']||[];
+  const bolaoIds = REPLICATE_ALL ? MY_BOLAOS.map(b=>b.id) : [CURRENT_BOLAO?.id];
+  for(const bid of bolaoIds){
+    if(bid) await SB.from('group_predictions').delete().eq('user_id',STATE.profile.id).eq('group_id','_thirds').eq('bolao_id',bid);
+  }
   thirds.forEach((team, idx)=>{
     const pts = realThirds.includes(team) ? 5 : 0;
     rows.push({user_id:STATE.profile.id,group_id:'_thirds',position:idx+1,team_name:team,points:pts});
@@ -2765,7 +2770,7 @@ function renderKnockout(main){
   Promise.all([
     CURRENT_BOLAO ? dbQ('knockout_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'phase,team_name,points') : Promise.resolve([]),
     dbQ('real_knockouts',{},'phase,team_ids'),
-    dbQ('scorer_predictions',{user_id:STATE.profile.id},'player_name,points'),
+    CURRENT_BOLAO ? dbQ('scorer_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'player_name,points') : dbQ('scorer_predictions',{user_id:STATE.profile.id},'player_name,points'),
     CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id,group_id:'_thirds'},'group_id,team_name,points') : Promise.resolve([]),
     dbQ('real_group_standings',{},'group_id,position,team_name'),
     CURRENT_BOLAO ? dbQ('group_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'group_id,position,team_name') : Promise.resolve([]),
@@ -3245,25 +3250,18 @@ async function saveKo(){
         const {error:kErr}=await SB.from('knockout_predictions').insert(tagged);
         if(kErr) console.warn('insert KO falhou:', kErr.message);
       }
-      // Scorer: UPDATE se existe, INSERT se não existe
+      // Scorer: UPDATE se existe, INSERT se não existe — sempre filtrado por bolao_id
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
         const pts=rp?.team_ids?.[0]?.trim().toLowerCase()===koScorer.trim().toLowerCase()?30:0;
-        const existing=await SB.from('scorer_predictions').select('id').eq('user_id',STATE.profile.id).limit(1);
+        const existing=await SB.from('scorer_predictions').select('id')
+          .eq('user_id',STATE.profile.id).eq('bolao_id',bolao.id).limit(1);
         if(existing.data?.length>0){
-          // UPDATE — preserva a linha existente
           await SB.from('scorer_predictions')
             .update({player_name:koScorer.trim(),points:pts})
-            .eq('user_id',STATE.profile.id);
-          // Remover duplicatas se houver
-          const allScorer=await SB.from('scorer_predictions').select('id').eq('user_id',STATE.profile.id);
-          if((allScorer.data?.length||0)>1){
-            const keepId=allScorer.data[0].id;
-            await SB.from('scorer_predictions').delete()
-              .eq('user_id',STATE.profile.id).neq('id',keepId);
-          }
+            .eq('user_id',STATE.profile.id)
+            .eq('bolao_id',bolao.id);
         } else {
-          // INSERT — primeira vez
           await SB.from('scorer_predictions')
             .insert({user_id:STATE.profile.id,player_name:koScorer.trim(),points:pts,bolao_id:bolao.id});
         }
@@ -4111,11 +4109,7 @@ async function applyAIResults(data, log) {
   if(data.best_thirds && data.best_thirds.length>0) {
     const normThirds = data.best_thirds.map(t=>normalizeTeamName(t)).filter(Boolean);
     await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:normThirds});
-    const preds = await dbQ('group_predictions',{group_id:'_thirds'});
-    for(const p of preds){
-      const newPts=normThirds.includes(p.team_name)?5:0;
-      if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
-    }
+    await recalcGroupPts('_thirds', null, {}, normThirds);
     log('✅ 8 melhores 3ºs definidos', '#10B981');
   }
 
@@ -4606,11 +4600,7 @@ function buildAdminUI(main){
               if(cleanedThirds.length!==adminKo['best_thirds'].team_ids.length){
                 await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:cleanedThirds});
                 adminKo['best_thirds'].team_ids=cleanedThirds;
-                const thirdsP=await dbQ('group_predictions',{group_id:'_thirds'});
-                for(const p of thirdsP){
-                  const newPts=cleanedThirds.includes(p.team_name)?5:0;
-                  if(p.points!==newPts) await SB.from('group_predictions').update({points:newPts}).eq('user_id',p.user_id).eq('group_id','_thirds').eq('team_name',p.team_name);
-                }
+                await recalcGroupPts('_thirds', null, {}, cleanedThirds);
               }
             }
             // Cascata: limpar fases eliminatórias reais se o pool mudou
@@ -4637,8 +4627,7 @@ function buildAdminUI(main){
     thirdsActions.appendChild(el('button',{class:'btn btn-sm',style:{fontSize:'.7rem',padding:'3px 8px',color:'var(--err)',border:'1px solid var(--err)',background:'transparent'},onclick:async()=>{
       if(!confirm('Limpar os 8 melhores 3ºs e zerar pontos dos participantes?')) return;
       await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:[]});
-      // Zerar pontos dos palpites de melhores 3ºs
-      await SB.from('group_predictions').update({points:0}).eq('group_id','_thirds');
+      await recalcGroupPts('_thirds', null, {}, []);
       if(!adminKo['best_thirds']) adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
       adminKo['best_thirds'].team_ids=[];
       showToast('🗑️ Melhores 3ºs limpos!'); buildAdminUI(main);
@@ -5025,10 +5014,7 @@ function buildAdminUI(main){
           const phasesToCalc = ['round32','round16','quarter','semi','final','third','champion','runner_up'];
           for(const phase of phasesToCalc){
             const teamIds = adminKo[phase]?.team_ids||[];
-            if(teamIds.length===0) continue;
-            const pts = phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10;
-            const preds = await dbQ('knockout_predictions',{phase});
-            if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:teamIds.includes(p.team_name)?pts:0})));
+            await recalcKnockoutPts(phase, teamIds);
           }
           showToast('✅ Pontuações das fases recalculadas!');
         }catch(e){ showToast('Erro ao recalcular: '+e.message,'err'); }
@@ -5506,7 +5492,7 @@ function buildAdminUI(main){
             if(!delErr){
               const bestName=spRows[0].player_name?.trim()||'';
               const pts=realScorer&&bestName.toLowerCase()===realScorer.toLowerCase()?30:0;
-              const {error:insErr}=await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts});
+              const {error:insErr}=await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts,bolao_id:CURRENT_BOLAO?.id});
               console.log('[Fix] insert scorer:', insErr?.message||'OK ('+bestName+' = '+pts+'pts)');
               if(!insErr) fixes++; else errors.push('scorer dup: '+insErr.message);
             } else errors.push('scorer del: '+delErr.message);
@@ -5611,7 +5597,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
           for(const p of (gP.data||[])){ const rp=(()=>{ const g=realSt[p.group_id]||{}; if(g[1]===p.team_name)return 1; if(g[2]===p.team_name)return 2; return null; })(); const pts=calcGrpPts(p.position,rp); await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id',p.group_id).eq('position',p.position); total++; }
           
           // 3ºs
-          const tP=await SB.from('group_predictions').select('*').eq('user_id',uid).eq('group_id','_thirds');
+          const tP=await SB.from('group_predictions').select('*').eq('user_id',uid).eq('group_id','_thirds').eq('bolao_id',CURRENT_BOLAO?.id);
           for(const p of (tP.data||[])){ const pts=realThirds.includes(p.team_name)?5:0; await SB.from('group_predictions').update({points:pts}).eq('user_id',uid).eq('group_id','_thirds').eq('team_name',p.team_name); total++; }
           
           // KO — incluir todas as fases possíveis
@@ -5634,13 +5620,13 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
           }
           
           // Artilheiro
-          const sP=await SB.from('scorer_predictions').select('*').eq('user_id',uid);
+          const sP=await SB.from('scorer_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO?.id);
           console.log('[Recalcular] uid='+uid+' scorer:', (sP.data||[]).map(p=>p.player_name+'='+p.points));
           for(const p of (sP.data||[])){
             const pts=realScName&&p.player_name?.trim().toLowerCase()===realScName.trim().toLowerCase()?30:0;
             console.log('[Recalcular] scorer "'+p.player_name+'" real="'+realScName+'" pts='+pts);
             // Atualizar por user_id (não por player_name pois pode ter espaço extra)
-            const {error:sErr} = await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid);
+            const {error:sErr} = await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid).eq('bolao_id',p.bolao_id||CURRENT_BOLAO?.id);
             if(sErr) console.error('[Recalcular] scorer update error:', sErr);
             total++;
           }
