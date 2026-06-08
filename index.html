@@ -4755,9 +4755,26 @@ function buildAdminUI(main){
 
     // Mapear fase para range de IDs (usa mesma constante do participante)
     const [mn,mx]=KO_PHASE_RANGES[adminKoPhase]||[73,104];
-    const phMatches=Object.values(adminMatches)
-      .filter(m=>m.match_number>=mn && m.match_number<=mx)
-      .sort((a,b)=>a.match_number-b.match_number);
+    // Incluir todos os jogos do range, mesmo sem times definidos
+    const phMatches=[];
+    for(let n=mn;n<=mx;n++){
+      if(adminMatches[n]) phMatches.push(adminMatches[n]);
+      else phMatches.push({match_number:n,team1_name:null,team2_name:null,real_score1:null,real_score2:null,is_finished:false,_virtual:true});
+    }
+
+    // Função para gerar label do chaveamento
+    function adminKoLabel(matchNum, slot){
+      const allB=[...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
+      const bm=allB.find(b=>b.id===matchNum);
+      if(!bm) return slot===1?'Time A':'Time B';
+      const s=slot===1?bm.slot1:bm.slot2;
+      if(s.type==='1') return '1º Gr.'+s.group;
+      if(s.type==='2') return '2º Gr.'+s.group;
+      if(s.type==='3') return '3º(vaga '+s.slotKey+')';
+      if(s.type==='W') return 'V.Jogo '+(s.matchId-72);
+      if(s.type==='L') return 'Perd.Semi '+(s.matchId-100);
+      return '?';
+    }
 
     if(phMatches.length===0){
       main.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:'.85rem'}},
@@ -4795,18 +4812,19 @@ function buildAdminUI(main){
     // Botão limpar resultados da fase
     const koClearBtn=el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',padding:'4px 10px',fontSize:'.72rem'},onclick:async()=>{
       const phLabel=KO_PHASE_LABELS[adminKoPhase]||adminKoPhase;
-      if(!confirm('Limpar todos os resultados de '+phLabel+'?')) return;
+      if(!confirm('Limpar resultados e palpites de '+phLabel+' de todos os participantes?')) return;
       koClearBtn.textContent='⏳...'; koClearBtn.disabled=true;
       for(const m of phMatches){
+        if(m._virtual) continue;
         try{
           await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false}).eq('match_number',m.match_number);
-          // Zerar pontos dos palpites dos usuários
-          await recalcMatchPts(m.match_number, null, null);
-          adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:null,real_score2:null,is_finished:false};
+          // Zerar palpites E pontos de todos os usuários desta fase
+          await SB.from('match_predictions').update({predicted_score1:0,predicted_score2:0,points:0}).eq('match_number',m.match_number);
+          if(adminMatches[m.match_number]) adminMatches[m.match_number]={...adminMatches[m.match_number],real_score1:null,real_score2:null,is_finished:false};
           scores[m.match_number]={s1:null,s2:null};
         }catch(e){}
       }
-      showToast('🗑️ Resultados de '+phLabel+' limpos!');
+      showToast('🗑️ Resultados e palpites de '+phLabel+' limpos!');
       koClearBtn.textContent='🗑️ Limpar fase'; koClearBtn.disabled=false;
       delete window._adminKoScores;
       buildAdminUI(main);
@@ -4828,11 +4846,14 @@ function buildAdminUI(main){
         card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},formatted));
       }
 
-      // Times
-      const hdr=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'.6rem',fontSize:'.85rem',fontWeight:'600'}});
-      hdr.appendChild(el('span',{},(FLAGS[m.team1_name]||'')+' '+m.team1_name));
+      // Times — usar label do chaveamento se null
+      const t1=m.team1_name||adminKoLabel(m.match_number,1);
+      const t2=m.team2_name||adminKoLabel(m.match_number,2);
+      const t1Known=!!m.team1_name, t2Known=!!m.team2_name;
+      const hdr=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'.6rem'}});
+      hdr.appendChild(el('span',{style:{fontWeight:t1Known?'600':'400',fontSize:t1Known?'.85rem':'.75rem',color:t1Known?'var(--text)':'var(--muted)'}},t1Known?(FLAGS[t1]||'')+' '+t1:t1));
       hdr.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.75rem'}},'×'));
-      hdr.appendChild(el('span',{},(FLAGS[m.team2_name]||'')+' '+m.team2_name));
+      hdr.appendChild(el('span',{style:{fontWeight:t2Known?'600':'400',fontSize:t2Known?'.85rem':'.75rem',color:t2Known?'var(--text)':'var(--muted)',textAlign:'right'}},t2Known?t2+' '+(FLAGS[t2]||''):t2));
       card.appendChild(hdr);
 
       // Controles +/-
@@ -5272,7 +5293,7 @@ function buildAdminUI(main){
     // ── LIMPAR TUDO (nuclear) ──────────────────────────────────────────────
     const nuclearCard=el('div',{class:'card',style:{marginBottom:'1rem',border:'1px solid var(--err)'}});
     nuclearCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--err)',marginBottom:'.5rem'}},'🗑️ Limpar Resultados e Pontuações'));
-    nuclearCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Zera os resultados reais inseridos pelo admin e as pontuações de todos os usuários em todos os bolões. Os palpites dos participantes são preservados.'));
+    nuclearCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Zera os resultados reais, os palpites de jogos eliminatórios e as pontuações de todos os usuários em todos os bolões. Os palpites da 1ª fase e grupos são preservados.'));
     const nuclearBtn=el('button',{class:'btn',style:{background:'var(--err)',color:'#fff',width:'100%',fontWeight:'700'},onclick:async()=>{
       if(!confirm('⚠️ ATENÇÃO: Isso vai zerar TODOS os resultados e pontos de TODOS os usuários em TODOS os bolões. Tem certeza?')) return;
       if(!confirm('Confirme novamente: apagar TUDO?')) return;
