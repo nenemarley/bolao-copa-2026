@@ -2897,7 +2897,7 @@ function buildKoUI(main){
         if(!team) return;
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
         const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
-        const ptsLabel = realChamp ? (isRealCh ? ' ·50p' : (isSel ? ' ·0p' : '')) : '';
+        const ptsLabel = (realChamp && realChamp.length>0) ? (isRealCh ? ' ·50p' : (isSel ? ' ·0p' : '')) : '';
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
           onclick:()=>{
             // Toggle: clicou no selecionado → deseleciona; clicou no outro → troca
@@ -3058,12 +3058,13 @@ function buildKoUI(main){
         wrap.appendChild(jogLabel);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
         const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
-        const pts1 = rp ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
+        const rpHasResult = rp?.team_ids?.length > 0;
+        const pts1 = rpHasResult ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
         const lbl1txt = l1 ? ' ('+l1+')' : '';
         const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
         const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
-        const pts2 = rp ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
+        const pts2 = rpHasResult ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
         const lbl2txt = l2 ? ' ('+l2+')' : '';
         const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
@@ -3161,7 +3162,7 @@ function buildKoUI(main){
       const isSel3=thirdSel.find(x=>x.team===team);
       const isReal3=rp3?.team_ids?.includes(team);
       const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
-      const pts3 = rp3 ? (isReal3 ? ' ·15p' : (isSel3 ? ' ·0p' : '')) : '';
+      const pts3 = rp3?.team_ids?.length>0 ? (isReal3 ? ' ·15p' : (isSel3 ? ' ·0p' : '')) : '';
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
         onclick:()=>{
           koPreds['third']=isSel3?[]:[{team,pts:isReal3?15:0}];
@@ -3180,9 +3181,9 @@ function buildKoUI(main){
   const scard=el('div',{class:'card',style:{marginBottom:'4rem'}});
   scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Artilheiro'));
   const SCORER_LIST = [
-    {name:'Aktürkoğlu',   flag:'🇹🇷'}, {name:'Cristiano Ronaldo', flag:'🇵🇹'},
+    {name:'Endrick',       flag:'🇧🇷'}, {name:'Cristiano Ronaldo', flag:'🇵🇹'},
     {name:'Romero',       flag:'🇵🇾'}, {name:'Gakpo',             flag:'🇳🇱'},
-    {name:'Gyökeres',     flag:'🇸🇪'}, {name:'Hakimi',            flag:'🇲🇦'},
+    {name:'João Félix',    flag:'🇵🇹'}, {name:'Hakimi',            flag:'🇲🇦'},
     {name:'Haaland',      flag:'🇳🇴'}, {name:'Havertz',           flag:'🇩🇪'},
     {name:'Julián Álvarez',flag:'🇦🇷'}, {name:'Kane',             flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
     {name:'Lautaro Martínez',flag:'🇦🇷'},{name:'Luis Díaz',       flag:'🇨🇴'},
@@ -3637,11 +3638,12 @@ function buildKoMatchesUI(main){
   defBar.appendChild(applyBtn);
   main.appendChild(defBar);
 
-  // Jogos da fase atual
+  // Jogos da fase atual — só mostrar se tiver times definidos
   const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
   const phaseMatches=[];
   for(let n=mn;n<=mx;n++){
-    if(koMatchReal[n]) phaseMatches.push(koMatchReal[n]);
+    const m=koMatchReal[n];
+    if(m && m.team1_name && m.team2_name) phaseMatches.push(m);
   }
 
   if(phaseMatches.length===0){
@@ -3650,6 +3652,9 @@ function buildKoMatchesUI(main){
     return;
   }
 
+  // Botão limpar resultados da fase (participante vê mas só admin pode usar)
+  // não incluir aqui — só admin limpa
+
   phaseMatches.forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
     const v1=p.s1??null, v2=p.s2??null;
@@ -3657,6 +3662,26 @@ function buildKoMatchesUI(main){
     const hasResult=m.is_finished;
     const pts=p.pts||0;
     const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+
+    // Resolver nome dos times — usar label do chaveamento se null
+    function koMatchLabel(matchNum, slot) {
+      // Buscar no bracket qual é o label deste slot
+      const allBrackets = [...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
+      const bm = allBrackets.find(b=>b.id===matchNum);
+      if(!bm) return slot===1?'Time A':'Time B';
+      const s = slot===1 ? bm.slot1 : bm.slot2;
+      if(s.type==='1') return '1º Grupo '+s.group;
+      if(s.type==='2') return '2º Grupo '+s.group;
+      if(s.type==='3') return '3º (vaga '+s.slotKey+')';
+      if(s.type==='W') return 'V. Jogo '+(s.matchId-72);
+      if(s.type==='L') return 'Perd. Semi '+(s.matchId-100);
+      return '?';
+    }
+
+    const t1 = m.team1_name || koMatchLabel(m.match_number, 1);
+    const t2 = m.team2_name || koMatchLabel(m.match_number, 2);
+    const t1Known = !!m.team1_name;
+    const t2Known = !!m.team2_name;
 
     const mc=el('div',{style:{background:'var(--dk3)',borderRadius:'12px',padding:'1rem',marginBottom:'10px',
       border: canBetNow ? '1px solid var(--bdr)' : '1px solid rgba(245,158,11,.2)'}});
@@ -3669,17 +3694,20 @@ function buildKoMatchesUI(main){
       mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},formatted));
     }
 
-    // Nome dos times
+    // Nome dos times — muted se ainda não definido
     const nameRow=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'.6rem'}});
-    nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem'}},(FLAGS[m.team1_name]||'')+' '+m.team1_name));
+    nameRow.appendChild(el('span',{style:{fontWeight:t1Known?'600':'400',fontSize:t1Known?'.9rem':'.75rem',color:t1Known?'var(--text)':'var(--muted)'}},
+      t1Known?(FLAGS[t1]||'')+' '+t1 : t1));
     nameRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.8rem'}},'×'));
-    nameRow.appendChild(el('span',{style:{fontWeight:'600',fontSize:'.9rem',textAlign:'right'}},m.team2_name+' '+(FLAGS[m.team2_name]||'')));
+    nameRow.appendChild(el('span',{style:{fontWeight:t2Known?'600':'400',fontSize:t2Known?'.9rem':'.75rem',color:t2Known?'var(--text)':'var(--muted)',textAlign:'right'}},
+      t2Known?t2+' '+(FLAGS[t2]||'') : t2));
     mc.appendChild(nameRow);
 
-    // Controles de placar
+    // Controles de placar — só se os times estiverem definidos
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
     const _koDirty = (matchNum)=>()=>{ koMatchDirty=true; koMatchDirtySet.add(matchNum); updateKoMatchSaveBar(); };
     const _matchDirty = _koDirty(m.match_number);
+    const locked = !t1Known || !t2Known; // bloquear se times não definidos
     scoreRow.appendChild(makeMatchCtrl(v1, v=>{
       const cur=koMatchPreds[m.match_number]||{};
       const newS2=cur.s2??0;
@@ -3687,7 +3715,7 @@ function buildKoMatchesUI(main){
       koMatchPreds[m.match_number]={...cur,s1:v,s2:newS2,pts:newPts};
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow, _matchDirty));
+    }, !canBetNow||locked, _matchDirty));
     scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
     scoreRow.appendChild(makeMatchCtrl(v2, v=>{
       const cur=koMatchPreds[m.match_number]||{};
@@ -3696,7 +3724,7 @@ function buildKoMatchesUI(main){
       koMatchPreds[m.match_number]={...cur,s2:v,s1:newS1,pts:newPts};
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
-    }, !canBetNow, _matchDirty));
+    }, !canBetNow||locked, _matchDirty));
     mc.appendChild(scoreRow);
 
     // Resultado real
@@ -4582,6 +4610,9 @@ function buildAdminUI(main){
           adminStandings[g]={};
         }
         await recalcGroupPts('_thirds', null, {}, []);
+        // Limpar times dos jogos eliminatórios (dependem da classificação dos grupos)
+        await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false,team1_name:null,team2_name:null}).gte('match_number',73);
+        adminMatches={};
         showToast('🗑️ Classificação de grupos limpa!'); buildAdminUI(main);
       }catch(e){ showToast(e.message,'err'); }
     }},'🗑️ Limpar tudo'));
@@ -4649,6 +4680,9 @@ function buildAdminUI(main){
       if(!confirm('Limpar os 8 melhores 3ºs e zerar pontos dos participantes?')) return;
       await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:[]});
       await recalcGroupPts('_thirds', null, {}, []);
+      // Limpar times dos jogos que dependem dos 3ºs (vagas dinâmicas)
+      await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false,team1_name:null,team2_name:null}).gte('match_number',73);
+      adminMatches={};
       if(!adminKo['best_thirds']) adminKo['best_thirds']={phase:'best_thirds',team_ids:[]};
       adminKo['best_thirds'].team_ids=[];
       showToast('🗑️ Melhores 3ºs limpos!'); buildAdminUI(main);
@@ -4862,6 +4896,9 @@ function buildAdminUI(main){
         for(const sc of allSc){
           await SB.from('scorer_predictions').update({points:0}).eq('user_id',sc.user_id).eq('bolao_id',sc.bolao_id);
         }
+        // Limpar times e placares de todos os jogos eliminatórios
+        await SB.from('group_matches').update({real_score1:null,real_score2:null,is_finished:false,team1_name:null,team2_name:null}).gte('match_number',73);
+        adminMatches={};
         showToast('🗑️ Eliminatórias limpas!'); buildAdminUI(main);
       }catch(e){ showToast(e.message,'err'); }
     }},'🗑️ Limpar tudo'));
@@ -5674,9 +5711,9 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
     }},'🗑️ Limpar'));
     card.appendChild(scorerHdr);
     const SCORER_LIST_ADM = [
-      {name:'Aktürkoğlu',flag:'🇹🇷'},{name:'Cristiano Ronaldo',flag:'🇵🇹'},
+      {name:'Endrick',flag:'🇧🇷'},{name:'Cristiano Ronaldo',flag:'🇵🇹'},
       {name:'Romero',flag:'🇵🇾'},{name:'Gakpo',flag:'🇳🇱'},
-      {name:'Gyökeres',flag:'🇸🇪'},{name:'Hakimi',flag:'🇲🇦'},
+      {name:'João Félix',flag:'🇵🇹'},{name:'Hakimi',flag:'🇲🇦'},
       {name:'Haaland',flag:'🇳🇴'},{name:'Havertz',flag:'🇩🇪'},
       {name:'Julián Álvarez',flag:'🇦🇷'},{name:'Kane',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
       {name:'Lautaro Martínez',flag:'🇦🇷'},{name:'Luis Díaz',flag:'🇨🇴'},
