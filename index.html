@@ -3611,6 +3611,15 @@ function buildKoMatchesUI(main){
   main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},
     'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
 
+  // Jogos da fase — declarar antes para usar no hasAnyTeams
+  const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
+  const phaseMatches=[];
+  for(let n=mn;n<=mx;n++){
+    const m=koMatchReal[n];
+    if(m) phaseMatches.push(m);
+    else phaseMatches.push({match_number:n,team1_name:null,team2_name:null,is_finished:false,real_score1:null,real_score2:null,_placeholder:true});
+  }
+
   const hasAnyTeams = phaseMatches.some(m=>m.team1_name && m.team2_name);
 
   // Placar padrão
@@ -3640,18 +3649,6 @@ function buildKoMatchesUI(main){
   }},'Aplicar a todos');
   defBar.appendChild(applyBtn);
   main.appendChild(defBar);
-
-  // Jogos da fase atual — mostrar se tiver times OU se tiver o bracket mapeado
-  const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
-  const phaseMatches=[];
-  for(let n=mn;n<=mx;n++){
-    const m=koMatchReal[n];
-    if(m) phaseMatches.push(m);
-    else {
-      // Criar entrada placeholder com label do chaveamento
-      phaseMatches.push({match_number:n,team1_name:null,team2_name:null,is_finished:false,real_score1:null,real_score2:null,_placeholder:true});
-    }
-  }
 
   // Sempre mostrar — mesmo sem times, mostrar chaveamento com labels
 
