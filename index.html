@@ -2896,7 +2896,7 @@ function buildKoUI(main){
       [t1,t2].forEach(team=>{
         if(!team) return;
         const isSel=champSel===team, isRealCh=realChamp&&team===realChamp;
-        const cls=isSel&&isRealCh?'btn-s':isSel&&realChamp&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
+        const cls=isSel&&isRealCh?'btn-s':isSel&&(realChamp&&realChamp.length>0)&&!isRealCh?'btn-d':isSel?'btn-p':'btn-o';
         const ptsLabel = (realChamp && realChamp.length>0) ? (isRealCh ? ' ·50p' : (isSel ? ' ·0p' : '')) : '';
         const b=el('button',{class:`btn btn-sm ${cls}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
           onclick:()=>{
@@ -3057,13 +3057,13 @@ function buildKoUI(main){
         const wrap=el('div');
         wrap.appendChild(jogLabel);
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',background:'var(--dk3)',borderRadius:'10px',padding:'8px 10px'}});
-        const cls1 = sel1&&real1?'btn-s':sel1&&rp&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const rpHasResult = rp?.team_ids?.length > 0;
+        const cls1 = sel1&&real1?'btn-s':sel1&&rpHasResult&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const pts1 = rpHasResult ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
         const lbl1txt = l1 ? ' ('+l1+')' : '';
         const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
-        const cls2 = sel2&&real2?'btn-s':sel2&&rp&&!real2?'btn-d':sel2?'btn-p':'btn-o';
+        const cls2 = sel2&&real2?'btn-s':sel2&&rpHasResult&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const pts2 = rpHasResult ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
         const lbl2txt = l2 ? ' ('+l2+')' : '';
         const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
@@ -3114,9 +3114,10 @@ function buildKoUI(main){
       avail.forEach(team=>{
         const isSel=sel.find(x=>x.team===team);
         const isReal=rp?.team_ids?.includes(team);
+        const rpHas=rp?.team_ids?.length>0;
         let cls='btn-o';
         if(isSel&&isReal) cls='btn-s';
-        else if(isSel&&rp&&!isReal) cls='btn-d';
+        else if(isSel&&rpHas&&!isReal) cls='btn-d';
         else if(isSel) cls='btn-p';
         const b=el('button',{class:`btn btn-sm ${cls}`,onclick:()=>pickTeam(team)},
           (FLAGS[team]||'')+' '+team+(isSel&&isReal?' ·'+(ph.pts||10)+'p':''));
@@ -3161,7 +3162,7 @@ function buildKoUI(main){
       if(!team) return;
       const isSel3=thirdSel.find(x=>x.team===team);
       const isReal3=rp3?.team_ids?.includes(team);
-      const cls3=isSel3&&isReal3?'btn-s':isSel3&&rp3&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
+      const cls3=isSel3&&isReal3?'btn-s':isSel3&&(rp3?.team_ids?.length>0)&&!isReal3?'btn-d':isSel3?'btn-p':'btn-o';
       const pts3 = rp3?.team_ids?.length>0 ? (isReal3 ? ' ·15p' : (isSel3 ? ' ·0p' : '')) : '';
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
         onclick:()=>{
@@ -3638,19 +3639,19 @@ function buildKoMatchesUI(main){
   defBar.appendChild(applyBtn);
   main.appendChild(defBar);
 
-  // Jogos da fase atual — só mostrar se tiver times definidos
+  // Jogos da fase atual — mostrar se tiver times OU se tiver o bracket mapeado
   const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
   const phaseMatches=[];
   for(let n=mn;n<=mx;n++){
     const m=koMatchReal[n];
-    if(m && m.team1_name && m.team2_name) phaseMatches.push(m);
+    if(m) phaseMatches.push(m);
+    else {
+      // Criar entrada placeholder com label do chaveamento
+      phaseMatches.push({match_number:n,team1_name:null,team2_name:null,is_finished:false,real_score1:null,real_score2:null,_placeholder:true});
+    }
   }
 
-  if(phaseMatches.length===0){
-    main.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Nenhum jogo cadastrado nesta fase ainda.'));
-    updateKoMatchSaveBar();
-    return;
-  }
+  // Sempre mostrar — mesmo sem times, mostrar chaveamento com labels
 
   // Botão limpar resultados da fase (participante vê mas só admin pode usar)
   // não incluir aqui — só admin limpa
