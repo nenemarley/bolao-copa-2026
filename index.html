@@ -3611,15 +3611,17 @@ function buildKoMatchesUI(main){
   main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.82rem',marginBottom:'1rem'}},
     'Placar exato=10pts · Resultado+1 gol=7pts · Só resultado=5pts · 1 gol certo=2pts'));
 
+  const hasAnyTeams = phaseMatches.some(m=>m.team1_name && m.team2_name);
+
   // Placar padrão
   if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
   const defBar=el('div',{style:{background:'var(--dk3)',border:'1px solid var(--bdr)',borderRadius:'10px',padding:'.75rem',marginBottom:'1rem',display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}});
   defBar.appendChild(el('span',{style:{fontSize:'.75rem',color:'var(--gold)',fontWeight:'600'}},'🎯 Placar padrão:'));
   const _koDefDirty = ()=>{}; // placar padrão não marca dirty
-  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }, false, _koDefDirty));
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s1, v=>{ window._koMatchDef.s1=v; }, !hasAnyTeams, _koDefDirty));
   defBar.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
-  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }, false, _koDefDirty));
-  const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto'},onclick:async()=>{
+  defBar.appendChild(makeMatchCtrl(window._koMatchDef.s2, v=>{ window._koMatchDef.s2=v; }, !hasAnyTeams, _koDefDirty));
+  const applyBtn=el('button',{class:'btn btn-p btn-sm',style:{marginLeft:'auto',opacity:hasAnyTeams?'1':'0.4'},disabled:!hasAnyTeams,onclick:async()=>{
     const ds1=window._koMatchDef.s1, ds2=window._koMatchDef.s2;
     if(ds1===null||ds2===null){showToast('Defina o placar padrão primeiro','err');return;}
     const [mn,mx]=KO_PHASE_RANGES[koMatchPhase]||[73,104];
@@ -3658,8 +3660,13 @@ function buildKoMatchesUI(main){
 
   phaseMatches.forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
-    const v1=p.s1??null, v2=p.s2??null;
-    const canBetNow=canBetKoMatch(m.match_number);
+    // Considerar 0 como "sem palpite" se o jogo ainda não tem times definidos ou se foi zerado
+    const hasTeams = !!(m.team1_name && m.team2_name);
+    // v1/v2: null = não palpitou ainda (mostra —)
+    // Se predicted_score1=0 e não tem times, tratar como não palpitado
+    const v1 = (!hasTeams && p.s1===0) ? null : (p.s1??null);
+    const v2 = (!hasTeams && p.s2===0) ? null : (p.s2??null);
+    const canBetNow=canBetKoMatch(m.match_number) && hasTeams;
     const hasResult=m.is_finished;
     const pts=p.pts||0;
     const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
