@@ -1544,7 +1544,13 @@ function renderGroupSelector(main, onSelect) {
     const isAct = CURRENT_BOLAO?.id===b.id;
     const pill = el('button',{
       class:'group-pill'+(isAct?' active':''),
-      onclick:()=>{ CURRENT_BOLAO=b; if(!tabEnabled(STATE.page)) setState({page:'dashboard'}); else onSelect(); }
+      onclick:()=>{ 
+        CURRENT_BOLAO=b; 
+        // Forçar re-render da navbar e página atual
+        const currentPage = STATE.page;
+        const targetPage = tabEnabled(currentPage) ? currentPage : 'dashboard';
+        setState({page: targetPage});
+      }
     }, b.name);
     if(isAct){ pill.style.background='var(--gold)'; pill.style.color='#0A0F1E'; pill.style.borderColor='var(--gold)'; pill.style.fontWeight='700'; }
     bar.appendChild(pill);
