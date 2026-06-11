@@ -1938,12 +1938,15 @@ async function showUserPalpites(userId, userName) {
       const predMap={};
       (mp||[]).forEach(p=>predMap[p.match_number]=p);
 
-      // Filtrar só jogos cujo dia já passou (bloqueados)
-      const today2 = new Date(); today2.setHours(0,0,0,0);
+      // Filtrar jogos cujo palpite já está bloqueado (kickoff passou OU lock global ativo)
+      const now = new Date();
+      const lockActive = MATCHES_LOCK_START && new Date(MATCHES_LOCK_START) <= now;
       const visibleMatches = MATCHES.filter(m=>{
         const dateStr = MATCH_DATES?.[m.num];
         if(!dateStr) return false;
-        return new Date(dateStr) <= today2;
+        if(lockActive) return true; // lock global: todos os jogos visíveis
+        const kickoff = new Date(dateStr + ':00-03:00');
+        return kickoff <= now; // kickoff já passou
       }).sort((a,b)=>a.num-b.num);
 
       if(visibleMatches.length===0){
