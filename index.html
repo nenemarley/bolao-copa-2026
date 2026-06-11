@@ -1312,7 +1312,7 @@ async function loadProfile(u){
 
   if(MY_BOLAOS.length>0 && !CURRENT_BOLAO) CURRENT_BOLAO=MY_BOLAOS[0];
   console.log('[loadProfile] Bolão atual:', CURRENT_BOLAO?.name, '| Total bolões:', MY_BOLAOS.length);
-  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'rules'});
+  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
 }
 
 async function loadMyBolaos(uid){
@@ -1442,25 +1442,39 @@ function renderApp(){
       wrap.appendChild(el('div',{style:{background:bg,borderBottom:'1px solid '+border,padding:'6px 16px',textAlign:'center',fontSize:'.75rem',color:urgency,fontWeight:'600'}},msg+' · Prazo: '+GROUPS_DEADLINE));
     }
   }
-  // Banner jogos sem palpite hoje ou amanhã
-  if(STATE.user && STATE.profile){
-    const semPalpiteHoje = MATCHES.filter(m=>{
+  // Banner jogos sem palpite hoje ou amanhã — carrega do banco para garantir dados frescos
+  if(STATE.user && STATE.profile && CURRENT_BOLAO){
+    const jogosPrazo = MATCHES.filter(m=>{
       const d=daysUntil(MATCH_DATES[m.num]);
-      return (d===0||d===1) && !(matchPreds[m.num]?.s1!==undefined);
+      return d===0||d===1;
     });
-    if(semPalpiteHoje.length>0){
-      const temHoje=semPalpiteHoje.some(m=>daysUntil(MATCH_DATES[m.num])===0);
-      const corBanner=temHoje?'rgba(239,68,68,.08)':'rgba(245,158,11,.08)';
-      const corBorder=temHoje?'rgba(239,68,68,.3)':'rgba(245,158,11,.3)';
-      const corTxt=temHoje?'#FCA5A5':'#FCD34D';
-      const msgBanner=temHoje
-        ? '🚫 '+semPalpiteHoje.length+' jogo(s) hoje sem palpite!'
-        : '⚠️ '+semPalpiteHoje.length+' jogo(s) amanhã sem palpite — palpite agora!';
-      wrap.appendChild(el('div',{
-        style:{background:corBanner,borderBottom:'1px solid '+corBorder,
-               padding:'5px 16px',textAlign:'center',fontSize:'.74rem',color:corTxt,fontWeight:'600',cursor:'pointer'},
-        onclick:()=>setState({page:'matches'})
-      },msgBanner+' → Ir para 1ª Fase'));
+    if(jogosPrazo.length>0){
+      dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2').then(preds=>{
+        const predMap={};
+        (preds||[]).forEach(p=>{ predMap[p.match_number]=p; });
+        const semPalpiteHoje=jogosPrazo.filter(m=>{
+          const p=predMap[m.num];
+          return !p || p.predicted_score1===null || p.predicted_score1===undefined;
+        });
+        if(semPalpiteHoje.length>0){
+          const temHoje=semPalpiteHoje.some(m=>daysUntil(MATCH_DATES[m.num])===0);
+          const corBanner=temHoje?'rgba(239,68,68,.08)':'rgba(245,158,11,.08)';
+          const corBorder=temHoje?'rgba(239,68,68,.3)':'rgba(245,158,11,.3)';
+          const corTxt=temHoje?'#FCA5A5':'#FCD34D';
+          const msgBanner=temHoje
+            ? '🚫 '+semPalpiteHoje.length+' jogo(s) hoje sem palpite!'
+            : '⚠️ '+semPalpiteHoje.length+' jogo(s) amanhã sem palpite — palpite agora!';
+          const banner=el('div',{
+            style:{background:corBanner,borderBottom:'1px solid '+corBorder,
+                   padding:'5px 16px',textAlign:'center',fontSize:'.74rem',color:corTxt,fontWeight:'600',cursor:'pointer'},
+            onclick:()=>setState({page:'matches'})
+          },msgBanner+' → Ir para 1ª Fase');
+          // Inserir antes do header
+          const hdrEl=wrap.querySelector('.hdr');
+          if(hdrEl) wrap.insertBefore(banner,hdrEl);
+          else wrap.prepend(banner);
+        }
+      }).catch(()=>{});
     }
   }
   // Header
