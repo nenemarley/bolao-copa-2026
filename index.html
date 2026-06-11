@@ -4522,27 +4522,48 @@ async function saveAllAdminScores(){
   const scores=window._adminScores||{};
   const entries=Object.entries(scores).filter(([,v])=>v.s1!==undefined&&v.s2!==undefined&&v.s1!==null&&v.s2!==null);
   if(entries.length===0){ showToast('Nenhum placar para salvar','err'); return; }
-  let saved=0;
+  const btn=document.querySelector('#admin-savebar .btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Salvando...'; }
+  let saved=0, errs=[];
   for(const [numStr,v] of entries){
     const num=parseInt(numStr);
     const m=adminMatches[num]||MATCHES.find(x=>x.num===num);
     if(!m) continue;
     try{
       const t1=m.team1_name||m.t1; const t2=m.team2_name||m.t2; const grp=m.group_id||m.group;
-      await dbUpsert('group_matches',{match_number:num,real_score1:v.s1,real_score2:v.s2,is_finished:true,team1_name:t1,team2_name:t2,group_id:grp});
-      await recalcMatchPts(num, v.s1, v.s2);
+      // Salvar placar real
+      const {error:e1}=await SB.from('group_matches').upsert({match_number:num,real_score1:v.s1,real_score2:v.s2,is_finished:true,team1_name:t1,team2_name:t2,group_id:grp});
+      if(e1){ errs.push('J'+num+': '+e1.message); continue; }
+      // Recalcular pontos de todos os participantes
+      const preds = await dbQ('match_predictions',{match_number:num});
+      for(const p of preds){
+        const pts=calcPts(p.predicted_score1,p.predicted_score2,v.s1,v.s2);
+        if(p.points!==pts){
+          const {error:e2}=await SB.from('match_predictions').update({points:pts}).eq('user_id',p.user_id).eq('match_number',num).eq('bolao_id',p.bolao_id);
+          if(e2) errs.push('pts J'+num+' u:'+p.user_id.slice(-4)+': '+e2.message);
+        }
+      }
+      // Atualizar só em memória (sem reconstruir DOM)
       adminMatches[num]={...(adminMatches[num]||{}),match_number:num,team1_name:t1,team2_name:t2,group_id:grp,real_score1:v.s1,real_score2:v.s2,is_finished:true};
       saved++;
-    }catch(e){ showToast(e.message,'err'); }
+    }catch(e){ errs.push('J'+num+': '+e.message); }
   }
   window._adminScores={};
   adminSaveDirty=false;
-  showToast('✅ '+saved+' resultado(s) salvos!');
+  if(errs.length>0){
+    showToast('⚠️ '+saved+' salvos, erros: '+errs.join(' | '),'err');
+  } else {
+    showToast('✅ '+saved+' resultado(s) salvos!');
+  }
   updateAdminSaveBar();
-  // Recarregar admin usando referência global ao main
-  if(window._adminMain) buildAdminUI(window._adminMain);
+  // Reconstruir só o conteúdo da aba atual do admin SEM chamar setState
+  if(window._adminMain){
+    window._adminMain.innerHTML='';
+    buildAdminUI(window._adminMain);
+  }
 }
 function renderAdmin(main){
+  matchDirty=false; grpDirty=false; koDirty=false; koMatchDirty=false;
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
   Promise.all([
     dbQ('group_matches',{},'match_number,team1_name,team2_name,group_id,real_score1,real_score2,is_finished'),
@@ -4557,6 +4578,11 @@ function renderAdmin(main){
 }
 function buildAdminUI(main){
   window._adminMain = main; // guardar referência global
+  // Esconder savebers do participante enquanto no painel admin
+  ['savebar-matches','savebar-ko','savebar'].forEach(id=>{
+    const sb=document.getElementById(id);
+    if(sb) sb.style.display='none';
+  });
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
