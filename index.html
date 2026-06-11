@@ -1067,8 +1067,10 @@ function canBet(matchNum) {
   // Bloquear na hora exata do jogo (horário Brasília = UTC-3)
   const dateStr = MATCH_DATES[matchNum];
   if(!dateStr) return true;
-  const kickoff = new Date(dateStr + ':00-03:00'); // horário Brasília
-  return new Date() < kickoff;
+  // Bloquear 2h antes do kickoff (horário Brasília = UTC-3)
+  const kickoff = new Date(dateStr + ':00-03:00');
+  const lockTime = new Date(kickoff.getTime() - 2 * 60 * 60 * 1000);
+  return new Date() < lockTime;
 }
 
 function canBetPhase(phase) {
@@ -1946,7 +1948,8 @@ async function showUserPalpites(userId, userName) {
         if(!dateStr) return false;
         if(lockActive) return true; // lock global: todos os jogos visíveis
         const kickoff = new Date(dateStr + ':00-03:00');
-        return kickoff <= now; // kickoff já passou
+        const lockTime = new Date(kickoff.getTime() - 2 * 60 * 60 * 1000);
+        return lockTime <= now; // lock de 2h antes passou
       }).sort((a,b)=>a.num-b.num);
 
       if(visibleMatches.length===0){
