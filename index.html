@@ -4530,9 +4530,8 @@ async function saveAllAdminScores(){
     try{
       const t1=m.team1_name||m.t1; const t2=m.team2_name||m.t2; const grp=m.group_id||m.group;
       await dbUpsert('group_matches',{match_number:num,real_score1:v.s1,real_score2:v.s2,is_finished:true,team1_name:t1,team2_name:t2,group_id:grp});
-      const preds=await dbQ('match_predictions',{match_number:num});
-      if(preds.length>0) await recalcMatchPts(num, v.s1, v.s2);
-      adminMatches[num]={...adminMatches[num],real_score1:v.s1,real_score2:v.s2,is_finished:true};
+      await recalcMatchPts(num, v.s1, v.s2);
+      adminMatches[num]={...(adminMatches[num]||{}),match_number:num,team1_name:t1,team2_name:t2,group_id:grp,real_score1:v.s1,real_score2:v.s2,is_finished:true};
       saved++;
     }catch(e){ showToast(e.message,'err'); }
   }
@@ -4540,7 +4539,8 @@ async function saveAllAdminScores(){
   adminSaveDirty=false;
   showToast('✅ '+saved+' resultado(s) salvos!');
   updateAdminSaveBar();
-  buildAdminUI(document.getElementById('main')||document.querySelector('.main'));
+  // Recarregar admin usando referência global ao main
+  if(window._adminMain) buildAdminUI(window._adminMain);
 }
 function renderAdmin(main){
   main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
@@ -4556,6 +4556,7 @@ function renderAdmin(main){
   });
 }
 function buildAdminUI(main){
+  window._adminMain = main; // guardar referência global
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
