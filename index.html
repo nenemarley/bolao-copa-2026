@@ -1310,7 +1310,12 @@ async function loadProfile(u){
     }
   }
 
-  if(MY_BOLAOS.length>0 && !CURRENT_BOLAO) CURRENT_BOLAO=MY_BOLAOS[0];
+  if(MY_BOLAOS.length>0 && !CURRENT_BOLAO){
+    try{
+      const lastId = localStorage.getItem('last_bolao_id');
+      CURRENT_BOLAO = (lastId && MY_BOLAOS.find(b=>b.id===lastId)) || MY_BOLAOS[0];
+    }catch(e){ CURRENT_BOLAO = MY_BOLAOS[0]; }
+  }
   console.log('[loadProfile] Bolão atual:', CURRENT_BOLAO?.name, '| Total bolões:', MY_BOLAOS.length);
   setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
 }
@@ -1559,7 +1564,8 @@ function renderGroupSelector(main, onSelect) {
     const pill = el('button',{
       class:'group-pill'+(isAct?' active':''),
       onclick:()=>{ 
-        CURRENT_BOLAO=b; 
+        CURRENT_BOLAO=b;
+        try{ localStorage.setItem('last_bolao_id', b.id); }catch(e){}
         // Forçar re-render da navbar e página atual
         const currentPage = STATE.page;
         const targetPage = tabEnabled(currentPage) ? currentPage : 'dashboard';
@@ -2286,7 +2292,9 @@ function buildMatchesUI(main){
   grpTeams.forEach((t,i)=>{ if(i>0) grpInfo.appendChild(document.createTextNode(' · ')); grpInfo.appendChild(el('span',{},FLAGS[t]||'',t)); });
   main.appendChild(grpInfo);
 
-  MATCHES.filter(m=>m.group===activeGrp).forEach(m=>{
+  MATCHES.filter(m=>m.group===activeGrp)
+    .sort((a,b)=>(MATCH_DATES[a.num]||'').localeCompare(MATCH_DATES[b.num]||''))
+    .forEach(m=>{
     const p=matchPreds[m.num]||{}, r=realScores[m.num];
     const hasResult = r?.is_finished && r.real_score1!==undefined;
     const canBetNow = canBet(m.num);
