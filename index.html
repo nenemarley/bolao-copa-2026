@@ -1927,16 +1927,23 @@ async function showUserPalpites(userId, userName) {
       visibleMatches.forEach(m=>{
         const r=matchMap[m.num];
         const p=predMap[m.num];
-        if(!r||!p) return;
+        if(!p) return; // sem palpite, não mostrar
         const pts=p.points||0;
         const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
         const row=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--bdr)',gap:'8px'}});
-        row.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',minWidth:'60px'}},m.team1+' × '+m.team2));
+        // Times — usar t1/t2 (propriedades corretas do MATCHES)
+        row.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',minWidth:'60px'}},(FLAGS[m.t1]||'')+' '+m.t1+' × '+m.t2+' '+(FLAGS[m.t2]||'')));
+        // Palpite
         const palpDiv=el('div',{style:{fontSize:'.85rem',color:'var(--gold)',fontWeight:'700'}},p.predicted_score1+' – '+p.predicted_score2);
         row.appendChild(palpDiv);
-        const realDiv=el('div',{style:{fontSize:'.78rem',color:'var(--muted)'}},r.real_score1+' – '+r.real_score2);
-        row.appendChild(realDiv);
-        row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
+        // Resultado real — só mostrar se tiver
+        const hasReal = r?.is_finished && r.real_score1!==null && r.real_score1!==undefined;
+        if(hasReal){
+          row.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)'}},r.real_score1+' – '+r.real_score2));
+          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
+        } else {
+          row.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',fontStyle:'italic'}},'Aguardando'));
+        }
         body.appendChild(row);
       });
 
