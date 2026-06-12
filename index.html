@@ -1915,17 +1915,12 @@ async function showEditNameModal(targetUserId, targetUserName, onSuccess) {
       }
       if(error) throw new Error(error.message);
       if(isSelf) STATE.profile.display_name = newName;
-      // Atualizar STATE.profiles em memória também
       const p = STATE.profiles.find(p=>p.id===userId);
       if(p) p.display_name = newName;
       overlay.remove();
       showToast('✅ Nome atualizado: '+newName);
       if(onSuccess) onSuccess(newName);
-      else {
-        // Forçar reload completo para buscar perfis frescos do banco
-        renderApp();
-        setTimeout(()=>setState({page:'dashboard'}), 200);
-      }
+      else setTimeout(()=>location.reload(), 800);
     }catch(e){ errDiv.textContent='Erro: '+e.message; errDiv.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='💾 Salvar'; }
   }},'💾 Salvar');
   btns.appendChild(saveBtn);
