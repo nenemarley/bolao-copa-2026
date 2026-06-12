@@ -4591,7 +4591,7 @@ function buildAdminUI(main){
   });
   main.appendChild(tabs);
 
-  if(adminTab==='matches'){
+  if(adminTab==='jogos_admin'){
     const fetchBar = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem',alignItems:'center',flexWrap:'wrap'}});
     const phaseSelect = el('select',{class:'ps',style:{flex:'1',minWidth:'160px'}});
     [['groups','⚽ Fase de Grupos'],['round32','🔥 Rodada de 32'],['round16','⚔️ Oitavas'],['quarter','⚔️ Quartas'],['semi','⚔️ Semifinal'],['final','🏆 Final']].forEach(([v,l])=>{
@@ -4626,7 +4626,6 @@ function buildAdminUI(main){
       }
       showToast('✅ Placar '+ds1+'×'+ds2+' aplicado em '+saved+' jogos!');
       adminApplyBtn.textContent='Aplicar a todos'; adminApplyBtn.disabled=false;
-      adminSaveDirty=true; updateAdminSaveBar();
       buildAdminUI(main);
     }},'Aplicar a todos');
     defBar.appendChild(adminApplyBtn);
@@ -4663,19 +4662,18 @@ function buildAdminUI(main){
     grpTeams2.forEach((t,i)=>{ grpInfo2.appendChild(el('span',{},(FLAGS[t]||'')+' '+t)); if(i<grpTeams2.length-1) grpInfo2.appendChild(document.createTextNode(' · ')); });
     main.appendChild(grpInfo2);
 
-    // Mapa de placares editados (em memória)
-    if(!window._adminScores) window._adminScores={};
+    const grpMatches=MATCHES.filter(m=>m.group===adminGrp)
+      .sort((a,b)=>(MATCH_DATES[a.num]||'').localeCompare(MATCH_DATES[b.num]||''));
 
-    const grpMatches=MATCHES.filter(m=>m.group===adminGrp);
     grpMatches.forEach(m=>{
       const real=adminMatches[m.num]||{};
-      const hasSc = real.is_finished && real.real_score1!==undefined;
-      const initS1 = window._adminScores[m.num]?.s1 ?? (hasSc ? real.real_score1 : null);
-      const initS2 = window._adminScores[m.num]?.s2 ?? (hasSc ? real.real_score2 : null);
+      const hasSc = real.is_finished && real.real_score1!==undefined && real.real_score1!==null;
+      let curS1 = hasSc ? real.real_score1 : null;
+      let curS2 = hasSc ? real.real_score2 : null;
 
       const mc=el('div',{class:'mc'+(hasSc?' fin':''),style:{display:'block',padding:'.875rem',marginBottom:'8px'}});
 
-      // Data do jogo — acima dos times, centralizada
+      // Data/hora
       const dateStr3 = MATCH_DATES[m.num];
       if(dateStr3){
         const d3 = new Date(dateStr3+':00-03:00');
@@ -4686,31 +4684,56 @@ function buildAdminUI(main){
 
       // Times
       const tr=el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.5rem'}});
-      tr.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t1]||'🏳'));
+      tr.appendChild(el('span',{},FLAGS[m.t1]||'🏳'));
       tr.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',flex:'1'}},m.t1));
       tr.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700'}},'×'));
       tr.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',flex:'1',textAlign:'right'}},m.t2));
-      tr.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t2]||'🏳'));
+      tr.appendChild(el('span',{},FLAGS[m.t2]||'🏳'));
       mc.appendChild(tr);
 
-      // Controles +/-
-      const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}});
-      scoreRow.appendChild(makeMatchCtrl(initS1, v=>{
-        if(!window._adminScores[m.num]) window._adminScores[m.num]={};
-        window._adminScores[m.num].s1=v;
-        adminSaveDirty=true; updateAdminSaveBar();
-      }));
+      // Controles +/- com estado LOCAL (não global)
+      const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',marginBottom:'.5rem'}});
+      scoreRow.appendChild(makeMatchCtrl(curS1, v=>{ curS1=v; }));
       scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 4px'}},'×'));
-      scoreRow.appendChild(makeMatchCtrl(initS2, v=>{
-        if(!window._adminScores[m.num]) window._adminScores[m.num]={};
-        window._adminScores[m.num].s2=v;
-        adminSaveDirty=true; updateAdminSaveBar();
-      }));
+      scoreRow.appendChild(makeMatchCtrl(curS2, v=>{ curS2=v; }));
       mc.appendChild(scoreRow);
+
+      // Botão salvar DENTRO do card
+      const saveBtn=el('button',{class:'btn btn-s btn-sm',style:{width:'100%',marginTop:'4px',fontSize:'.78rem'},onclick:async()=>{
+        if(curS1===null||curS2===null){ showToast('Informe o placar primeiro','err'); return; }
+        saveBtn.textContent='⏳ Salvando...'; saveBtn.disabled=true;
+        try{
+          const {error:e1}=await SB.from('group_matches').upsert({
+            match_number:m.num,real_score1:curS1,real_score2:curS2,
+            is_finished:true,team1_name:m.t1,team2_name:m.t2,group_id:m.group
+          });
+          if(e1) throw new Error(e1.message);
+          // Recalcular pontos de todos
+          const preds=await dbQ('match_predictions',{match_number:m.num});
+          for(const p of preds){
+            const pts=calcPts(p.predicted_score1,p.predicted_score2,curS1,curS2);
+            if(p.points!==pts){
+              const {error:e2}=await SB.from('match_predictions').update({points:pts})
+                .eq('user_id',p.user_id).eq('match_number',m.num).eq('bolao_id',p.bolao_id);
+              if(e2) console.warn('pts error:',e2.message);
+            }
+          }
+          adminMatches[m.num]={...(adminMatches[m.num]||{}),
+            match_number:m.num,team1_name:m.t1,team2_name:m.t2,group_id:m.group,
+            real_score1:curS1,real_score2:curS2,is_finished:true};
+          mc.className='mc fin';
+          saveBtn.textContent='✅ Salvo!';
+          showToast('✅ J'+m.num+' ('+m.t1+' '+curS1+'×'+curS2+' '+m.t2+') salvo!');
+          setTimeout(()=>{ saveBtn.textContent='💾 Salvar resultado'; saveBtn.disabled=false; }, 2000);
+        }catch(e){
+          showToast('❌ Erro: '+e.message,'err');
+          saveBtn.textContent='💾 Salvar resultado'; saveBtn.disabled=false;
+        }
+      }},'💾 Salvar resultado');
+      mc.appendChild(saveBtn);
       main.appendChild(mc);
     });
 
-    updateAdminSaveBar();
   }
 
   if(adminTab==='standings'){
