@@ -1069,7 +1069,7 @@ function canBet(matchNum) {
   if(!dateStr) return true;
   // Bloquear 2h antes do kickoff (horário Brasília = UTC-3)
   const kickoff = new Date(dateStr + ':00-03:00');
-  const lockTime = new Date(kickoff.getTime() - 2 * 60 * 60 * 1000);
+  const lockTime = new Date(kickoff.getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
   return new Date() < lockTime;
 }
 
@@ -1291,6 +1291,8 @@ async function loadProfile(u){
     const srRow   = (cfgRows||[]).find(r=>r.phase==='second_round_date');
     if(lockRow?.team_ids?.[0]) MATCHES_LOCK_START = lockRow.team_ids[0];
     if(srRow?.team_ids?.[0])   SECOND_ROUND_DATE  = srRow.team_ids[0];
+    const lockMinRow = (cfgRows||[]).find(r=>r.phase==='lock_minutes_before');
+    if(lockMinRow?.team_ids?.[0]) LOCK_MINUTES_BEFORE = parseInt(lockMinRow.team_ids[0])||30;
     console.log('[loadProfile] Lock:', MATCHES_LOCK_START, '| 2ªRodada:', SECOND_ROUND_DATE);
   } catch(e) { console.warn('Erro ao carregar configs:', e); }
 
@@ -1948,8 +1950,8 @@ async function showUserPalpites(userId, userName) {
         if(!dateStr) return false;
         if(lockActive) return true; // lock global: todos os jogos visíveis
         const kickoff = new Date(dateStr + ':00-03:00');
-        const lockTime = new Date(kickoff.getTime() - 2 * 60 * 60 * 1000);
-        return lockTime <= now; // lock de 2h antes passou
+        const lockTime = new Date(kickoff.getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
+        return lockTime <= now; // lock passou
       }).sort((a,b)=>a.num-b.num);
 
       if(visibleMatches.length===0){
@@ -5547,7 +5549,25 @@ function buildAdminUI(main){
     }
     cfgCard.appendChild(statusDiv);
 
-    // Botão Recalcular Tudo — na Config para fácil acesso
+    // Minutos de bloqueio antes do jogo
+    cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'⏱️ Bloqueio antes do início do jogo'));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'Quantos minutos antes do kickoff os palpites de placar são bloqueados. Padrão: 30 min.'));
+    const lockMinWrap=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}});
+    const lockMinInput=el('input',{type:'number',class:'fi',style:{width:'90px',textAlign:'center'},min:'0',max:'1440',value:String(LOCK_MINUTES_BEFORE)});
+    lockMinWrap.appendChild(lockMinInput);
+    lockMinWrap.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'minutos antes do jogo'));
+    cfgCard.appendChild(lockMinWrap);
+    const lockMinSave=el('button',{class:'btn btn-s',style:{marginTop:'4px'},onclick:async()=>{
+      const val=parseInt(lockMinInput.value);
+      if(isNaN(val)||val<0||val>1440){ showToast('Valor inválido (0-1440 min)','err'); return; }
+      try{
+        await dbUpsert('real_knockouts',{phase:'lock_minutes_before',team_ids:[String(val)]});
+        LOCK_MINUTES_BEFORE=val;
+        showToast('✅ Bloqueio configurado: '+val+' min antes do jogo');
+      }catch(e){ showToast('Erro: '+e.message,'err'); }
+    }},'💾 Salvar');
+    cfgCard.appendChild(lockMinSave);
     cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.5rem'}},'🔄 Recalcular todas as pontuações'));
     cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.5rem'}},'Atualiza jogos, grupos, 3ºs, fases e artilheiro de todos os participantes com as regras atuais.'));
