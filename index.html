@@ -4496,7 +4496,7 @@ async function syncAdminKoWithStandings(changedGroup){
 }
 
 // ── Admin ──────────────────────────────────────────────────────────────────
-let adminTab='matches', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
+let adminTab='jogos_admin', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
 let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
 
 // canBetGroups definida acima (linha ~406) — usa SECOND_ROUND_DATE
@@ -4586,7 +4586,7 @@ function buildAdminUI(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'🔧 Painel Administrativo'));
   const tabs=el('div',{class:'tabs'});
-  [['matches','⚽ 1ª Fase'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
+  [['jogos_admin','⚽ Jogos Grupos'],['standings','📊 Grupos'],['thirds','🥉 8 Melhores 3ºs'],['knockout','🔥 Eliminat.'],['ko_matches','⚔️ Jogos Elim.'],['scorer','🏅 Artilheiro'],['config','⚙️ Config'],['test','🧪 Teste']].forEach(([k,l])=>{
     tabs.appendChild(el('button',{class:`tb${adminTab===k?' act':''}`,style:{whiteSpace:'nowrap',flexShrink:'0'},onclick:()=>{ adminTab=k; buildAdminUI(main); }},l));
   });
   main.appendChild(tabs);
