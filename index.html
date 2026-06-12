@@ -1536,6 +1536,7 @@ function renderApp(){
     {key:'bolaos',    label:'🎯 Meus Bolões'},
     {key:'dashboard', label:'🏆 Ranking'},
     ...(tabEnabled('matches')    ? [{key:'matches',   label:'⚽ 1ª Fase'}]     : []),
+    ...(tabEnabled('matches')    ? [{key:'jogos',     label:'📅 Jogos'}]       : []),
     ...(tabEnabled('standings')  ? [{key:'standings', label:'📊 Grupos'}]      : []),
     ...(tabEnabled('knockout')   ? [{key:'knockout',  label:'🔥 Eliminat.'}]   : []),
     ...(tabEnabled('ko_matches') ? [{key:'ko_matches',label:'⚔️ Jogos Elim.'}] : []),
@@ -1568,6 +1569,7 @@ function renderApp(){
   if(page==='bolaos') renderBolaos(main);
   else if(page==='dashboard') renderDashboard(main);
   else if(page==='matches') renderMatches(main);
+  else if(page==='jogos')   renderJogos(main);
   else if(page==='standings') renderStandings(main);
   else if(page==='knockout') renderKnockout(main);
   else if(page==='ko_matches') renderKoMatches(main);
@@ -2519,6 +2521,357 @@ async function saveMatches(){
     setState({page:'matches'});
   }
   catch(e){ showToast(e.message,'err'); }
+}
+
+// ── Aba Jogos (cronológica) ────────────────────────────────────────────────
+let jogosSubTab = 'proximos'; // 'proximos' | 'finalizados'
+
+function renderJogos(main) {
+  const v = PAGE_VERSION;
+  main.innerHTML = '';
+  main.appendChild(el('div',{class:'ch'},'📅 Jogos — Visão Cronológica'));
+
+  if(!CURRENT_BOLAO){
+    const w=el('div',{style:{background:'rgba(255,215,0,.08)',border:'1px solid rgba(255,215,0,.3)',borderRadius:'8px',padding:'1.25rem',textAlign:'center',marginTop:'1rem'}});
+    w.appendChild(el('div',{style:{fontSize:'1.5rem',marginBottom:'.5rem'}},'🎯'));
+    w.appendChild(el('div',{style:{fontWeight:'600',marginBottom:'.5rem'}},'Selecione um bolão primeiro'));
+    w.appendChild(el('button',{class:'btn btn-p',onclick:()=>setState({page:'bolaos'})},'Ir para Meus Bolões'));
+    main.appendChild(w);
+    return;
+  }
+
+  main.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+
+  Promise.all([
+    dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points'),
+    dbQ('group_matches',{},'match_number,real_score1,real_score2,is_finished'),
+  ]).then(([mp,rm])=>{
+    if(PAGE_VERSION !== v) return;
+
+    // Reusar matchPreds e realScores globais para compatibilidade com saveMatches
+    matchPreds = {};
+    (mp||[]).forEach(p=>{ matchPreds[p.match_number]={s1:p.predicted_score1,s2:p.predicted_score2,pts:p.points}; });
+    realScores = {};
+    (rm||[]).forEach(m=>{ realScores[m.match_number]=m; });
+    matchDirty = false;
+
+    buildJogosUI(main);
+  }).catch(e=>{ if(e.message!=='timeout'&&PAGE_VERSION===v) console.error('jogos:',e); });
+}
+
+function buildJogosUI(main) {
+  main.innerHTML = '';
+
+  // Sub-abas
+  const subRow = el('div',{style:{display:'flex',gap:'8px',marginBottom:'1rem'}});
+  ['proximos','finalizados'].forEach(tab=>{
+    const label = tab==='proximos' ? '⏳ Próximos Jogos' : '✅ Finalizados';
+    const isAct = jogosSubTab === tab;
+    subRow.appendChild(el('button',{
+      class: 'gb-btn'+(isAct?' active':''),
+      style:{flex:'1',padding:'.5rem',borderRadius:'8px',fontWeight:isAct?'700':'400'},
+      onclick:()=>{ jogosSubTab=tab; buildJogosUI(main); }
+    },label));
+  });
+  main.appendChild(subRow);
+
+  // Todos os jogos da 1ª fase — proximos: mais próximo primeiro; finalizados: mais recente primeiro
+  const allMatchesAsc  = MATCHES.slice().sort((a,b)=>(MATCH_DATES[a.num]||'').localeCompare(MATCH_DATES[b.num]||''));
+  const allMatchesDesc = MATCHES.slice().sort((a,b)=>(MATCH_DATES[b.num]||'').localeCompare(MATCH_DATES[a.num]||''));
+
+  if(jogosSubTab === 'proximos') {
+    // Próximos: não finalizados, do mais próximo ao mais distante
+    const proximos = allMatchesAsc.filter(m => {
+      const r = realScores[m.num];
+      return !r?.is_finished;
+    });
+
+    if(proximos.length === 0){
+      main.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:'.9rem'}},'Nenhum jogo pendente!'));
+      return;
+    }
+
+    // Alerta de jogos sem palpite próximos
+    const semPalpite = proximos.filter(m=>{
+      const d=daysUntil(MATCH_DATES[m.num]);
+      return matchPreds[m.num]?.s1===undefined && d>=0 && d<=1;
+    });
+    if(semPalpite.length>0){
+      const isToday=semPalpite.some(m=>daysUntil(MATCH_DATES[m.num])===0);
+      const alertDiv=el('div',{style:{background:isToday?'rgba(239,68,68,.1)':'rgba(245,158,11,.1)',border:'1px solid '+(isToday?'rgba(239,68,68,.3)':'rgba(245,158,11,.3)'),borderRadius:'10px',padding:'.75rem',marginBottom:'1rem'}});
+      alertDiv.appendChild(el('div',{style:{fontWeight:'700',fontSize:'.85rem',color:isToday?'#FCA5A5':'#FCD34D'}},
+        (isToday?'🚫':'⚠️')+' '+semPalpite.length+' jogo(s) '+(isToday?'HOJE':'amanhã')+' sem palpite!'));
+      alertDiv.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.75rem',marginTop:'2px'}},
+        isToday?'Prazo encerrado para esses jogos.':'Palpite agora antes que bloqueie!'));
+      main.appendChild(alertDiv);
+    }
+
+    proximos.forEach(m=>{ appendMatchCard(main, m, false); });
+    updateSaveBarJogos();
+
+  } else {
+    // Finalizados: com resultado real, do mais RECENTE ao mais antigo
+    const finalizados = allMatchesDesc.filter(m=>{
+      const r=realScores[m.num];
+      return r?.is_finished && r.real_score1!==undefined;
+    });
+
+    if(finalizados.length === 0){
+      main.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:'.9rem'}},'Nenhum jogo finalizado ainda.'));
+      return;
+    }
+
+    finalizados.forEach(m=>{ appendMatchCard(main, m, true); });
+  }
+}
+
+function appendMatchCard(main, m, forceFinalized) {
+  const p = matchPreds[m.num]||{};
+  const r = realScores[m.num];
+  const hasResult = r?.is_finished && r.real_score1!==undefined;
+  const canBetNow = !forceFinalized && canBet(m.num);
+  const locked = !canBetNow;
+  const hasPred = p.s1 !== undefined;
+
+  const pts = (hasResult && hasPred) ? calcPts(p.s1, p.s2||0, r.real_score1, r.real_score2) : 0;
+  const ptsCls = pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
+
+  // Label de data
+  const dateStr2 = MATCH_DATES[m.num];
+  const dateLabel = dateStr2 ? (()=>{
+    const dt = new Date(dateStr2+':00-03:00');
+    return dt.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})+' · '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  })() : '';
+
+  // Badge de grupo acima do card
+  const grpBadge = el('div',{style:{fontSize:'.68rem',color:'var(--gold)',fontWeight:'700',marginBottom:'2px',marginTop:'4px',letterSpacing:'.03em'}},
+    'GRUPO '+m.group+' — Jogo #'+m.num);
+  main.appendChild(grpBadge);
+
+  const mc = el('div',{class:'mc'+(hasResult?' fin':'')+(locked&&!hasResult?' locked':'')});
+
+  // Data
+  if(dateLabel) mc.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},dateLabel));
+
+  // Times
+  const teamsRow = el('div',{style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'.4rem'}});
+  teamsRow.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t1]||'🏳'));
+  teamsRow.appendChild(el('span',{style:{fontSize:'.72rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},m.t1));
+  teamsRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:'0'}},' × '));
+  teamsRow.appendChild(el('span',{style:{fontSize:'.72rem',fontWeight:'600',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}},m.t2));
+  teamsRow.appendChild(el('span',{style:{fontSize:'.95rem'}},FLAGS[m.t2]||'🏳'));
+  mc.appendChild(teamsRow);
+
+  // Placar / controles
+  if(canBetNow) {
+    const v1=hasPred?p.s1:null, v2=hasPred?p.s2:null;
+    const scoreRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px',marginBottom:'.3rem'}});
+    scoreRow.appendChild(makeMatchCtrl(v1, v=>{ matchPreds[m.num]={...(matchPreds[m.num]||{}),s1:v,s2:matchPreds[m.num]?.s2??0}; }, false, ()=>{ matchDirty=true; updateSaveBarJogos(); }));
+    scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700',fontSize:'.9rem',margin:'0 3px'}},'×'));
+    scoreRow.appendChild(makeMatchCtrl(v2, v=>{ matchPreds[m.num]={...(matchPreds[m.num]||{}),s2:v,s1:matchPreds[m.num]?.s1??0}; }, false, ()=>{ matchDirty=true; updateSaveBarJogos(); }));
+    mc.appendChild(scoreRow);
+  } else {
+    const lockRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',marginBottom:'.3rem'}});
+    if(hasResult){
+      lockRow.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.3rem',color:'var(--gold)'}},r.real_score1+' — '+r.real_score2));
+    } else {
+      lockRow.appendChild(el('span',{style:{fontSize:'.8rem',color:'var(--muted)'}},'🔒 Prazo encerrado'));
+    }
+    mc.appendChild(lockRow);
+  }
+
+  // Meu palpite (quando bloqueado ou finalizado)
+  if(locked) {
+    // Clicável se tem resultado (finalizados) OU se está bloqueado sem resultado (em andamento)
+    const canShowPopup = hasResult || (!hasResult && locked);
+    const sep = el('div',{style:{borderTop:'1px solid rgba(45,55,72,.5)',marginTop:'.3rem',paddingTop:'.3rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'6px',flexWrap:'wrap',cursor:'pointer'},
+      onclick: ()=>showMatchPalpitesPopup(m, r, hasResult),
+      title: 'Clique para ver palpites de todos'
+    });
+    const leftDiv = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}});
+    leftDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'Meu palpite:'));
+    if(hasPred){
+      leftDiv.appendChild(el('span',{style:{fontSize:'.75rem',color:'#94A3B8',fontWeight:'600'}},p.s1+' × '+p.s2));
+      if(hasResult) leftDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem'}},pts+'pts'));
+    } else {
+      leftDiv.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)'}},'Sem palpite'));
+      if(hasResult) leftDiv.appendChild(el('span',{class:'pp p0',style:{fontSize:'.65rem'}},'0pts'));
+    }
+    sep.appendChild(leftDiv);
+    sep.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)',flexShrink:'0'}},hasResult?'👥 ver todos':'👥 ver palpites'));
+    mc.appendChild(sep);
+  }
+
+  main.appendChild(mc);
+}
+
+async function showMatchPalpitesPopup(m, r, hasResult=false) {
+  document.getElementById('match-palpites-popup')?.remove();
+
+  const overlay = el('div',{id:'match-palpites-popup',style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.78)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div',{style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'88vh',
+    display:'flex',flexDirection:'column',overflow:'hidden',
+    position:'relative'
+  }});
+
+  // Header
+  const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
+    '👥 Palpites — Jogo #'+m.num+' · Grupo '+m.group));
+
+  // Times e resultado real (ou "em andamento")
+  const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},(FLAGS[m.t1]||'🏳')+' '+m.t1));
+  if(hasResult && r){
+    matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},r.real_score1+' — '+r.real_score2));
+  } else {
+    matchInfo.appendChild(el('span',{style:{fontSize:'.72rem',color:'#FCD34D',margin:'0 6px',fontWeight:'700'}},'🔴 EM ANDAMENTO'));
+  }
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},m.t2+' '+(FLAGS[m.t2]||'🏳')));
+  hdr.appendChild(matchInfo);
+
+  modal.appendChild(hdr);
+  const closeBtn = el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕');
+  modal.appendChild(closeBtn);
+
+  // Body com loading
+  const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
+  body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Buscar palpites de todos do bolão para esse jogo
+  try {
+    const bolaoId = CURRENT_BOLAO?.id;
+    const [members, allPreds] = await Promise.all([
+      dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+      SB.from('match_predictions')
+        .select('user_id,predicted_score1,predicted_score2,points')
+        .eq('match_number', m.num)
+        .then(res=>res.data||[])
+    ]);
+
+    const memberIds = new Set((members||[]).map(x=>x.user_id));
+    const predsDoJogo = allPreds.filter(p=>memberIds.has(p.user_id));
+
+    // Montar lista com todos os membros (inclusive quem não palpitou)
+    const rows = [];
+    memberIds.forEach(uid=>{
+      const pred = predsDoJogo.find(p=>p.user_id===uid);
+      const prof = STATE.profiles.find(p=>p.id===uid);
+      if(!prof) return;
+      const s1 = pred?.predicted_score1;
+      const s2 = pred?.predicted_score2;
+      const hasPred = s1 !== undefined && s1 !== null;
+      const pts = (hasPred && hasResult && r) ? calcPts(s1, s2||0, r.real_score1, r.real_score2) : null;
+      rows.push({uid, name:prof.display_name, s1, s2, pts, hasPred, isMe: uid===STATE.profile.id});
+    });
+
+    // Ordenar: se tem resultado, por pts desc; se não tem, alfabético. Sem palpite sempre no final.
+    rows.sort((a,b)=>{
+      if(!a.hasPred && !b.hasPred) return a.name.localeCompare(b.name);
+      if(!a.hasPred) return 1;
+      if(!b.hasPred) return -1;
+      if(hasResult) return (b.pts??0) - (a.pts??0);
+      return a.name.localeCompare(b.name);
+    });
+
+    body.innerHTML='';
+
+    if(rows.length===0){
+      body.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem'}},'Nenhum participante encontrado.'));
+      return;
+    }
+
+    // Legenda de pontuação
+    const leg = el('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'.75rem',fontSize:'.65rem',color:'var(--muted)'}});
+    [['p10','10pts=placar exato'],['p7','7pts=resultado+1 gol'],['p5','5pts=resultado'],['p2','2pts=1 gol certo'],['p0','0pts']].forEach(([cls,txt])=>{
+      const b=el('div',{style:{display:'flex',alignItems:'center',gap:'3px'}});
+      b.appendChild(el('span',{class:'pp '+cls,style:{fontSize:'.6rem'}},cls==='p0'?'0':cls.replace('p','')));
+      b.appendChild(el('span',{},txt));
+      leg.appendChild(b);
+    });
+    body.appendChild(leg);
+
+    rows.forEach((row,i)=>{
+      const ptsCls = row.pts===10?'p10':row.pts===7?'p7':row.pts===5?'p5':row.pts===2?'p2':'p0';
+      const medal = hasResult
+        ? (i===0&&row.hasPred?'🥇':i===1&&row.hasPred?'🥈':i===2&&row.hasPred?'🥉':null)
+        : null;
+
+      const card = el('div',{style:{
+        display:'flex',alignItems:'center',gap:'8px',
+        padding:'.55rem .75rem',
+        background: row.isMe ? 'rgba(255,215,0,.08)' : i%2===0?'var(--dk3)':'transparent',
+        border: row.isMe ? '1px solid rgba(255,215,0,.3)' : '1px solid transparent',
+        borderRadius:'8px',marginBottom:'4px'
+      }});
+
+      // Posição/medal
+      card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
+        medal || (i+1)+'º'));
+
+      // Nome
+      const nameDiv = el('div',{style:{flex:'1',minWidth:'0'}});
+      nameDiv.appendChild(el('div',{style:{
+        fontWeight: row.isMe?'700':'500',
+        color: row.isMe?'var(--gold)':'var(--txt)',
+        fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'
+      }},row.name+(row.isMe?' 👤':'')));
+      card.appendChild(nameDiv);
+
+      // Palpite
+      const predDiv = el('div',{style:{textAlign:'center',minWidth:'48px',flexShrink:'0'}});
+      if(row.hasPred){
+        predDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1rem',color:'#94A3B8',letterSpacing:'.05em'}},row.s1+' × '+row.s2));
+      } else {
+        predDiv.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',fontStyle:'italic'}},'—'));
+      }
+      card.appendChild(predDiv);
+
+      // Pontuação — só mostra se tem resultado
+      const ptsDiv = el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right'}});
+      if(row.pts !== null){
+        ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},row.pts+'pts'));
+      } else {
+        ptsDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'—'));
+      }
+      card.appendChild(ptsDiv);
+
+      body.appendChild(card);
+    });
+
+  } catch(e) {
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem',fontSize:'.85rem'}},'Erro ao carregar: '+e.message));
+  }
+}
+
+function updateSaveBarJogos(){
+  // Reusar a mesma savebar de matches para salvar
+  let sb=document.getElementById('savebar-matches');
+  if(!sb){ sb=el('div',{class:'sbar',id:'savebar-matches'}); document.body.appendChild(sb); }
+  const sbko=document.getElementById('savebar-ko');
+  if(sbko) sbko.style.display='none';
+  sb.innerHTML='';
+  if(!matchDirty){ sb.style.display='none'; return; }
+  sb.style.display='flex';
+  const inn=el('div',{class:'sbar-in'});
+  inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Alterações não salvas'));
+  inn.appendChild(el('button',{class:'btn btn-p',onclick:async()=>{
+    await saveMatches();
+    setState({page:'jogos'});
+  }},'💾 Salvar Palpites'));
+  sb.appendChild(inn);
 }
 
 // ── Group Standings ────────────────────────────────────────────────────────
