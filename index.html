@@ -1901,16 +1901,31 @@ async function showEditNameModal(targetUserId, targetUserName, onSuccess) {
     if(newName.length>40){ errDiv.textContent='Máximo 40 caracteres'; errDiv.style.display='block'; return; }
     saveBtn.disabled=true; saveBtn.textContent='⏳ Salvando...';
     try{
-      const {error} = await SB.from('profiles').update({display_name:newName}).eq('id',userId);
+      let error;
+      if(isSelf){
+        // Usuário editando o próprio nome — RLS permite (auth.uid() = id)
+        const res = await SB.from('profiles').update({display_name:newName}).eq('id',userId);
+        error = res.error;
+        console.log('[editName] self update:', res);
+      } else {
+        // Admin editando outro usuário — usa RPC SECURITY DEFINER para bypassar RLS
+        const res = await SB.rpc('admin_update_display_name',{target_user_id:userId, new_name:newName});
+        error = res.error;
+        console.log('[editName] rpc result:', JSON.stringify(res));
+      }
       if(error) throw new Error(error.message);
       if(isSelf) STATE.profile.display_name = newName;
-      // Atualizar STATE.profiles também
+      // Atualizar STATE.profiles em memória também
       const p = STATE.profiles.find(p=>p.id===userId);
       if(p) p.display_name = newName;
       overlay.remove();
       showToast('✅ Nome atualizado: '+newName);
       if(onSuccess) onSuccess(newName);
-      else renderApp(); // re-renderiza o header
+      else {
+        // Forçar reload completo para buscar perfis frescos do banco
+        renderApp();
+        setTimeout(()=>setState({page:'dashboard'}), 200);
+      }
     }catch(e){ errDiv.textContent='Erro: '+e.message; errDiv.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='💾 Salvar'; }
   }},'💾 Salvar');
   btns.appendChild(saveBtn);
