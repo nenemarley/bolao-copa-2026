@@ -46,7 +46,7 @@ body{background:var(--dk);color:var(--txt);font-family:'Inter',sans-serif;min-he
 .r1{color:var(--gold);font-weight:700}.r2{color:#C0C0C0;font-weight:700}.r3{color:#CD7F32;font-weight:700}
 .pbadge{background:#006847;color:#fff;padding:2px 8px;border-radius:9999px;font-size:.78rem;font-weight:700}
 .badge{background:var(--gold);color:var(--dk);padding:2px 6px;border-radius:9999px;font-size:.65rem;font-weight:700;margin-left:4px}
-.mc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:.875rem;display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:8px;transition:border-color .2s}
+.mc{background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:.875rem;display:flex;flex-direction:column;gap:0;margin-bottom:8px;transition:border-color .2s}
 .mc:hover{border-color:var(--gd)}.mc.fin{border-left:3px solid var(--ok)}
 .tm{display:flex;align-items:center;gap:6px;font-size:.82rem;font-weight:500}
 .tmr{justify-content:flex-end}
@@ -116,7 +116,7 @@ select option{background:var(--dk3)}
 .deadline-soon{color:#FCD34D;font-size:.7rem;margin-top:3px;text-align:center}
 .mc.locked{opacity:.7;border-left:3px solid #EF4444}
 button:disabled{opacity:.4;cursor:not-allowed}
-@media(max-width:768px){.hdr-in{gap:6px}.logo{font-size:1.2rem}.ui{font-size:.75rem;gap:5px}.btn-sm{padding:3px 7px;font-size:.72rem}.main{padding:1rem .75rem;padding-bottom:80px}.mc{grid-template-columns:1fr}.tmr{justify-content:flex-start}.si{justify-content:flex-start}.amr{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.rkt{font-size:.78rem}.rkt th,.rkt td{padding:7px 6px}.card{padding:1rem}.nb{padding:8px 10px;font-size:.75rem}}
+@media(max-width:768px){.hdr-in{gap:6px}.logo{font-size:1.2rem}.ui{font-size:.75rem;gap:5px}.btn-sm{padding:3px 7px;font-size:.72rem}.main{padding:1rem .75rem;padding-bottom:80px}.tmr{justify-content:flex-start}.si{justify-content:flex-start}.amr{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.rkt{font-size:.78rem}.rkt th,.rkt td{padding:7px 6px}.card{padding:1rem}.nb{padding:8px 10px;font-size:.75rem}}
 </style>
 </head>
 <body>
@@ -1057,6 +1057,7 @@ function daysUntilGroupsDeadline() {
 }
 
 let MATCHES_LOCK_START = null; // data configurável pelo admin para início do bloqueio
+let LOCK_MINUTES_BEFORE = 30;  // minutos antes do kickoff para bloquear palpite (padrão 30)
 
 function canBet(matchNum) {
   // Se data global configurada: bloquear todos os jogos a partir dela
@@ -1873,7 +1874,7 @@ async function loadBolaoMembers(bolaoId) {
 
 
 // ── Ver palpites de outro usuário ─────────────────────────────────────────
-async function showUserPalpites(userId, userName) {
+async function showUserPalpites(userId, userName, isMe=false) {
   // Remover popup anterior
   document.getElementById('user-palpites-modal')?.remove();
 
@@ -1892,7 +1893,7 @@ async function showUserPalpites(userId, userName) {
 
   // Header
   const hdr = el('div',{style:{padding:'1rem 1rem .5rem',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--bdr)'}});
-  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.2rem'}},'👤 Palpites de '+userName));
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.2rem'}},isMe?'🎯 Meus Palpites':'👤 Palpites de '+userName));
   hdr.appendChild(el('button',{class:'btn btn-sm',style:{padding:'4px 10px'},onclick:()=>overlay.remove()},'✕'));
   modal.appendChild(hdr);
 
@@ -2200,8 +2201,8 @@ function renderDashboard(main){
       const nameTd=el('td',{style:{whiteSpace:'nowrap'}});
       const isMe = r.prof.id===STATE.profile.id;
       const nameSpan=el('span',{
-        style:{fontWeight:isMe?'700':'400',color:isMe?'var(--gold)':'inherit',cursor:isMe?'default':'pointer',textDecoration:isMe?'none':'underline dotted'},
-        onclick: isMe ? null : ()=>showUserPalpites(r.prof.id, r.prof.display_name)
+        style:{fontWeight:isMe?'700':'400',color:isMe?'var(--gold)':'inherit',cursor:'pointer',textDecoration:'underline dotted'},
+        onclick: ()=>showUserPalpites(r.prof.id, r.prof.display_name, isMe)
       },r.prof.display_name);
       nameTd.appendChild(nameSpan);
       if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
