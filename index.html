@@ -1518,8 +1518,8 @@ function renderApp(){
   const hdrIn = el('div',{class:'hdr-in'});
   hdrIn.appendChild(el('div',{class:'logo'},'⚽ BOLÃO ',el('span',{},'COPA 2026')));
   const ui = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',fontSize:'.82rem'}});
-  const nameWrap = el('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:'1.2'}});
-  nameWrap.appendChild(el('span',{},STATE.profile.display_name));
+  const nameWrap = el('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:'1.2',cursor:'pointer'},onclick:showEditNameModal,title:'Clique para editar seu nome'});
+  nameWrap.appendChild(el('span',{style:{borderBottom:'1px dotted var(--muted)'}},STATE.profile.display_name));
   if(CURRENT_BOLAO) nameWrap.appendChild(el('span',{style:{fontSize:'.62rem',color:'var(--gold)',fontWeight:'600'}},'📍 '+CURRENT_BOLAO.name));
   ui.appendChild(nameWrap);
   if(STATE.profile.is_admin) ui.appendChild(el('span',{class:'badge'},'ADMIN'));
@@ -1872,6 +1872,54 @@ async function loadBolaoMembers(bolaoId) {
   } catch { return []; }
 }
 
+
+// ── Editar nome do próprio perfil ──────────────────────────────────────────
+async function showEditNameModal(targetUserId, targetUserName, onSuccess) {
+  // Se chamado sem args, edita o próprio perfil
+  const isSelf = !targetUserId || targetUserId === STATE.profile.id;
+  const userId = targetUserId || STATE.profile.id;
+  const currentName = targetUserName || STATE.profile.display_name;
+
+  document.getElementById('edit-name-modal')?.remove();
+  const overlay = el('div',{id:'edit-name-modal',style:{position:'fixed',top:'0',left:'0',right:'0',bottom:'0',background:'rgba(0,0,0,.75)',zIndex:'9999',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const box = el('div',{style:{background:'var(--dk2)',borderRadius:'12px',padding:'1.25rem',width:'100%',maxWidth:'360px'}});
+  box.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'1rem'}},'✏️ '+(isSelf?'Editar Meu Nome':'Editar Nome do Usuário')));
+  box.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'.75rem'}},'Nome atual: '+currentName));
+
+  const input = el('input',{type:'text',class:'fi',placeholder:'Seu nome no bolão',value:currentName,style:{marginBottom:'1rem'}});
+  box.appendChild(input);
+
+  const errDiv = el('div',{style:{color:'var(--err)',fontSize:'.8rem',marginBottom:'.5rem',display:'none'}});
+  box.appendChild(errDiv);
+
+  const btns = el('div',{style:{display:'flex',gap:'8px'}});
+  const saveBtn = el('button',{class:'btn btn-p',style:{flex:'1'},onclick:async()=>{
+    const newName = input.value.trim();
+    if(!newName){ errDiv.textContent='Digite um nome válido'; errDiv.style.display='block'; return; }
+    if(newName.length>40){ errDiv.textContent='Máximo 40 caracteres'; errDiv.style.display='block'; return; }
+    saveBtn.disabled=true; saveBtn.textContent='⏳ Salvando...';
+    try{
+      const {error} = await SB.from('profiles').update({display_name:newName}).eq('id',userId);
+      if(error) throw new Error(error.message);
+      if(isSelf) STATE.profile.display_name = newName;
+      // Atualizar STATE.profiles também
+      const p = STATE.profiles.find(p=>p.id===userId);
+      if(p) p.display_name = newName;
+      overlay.remove();
+      showToast('✅ Nome atualizado: '+newName);
+      if(onSuccess) onSuccess(newName);
+      else renderApp(); // re-renderiza o header
+    }catch(e){ errDiv.textContent='Erro: '+e.message; errDiv.style.display='block'; saveBtn.disabled=false; saveBtn.textContent='💾 Salvar'; }
+  }},'💾 Salvar');
+  btns.appendChild(saveBtn);
+  btns.appendChild(el('button',{class:'btn btn-o',onclick:()=>overlay.remove()},'Cancelar'));
+  box.appendChild(btns);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(()=>input.focus(),100);
+}
 
 // ── Ver palpites de outro usuário ─────────────────────────────────────────
 async function showUserPalpites(userId, userName, isMe=false) {
@@ -5877,6 +5925,62 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
     }},'🔄 Recalcular Tudo Agora');
     cfgCard.appendChild(recalcBtn);
     main.appendChild(cfgCard);
+
+    // ── GERENCIAR NOMES DOS PARTICIPANTES ─────────────────────────────────
+    const membersCard = el('div',{class:'card'});
+    membersCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.8rem',fontSize:'1.1rem'}},'👥 Nomes dos Participantes'));
+    membersCard.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'1rem'}},'Clique no ✏️ para corrigir o nome de exibição de qualquer participante (útil quando o sistema criou o perfil com o e-mail).'));
+
+    const listDiv = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+    listDiv.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.82rem'}},'⏳ Carregando...'));
+
+    function renderMemberList(memberProfiles){
+      listDiv.innerHTML='';
+      if(!memberProfiles||memberProfiles.length===0){
+        listDiv.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.82rem'}},'Nenhum participante encontrado.'));
+        return;
+      }
+      memberProfiles.sort((a,b)=>a.display_name.localeCompare(b.display_name)).forEach(p=>{
+        const row = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:'var(--dk3)',borderRadius:'8px',gap:'8px'}});
+        const nameDiv = el('div',{style:{flex:'1',minWidth:'0'}});
+        nameDiv.appendChild(el('div',{style:{fontWeight:'600',fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},p.display_name));
+        nameDiv.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(p.username||'')+(p.is_admin?' 👑 Admin':'')));
+        const editBtn = el('button',{class:'btn btn-sm btn-o',style:{flexShrink:'0'},onclick:()=>{
+          showEditNameModal(p.id, p.display_name, (newName)=>{
+            p.display_name = newName;
+            // Atualizar STATE.profiles também
+            const sp = STATE.profiles.find(x=>x.id===p.id);
+            if(sp) sp.display_name = newName;
+            renderMemberList(memberProfiles);
+          });
+        }},'✏️');
+        row.appendChild(nameDiv);
+        row.appendChild(editBtn);
+        listDiv.appendChild(row);
+      });
+    }
+
+    // Carregar membros do bolão atual de forma async
+    const _bolaoIdCfg = CURRENT_BOLAO?.id;
+    Promise.resolve().then(async()=>{
+      let memberProfiles = [];
+      try {
+        if(_bolaoIdCfg){
+          const members = await dbQ('bolao_members',{bolao_id:_bolaoIdCfg},'user_id');
+          const memberIds = new Set((members||[]).map(m=>m.user_id));
+          // Buscar perfis frescos para ter username
+          const freshP = await dbQ('profiles',{},'id,display_name,username,is_admin');
+          if(freshP) STATE.profiles = freshP;
+          memberProfiles = (STATE.profiles||[]).filter(p=>memberIds.has(p.id));
+        } else {
+          memberProfiles = STATE.profiles||[];
+        }
+      } catch(e){ memberProfiles = STATE.profiles||[]; }
+      renderMemberList(memberProfiles);
+    });
+
+    membersCard.appendChild(listDiv);
+    main.appendChild(membersCard);
   }
 
   if(adminTab==='scorer'){
