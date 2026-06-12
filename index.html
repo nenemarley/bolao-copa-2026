@@ -2757,6 +2757,7 @@ async function showMatchPalpitesPopup(m, r, hasResult=false) {
       SB.from('match_predictions')
         .select('user_id,predicted_score1,predicted_score2,points')
         .eq('match_number', m.num)
+        .eq('bolao_id', bolaoId)
         .then(res=>res.data||[])
     ]);
 
