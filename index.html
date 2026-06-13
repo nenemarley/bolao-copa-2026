@@ -1246,6 +1246,7 @@ async function dbDelete(table, filters={}){
 // ── Auth ───────────────────────────────────────────────────────────────────
 async function init(){
   const {data:{session}} = await SB.auth.getSession();
+  loadScorerList(); // carrega lista de artilheiros do banco (não bloqueia)
   if(session?.user) await loadProfile(session.user);
   else {
     // Check URL for invite code
@@ -2013,7 +2014,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
         const kickoff = new Date(dateStr + ':00-03:00');
         const lockTime = new Date(kickoff.getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
         return lockTime <= now; // lock passou
-      }).sort((a,b)=>a.num-b.num);
+      }).sort((a,b)=>(MATCH_DATES[b.num]||'').localeCompare(MATCH_DATES[a.num]||''));
 
       if(visibleMatches.length===0){
         body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Nenhum jogo realizado ainda.'));
@@ -3676,24 +3677,7 @@ function buildKoUI(main){
   // ── Artilheiro ──
   const scard=el('div',{class:'card',style:{marginBottom:'4rem'}});
   scard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.6rem'}},'⚽ Artilheiro'));
-    const SCORER_LIST = [
-    {name:'Cristiano Ronaldo',       flag:'🇵🇹'}, {name:'Darwin Núñez',             flag:'🇺🇾'},
-    {name:'Endrick',       flag:'🇧🇷'}, {name:'Ferran Torres',             flag:'🇪🇸'},
-    {name:'Gakpo',       flag:'🇳🇱'}, {name:'Haaland',             flag:'🇳🇴'},
-    {name:'Hakimi',       flag:'🇲🇦'}, {name:'Havertz',             flag:'🇩🇪'},
-    {name:'James Rodríguez',       flag:'🇨🇴'}, {name:'João Félix',             flag:'🇵🇹'},
-    {name:'Julián Álvarez',       flag:'🇦🇷'}, {name:'Kane',             flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
-    {name:'Lautaro Martínez',       flag:'🇦🇷'}, {name:'Luis Díaz',             flag:'🇨🇴'},
-    {name:'Lukaku',       flag:'🇧🇪'}, {name:'Marmoush',             flag:'🇪🇬'},
-    {name:'Mbappé',       flag:'🇫🇷'}, {name:'Memphis',             flag:'🇳🇱'},
-    {name:'Messi',       flag:'🇦🇷'}, {name:'Musiala',             flag:'🇩🇪'},
-    {name:'Neymar',       flag:'🇧🇷'}, {name:'Nico Williams',             flag:'🇪🇸'},
-    {name:'Olise',       flag:'🇫🇷'}, {name:'Raphinha',             flag:'🇧🇷'},
-    {name:'Romero',       flag:'🇵🇾'}, {name:'Saka',             flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
-    {name:'Salah',       flag:'🇪🇬'}, {name:'Son Heung-min',             flag:'🇰🇷'},
-    {name:'Vinícius Jr.',       flag:'🇧🇷'}, {name:'Wirtz',             flag:'🇩🇪'},
-    {name:'Yamal',       flag:'🇪🇸'},
-  ].sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+    const SCORER_LIST = SCORER_LIST_DYNAMIC.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
 
   const si=el('select',{class:'ps'});
   si.appendChild(el('option',{value:''},'— Selecione o artilheiro —'));
@@ -4912,6 +4896,38 @@ async function syncAdminKoWithStandings(changedGroup){
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 let adminTab='jogos_admin', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
+
+// Lista de artilheiros dinâmica (carregada do banco ou fallback hardcoded)
+let SCORER_LIST_DYNAMIC = [
+  {name:'Cristiano Ronaldo',flag:'🇵🇹'},{name:'Darwin Núñez',flag:'🇺🇾'},
+  {name:'Endrick',flag:'🇧🇷'},{name:'Ferran Torres',flag:'🇪🇸'},
+  {name:'Gakpo',flag:'🇳🇱'},{name:'Haaland',flag:'🇳🇴'},
+  {name:'Hakimi',flag:'🇲🇦'},{name:'Havertz',flag:'🇩🇪'},
+  {name:'James Rodríguez',flag:'🇨🇴'},{name:'João Félix',flag:'🇵🇹'},
+  {name:'Julián Álvarez',flag:'🇦🇷'},{name:'Kane',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
+  {name:'Lautaro Martínez',flag:'🇦🇷'},{name:'Luis Díaz',flag:'🇨🇴'},
+  {name:'Lukaku',flag:'🇧🇪'},{name:'Marmoush',flag:'🇪🇬'},
+  {name:'Mbappé',flag:'🇫🇷'},{name:'Memphis',flag:'🇳🇱'},
+  {name:'Messi',flag:'🇦🇷'},{name:'Musiala',flag:'🇩🇪'},
+  {name:'Neymar',flag:'🇧🇷'},{name:'Nico Williams',flag:'🇪🇸'},
+  {name:'Olise',flag:'🇫🇷'},{name:'Raphinha',flag:'🇧🇷'},
+  {name:'Romero',flag:'🇵🇾'},{name:'Saka',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
+  {name:'Salah',flag:'🇪🇬'},{name:'Son Heung-min',flag:'🇰🇷'},
+  {name:'Vinícius Jr.',flag:'🇧🇷'},{name:'Wirtz',flag:'🇩🇪'},
+  {name:'Yamal',flag:'🇪🇸'},
+];
+
+async function loadScorerList() {
+  try {
+    const row = await SB.from('real_knockouts').select('team_ids').eq('phase','scorer_list').single();
+    if(row.data?.team_ids?.length) {
+      SCORER_LIST_DYNAMIC = row.data.team_ids.map(s=>{
+        const idx = s.indexOf('|');
+        return idx>0 ? {flag:s.slice(0,idx), name:s.slice(idx+1)} : {flag:'🏳',name:s};
+      });
+    }
+  } catch(e){ /* usa fallback */ }
+}
 let SECOND_ROUND_DATE = null; // data de início da 2ª rodada (configurável pelo admin)
 
 // canBetGroups definida acima (linha ~406) — usa SECOND_ROUND_DATE
@@ -6345,6 +6361,67 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
 
     membersCard.appendChild(listDiv);
     main.appendChild(membersCard);
+
+    // ── GERENCIAR LISTA DE ARTILHEIROS ────────────────────────────────────
+    const scorerMgmtCard = el('div',{class:'card'});
+    scorerMgmtCard.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'.4rem',fontSize:'1.1rem'}},'⚽ Lista de Artilheiros'));
+    scorerMgmtCard.appendChild(el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'1rem'}},'Adicione ou remova jogadores da lista de artilheiros disponíveis para palpite. Cada linha: emoji bandeira + espaço + nome (ex: 🇧🇷 Vini Jr.)'));
+
+    // Lista atual
+    const scorerListDiv = el('div',{style:{display:'flex',flexDirection:'column',gap:'4px',marginBottom:'1rem'}});
+
+    let editableScorers = SCORER_LIST_DYNAMIC.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+
+    function renderScorerMgmt(){
+      scorerListDiv.innerHTML='';
+      editableScorers.sort((a,b)=>a.name.localeCompare(b.name,'pt')).forEach((s,i)=>{
+        const row = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'5px 8px',background:'var(--dk3)',borderRadius:'7px'}});
+        row.appendChild(el('span',{style:{fontSize:'1rem',flexShrink:'0'}},s.flag));
+        row.appendChild(el('span',{style:{flex:'1',fontSize:'.85rem'}},s.name));
+        row.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',padding:'2px 8px',fontSize:'.72rem'},
+          onclick:()=>{ editableScorers.splice(i,1); renderScorerMgmt(); }
+        },'✕'));
+        scorerListDiv.appendChild(row);
+      });
+    }
+    renderScorerMgmt();
+    scorerMgmtCard.appendChild(scorerListDiv);
+
+    // Adicionar novo jogador
+    const addRow = el('div',{style:{display:'flex',gap:'6px',marginBottom:'1rem',alignItems:'center'}});
+    const flagInput = el('input',{type:'text',class:'fi',placeholder:'🏳',style:{width:'52px',textAlign:'center',fontSize:'1.1rem'}});
+    const nameInput = el('input',{type:'text',class:'fi',placeholder:'Nome do jogador',style:{flex:'1'}});
+    const addBtn = el('button',{class:'btn btn-s',style:{flexShrink:'0'},onclick:()=>{
+      const flag = flagInput.value.trim()||'🏳';
+      const name = nameInput.value.trim();
+      if(!name){ showToast('Digite o nome do jogador','err'); return; }
+      if(editableScorers.find(s=>s.name.toLowerCase()===name.toLowerCase())){
+        showToast('Jogador já existe na lista','err'); return;
+      }
+      editableScorers.push({flag,name});
+      flagInput.value=''; nameInput.value='';
+      renderScorerMgmt();
+    }},'➕ Adicionar');
+    addRow.appendChild(flagInput);
+    addRow.appendChild(nameInput);
+    addRow.appendChild(addBtn);
+    scorerMgmtCard.appendChild(addRow);
+
+    // Salvar no banco
+    const saveScorersBtn = el('button',{class:'btn btn-p',style:{width:'100%'},onclick:async()=>{
+      saveScorersBtn.disabled=true; saveScorersBtn.textContent='⏳ Salvando...';
+      try{
+        const teamIds = editableScorers.map(s=>s.flag+'|'+s.name);
+        const {error} = await SB.from('real_knockouts')
+          .upsert({phase:'scorer_list', team_ids:teamIds},{onConflict:'phase'});
+        if(error) throw new Error(error.message);
+        SCORER_LIST_DYNAMIC = editableScorers.slice();
+        showToast('✅ Lista de artilheiros salva! ('+teamIds.length+' jogadores)');
+      }catch(e){ showToast('Erro: '+e.message,'err'); }
+      finally{ saveScorersBtn.disabled=false; saveScorersBtn.textContent='💾 Salvar Lista'; }
+    }},'💾 Salvar Lista');
+    scorerMgmtCard.appendChild(saveScorersBtn);
+    main.appendChild(scorerMgmtCard);
   }
 
   if(adminTab==='scorer'){
@@ -6360,39 +6437,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
       showToast('🗑️ Artilheiro limpo!'); buildAdminUI(main);
     }},'🗑️ Limpar'));
     card.appendChild(scorerHdr);
-        const SCORER_LIST_ADM = [
-      {name:'Cristiano Ronaldo',flag:'🇵🇹'},
-      {name:'Darwin Núñez',flag:'🇺🇾'},
-      {name:'Endrick',flag:'🇧🇷'},
-      {name:'Ferran Torres',flag:'🇪🇸'},
-      {name:'Gakpo',flag:'🇳🇱'},
-      {name:'Haaland',flag:'🇳🇴'},
-      {name:'Hakimi',flag:'🇲🇦'},
-      {name:'Havertz',flag:'🇩🇪'},
-      {name:'James Rodríguez',flag:'🇨🇴'},
-      {name:'João Félix',flag:'🇵🇹'},
-      {name:'Julián Álvarez',flag:'🇦🇷'},
-      {name:'Kane',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
-      {name:'Lautaro Martínez',flag:'🇦🇷'},
-      {name:'Luis Díaz',flag:'🇨🇴'},
-      {name:'Lukaku',flag:'🇧🇪'},
-      {name:'Marmoush',flag:'🇪🇬'},
-      {name:'Mbappé',flag:'🇫🇷'},
-      {name:'Memphis',flag:'🇳🇱'},
-      {name:'Messi',flag:'🇦🇷'},
-      {name:'Musiala',flag:'🇩🇪'},
-      {name:'Neymar',flag:'🇧🇷'},
-      {name:'Nico Williams',flag:'🇪🇸'},
-      {name:'Olise',flag:'🇫🇷'},
-      {name:'Raphinha',flag:'🇧🇷'},
-      {name:'Romero',flag:'🇵🇾'},
-      {name:'Saka',flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},
-      {name:'Salah',flag:'🇪🇬'},
-      {name:'Son Heung-min',flag:'🇰🇷'},
-      {name:'Vinícius Jr.',flag:'🇧🇷'},
-      {name:'Wirtz',flag:'🇩🇪'},
-      {name:'Yamal',flag:'🇪🇸'},
-    ].sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+        const SCORER_LIST_ADM = SCORER_LIST_DYNAMIC.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
     const currentScorer=adminKo['top_scorer']?.team_ids?.[0]||'';
     const inp=el('select',{class:'ps',style:{marginBottom:'8px'}});
     inp.appendChild(el('option',{value:''},'— Selecione o artilheiro real —'));
