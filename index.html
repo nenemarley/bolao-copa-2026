@@ -1271,10 +1271,11 @@ async function loadProfile(u){
   if(!STATE.profile){
     console.warn('[loadProfile] Perfil não encontrado — criando...');
     const username = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'_');
-    await dbUpsert('profiles',{id:u.id, username, display_name:username, is_admin:false});
+    // ignoreDuplicates: true — não sobrescreve se já existe (proteção contra race condition)
+    await SB.from('profiles').insert({id:u.id, username, display_name:username, is_admin:false}).select().maybeSingle();
     const [pp2] = await Promise.all([dbQ('profiles',{id:u.id})]);
     STATE.profile = pp2[0]||{id:u.id, username, display_name:username, is_admin:false};
-    console.log('[loadProfile] Perfil criado:', STATE.profile);
+    console.log('[loadProfile] Perfil criado/recuperado:', STATE.profile);
   }
 
   // Garantir que is_admin é false para qualquer usuário não-admin
