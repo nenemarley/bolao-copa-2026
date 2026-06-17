@@ -1263,18 +1263,23 @@ async function init(){
 async function loadProfile(u){
   STATE.user=u;
   console.log('[loadProfile] Carregando perfil para:', u.email);
-  const [pp,all] = await Promise.all([dbQ('profiles',{id:u.id}), dbQ('profiles',{},'id,display_name,is_admin')]);
-  STATE.profile = pp[0]||null;
-  STATE.profiles = all||[];
+  // Usar SB diretamente (sem dbQ) para evitar race condition com PAGE_VERSION
+  const [{data:ppData}, {data:allData}] = await Promise.all([
+    SB.from('profiles').select('*').eq('id',u.id),
+    SB.from('profiles').select('id,display_name,is_admin,username')
+  ]);
+  STATE.profile = ppData?.[0] || null;
+  STATE.profiles = allData || [];
 
-  // Garantir que o perfil existe e nunca é admin por padrão
+  // Garantir que o perfil existe — INSERT ignorando conflito, nunca sobrescreve display_name
   if(!STATE.profile){
-    console.warn('[loadProfile] Perfil não encontrado — criando...');
+    console.warn('[loadProfile] Perfil não encontrado — tentando criar...');
     const username = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'_');
-    // ignoreDuplicates: true — não sobrescreve se já existe (proteção contra race condition)
-    await SB.from('profiles').insert({id:u.id, username, display_name:username, is_admin:false}).select().maybeSingle();
-    const [pp2] = await Promise.all([dbQ('profiles',{id:u.id})]);
-    STATE.profile = pp2[0]||{id:u.id, username, display_name:username, is_admin:false};
+    // onConflict: 'id' + ignoreDuplicates: true → não toca em nada se já existe
+    await SB.from('profiles')
+      .upsert({id:u.id, username, display_name:username, is_admin:false}, {onConflict:'id', ignoreDuplicates:true});
+    const {data:pp2} = await SB.from('profiles').select('*').eq('id',u.id);
+    STATE.profile = pp2?.[0] || {id:u.id, username, display_name:username, is_admin:false};
     console.log('[loadProfile] Perfil criado/recuperado:', STATE.profile);
   }
 
