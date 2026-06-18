@@ -2935,6 +2935,14 @@ function renderStandings(main){
 }
 // Sincroniza koPreds com o pool atual baseado nos palpites de grupos
 // Remove times do koPreds que saíram do pool (por mudança de grupo)
+function clearPhasesFrom(phase){
+  // Limpar completamente todas as fases a partir da fase indicada
+  const order = ['round32','round16','quarter','semi','final','runner_up','third'];
+  const idx = order.indexOf(phase);
+  if(idx < 0) return;
+  order.slice(idx).forEach(p=>{ koPreds[p]=[]; });
+}
+
 function syncKoPredsWithGrpPreds(){
   // Recalcular pool do round32 com grpPreds atual
   const userStandings={};
@@ -2962,25 +2970,18 @@ function syncKoPredsWithGrpPreds(){
   });
   (grpPreds['_thirds']||[]).forEach(t=>{ if(!pool32.includes(t)) pool32.push(t); });
 
-  // Limpar round32 de times que saíram do pool
-  if(koPreds['round32']) {
-    koPreds['round32'] = koPreds['round32'].filter(x=>pool32.includes(x.team));
+  // Verificar se algum time do round32 saiu do pool — se sim, limpar TUDO a partir do round32
+  const r32invalid = (koPreds['round32']||[]).some(x=>!pool32.includes(x.team));
+  if(r32invalid){
+    clearPhasesFrom('round32');
+    return;
   }
-  // Cascata: limpar fases seguintes
-  const nextMap={
-    round32:['round16','quarter','semi','final','third'],
-    round16:['quarter','semi','final','third'],
-    quarter:['semi','final','third'],
-    semi:['final','third'],
-    final:[]
-  };
-  ['round32','round16','quarter','semi','final'].forEach(phase=>{
-    if(!koPreds[phase]) return;
-    const avail=koPreds[phase].map(x=>x.team);
-    (nextMap[phase]||[]).forEach(np=>{
-      if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>avail.includes(x.team));
-    });
-  });
+
+  // Deduplicar round32 por segurança
+  if(koPreds['round32']){
+    const seen=new Set();
+    koPreds['round32']=koPreds['round32'].filter(x=>{ if(seen.has(x.team)) return false; seen.add(x.team); return true; });
+  }
 }
 
 function buildStandingsUI(main){
@@ -3506,7 +3507,23 @@ async function saveStandings(){
     const pts = realThirds.includes(team) ? 5 : 0;
     rows.push({user_id:STATE.profile.id,group_id:'_thirds',position:idx+1,team_name:team,points:pts});
   });
-  try{ await upsertWithReplicate('group_predictions',rows); grpDirty=false; showToast('✅ Classificação salva!'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':'')); updateGrpSaveBar(); }
+  try{
+    await upsertWithReplicate('group_predictions',rows);
+    // Ao salvar grupos, limpar fases KO do banco (pool mudou, seleções anteriores inválidas)
+    const koPhases=['round32','round16','quarter','semi','final','runner_up','third'];
+    const bolaoIdsKo = REPLICATE_ALL ? MY_BOLAOS.map(b=>b.id) : [CURRENT_BOLAO?.id];
+    for(const bid of bolaoIdsKo){
+      if(bid) await SB.from('knockout_predictions').delete()
+        .eq('user_id',STATE.profile.id).eq('bolao_id',bid)
+        .in('phase',koPhases);
+    }
+    // Limpar em memória também
+    clearPhasesFrom('round32');
+    koDirty=false;
+    grpDirty=false;
+    showToast('✅ Classificação salva! Refaça as eliminatórias.'+(REPLICATE_ALL&&MY_BOLAOS.length>1?' (em todos os bolões)':''));
+    updateGrpSaveBar();
+  }
   catch(e){ showToast(e.message,'err'); }
 }
 
@@ -3730,28 +3747,27 @@ function buildKoUI(main){
 
     function pickTeam(team, opponent) {
       if(!koPreds[ph.key]) koPreds[ph.key]=[];
-      const isReal2=rp?.team_ids?.includes(team);
       const alreadySel = koPreds[ph.key].find(x=>x.team===team);
+      const isReal2=rp?.team_ids?.includes(team);
       if(alreadySel){
-        // Clicou no já selecionado → desselecionar
+        // Desselecionou — limpar esta fase e todas as posteriores
         koPreds[ph.key]=koPreds[ph.key].filter(x=>x.team!==team);
+        clearPhasesFrom(ph.key==='round32'?'round16':ph.key==='round16'?'quarter':ph.key==='quarter'?'semi':ph.key==='semi'?'final':'third');
       } else {
-        // Selecionar este e remover o adversário do mesmo confronto automaticamente
+        // Selecionou novo time — remover adversário e limpar fases posteriores
         if(opponent) koPreds[ph.key]=koPreds[ph.key].filter(x=>x.team!==opponent);
-        // Garantir que não está duplicado antes de adicionar
+        // Deduplicar antes de adicionar
         if(!koPreds[ph.key].find(x=>x.team===team)){
           koPreds[ph.key].push({team, pts:isReal2?ph.pts:0});
         }
+        // Deduplicar por segurança
+        const seen=new Set();
+        koPreds[ph.key]=koPreds[ph.key].filter(x=>{ if(seen.has(x.team)) return false; seen.add(x.team); return true; });
+        // Limpar fases posteriores pois o bracket mudou
+        const nextPhase={round32:'round16',round16:'quarter',quarter:'semi',semi:'final',final:'runner_up'};
+        if(nextPhase[ph.key]) clearPhasesFrom(nextPhase[ph.key]);
       }
-      // Deduplicar por segurança
-      const seen=new Set();
-      koPreds[ph.key]=koPreds[ph.key].filter(x=>{ if(seen.has(x.team)) return false; seen.add(x.team); return true; });
       koDirty=true;
-      const nextMap={round32:['round16','quarter','semi','final','third'],round16:['quarter','semi','final','third'],quarter:['semi','final','third'],semi:['final','third']};
-      (nextMap[ph.key]||[]).forEach(np=>{
-        const av2=getAvailableTeams(np,koPreds,grpReal,userThirdsPool);
-        if(koPreds[np]) koPreds[np]=koPreds[np].filter(x=>av2.includes(x.team));
-      });
       buildKoUI(main);
     }
 
