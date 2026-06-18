@@ -3040,6 +3040,15 @@ function buildStandingsUI(main){
       const sc=el('div',{class:'sc'});
       sc.appendChild(el('h4',{},'GRUPO '+g));
 
+      // Botão ver palpites de todos (só quando bloqueado)
+      if(!grpOpen){
+        sc.appendChild(el('button',{
+          class:'btn btn-sm btn-o',
+          style:{width:'100%',marginBottom:'.5rem',fontSize:'.72rem'},
+          onclick:()=>showGroupPalpitesPopup(g, grpReal[g])
+        },'👥 Ver palpites de todos'));
+      }
+
       // Todas as 4 posições — 1º e 2º pontuam, 3º e 4º não pontuam
       [1,2,3,4].forEach(pos=>{
         const curr=grpPreds[g]?.[pos]?.team||'';
@@ -3117,8 +3126,17 @@ function buildStandingsUI(main){
     const thirdsCount=selectedThirdsClean.length;
     main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.78rem',marginBottom:'.75rem'}},'Selecione até 8 dos 12 terceiros colocados que passarão como melhores 3ºs · Acertar = 5pts cada'));
     main.appendChild(el('p',{style:{color:'var(--muted)',fontSize:'.72rem',marginBottom:'.75rem',fontStyle:'italic'}},'Os times exibidos são os 3ºs que você palpitou na aba Classificados. Preencha primeiro todos os grupos.'));
-    main.appendChild(el('div',{style:{fontSize:'.82rem',fontWeight:'600',color:thirdsCount===8?'var(--ok)':'var(--gold)',marginBottom:'1rem'}},
+    main.appendChild(el('div',{style:{fontSize:'.82rem',fontWeight:'600',color:thirdsCount===8?'var(--ok)':'var(--gold)',marginBottom:'.5rem'}},
       thirdsCount+'/8 selecionados'+(thirdsCount===8?' ✓':'')));
+
+    // Botão ver palpites de todos nos 3ºs (só quando bloqueado)
+    if(!grpOpen){
+      main.appendChild(el('button',{
+        class:'btn btn-o',
+        style:{width:'100%',marginBottom:'1rem',fontSize:'.78rem'},
+        onclick:()=>showThirdsPalpitesPopup(realThirdsReal)
+      },'👥 Ver palpites de todos nos Melhores 3ºs'));
+    }
 
     // Pool: apenas os 3ºs palpitados pelo usuário (posição 3 de cada grupo)
     const poolWrap=el('div',{style:{display:'flex',flexWrap:'wrap',gap:'8px'}});
@@ -3183,6 +3201,270 @@ function buildStandingsUI(main){
 
   updateGrpSaveBar();
 }
+// ── Popup palpites de grupo ────────────────────────────────────────────────
+async function showGroupPalpitesPopup(groupId, realStandings) {
+  document.getElementById('grp-palpites-popup')?.remove();
+
+  // realStandings = {1:'México', 2:'Coreia do Sul', ...} ou undefined
+  const hasReal = realStandings && (realStandings[1] || realStandings[2]);
+
+  const overlay = el('div',{id:'grp-palpites-popup',style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.78)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div',{style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'88vh',
+    display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
+  }});
+
+  // Header
+  const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
+    '👥 Palpites — Grupo '+groupId));
+
+  if(hasReal){
+    const ri = el('div',{style:{display:'flex',gap:'12px',flexWrap:'wrap',fontSize:'.8rem'}});
+    [1,2].forEach(pos=>{
+      const t = realStandings[pos];
+      if(t) ri.appendChild(el('span',{style:{fontWeight:'700',color:'var(--gold)'}},pos+'º '+(FLAGS[t]||'🏳')+' '+t));
+    });
+    hdr.appendChild(ri);
+  } else {
+    hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'#FCD34D',fontWeight:'700'}},'⏳ Resultado ainda não definido'));
+  }
+
+  modal.appendChild(hdr);
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+
+  const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
+  body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  try {
+    const bolaoId = CURRENT_BOLAO?.id;
+    const [members, allGrpPreds] = await Promise.all([
+      dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+      SB.from('group_predictions')
+        .select('user_id,group_id,position,team_name,points')
+        .eq('group_id', groupId)
+        .eq('bolao_id', bolaoId)
+        .then(r=>r.data||[])
+    ]);
+
+    const memberIds = new Set((members||[]).map(m=>m.user_id));
+
+    // Agrupar palpites por user: {uid: {1:'México', 2:'Coreia', pts:X}}
+    const byUser = {};
+    allGrpPreds.filter(p=>memberIds.has(p.user_id)).forEach(p=>{
+      if(!byUser[p.user_id]) byUser[p.user_id]={};
+      byUser[p.user_id][p.position] = {team:p.team_name, pts:p.points||0};
+    });
+
+    // Calcular pts totais do grupo (1º+2º) por usuário
+    const rows = [];
+    memberIds.forEach(uid=>{
+      const prof = STATE.profiles.find(p=>p.id===uid);
+      if(!prof) return;
+      const u = byUser[uid]||{};
+      const pred1 = u[1]?.team||'';
+      const pred2 = u[2]?.team||'';
+      const hasPred = pred1||pred2;
+      let pts = 0;
+      if(hasPred && hasReal){
+        const r1=realStandings[1], r2=realStandings[2];
+        if(pred1===r1) pts+=10; else if(pred1===r2) pts+=5;
+        if(pred2===r2) pts+=10; else if(pred2===r1) pts+=5;
+      }
+      rows.push({uid, name:prof.display_name, pred1, pred2, pts, hasPred:!!(pred1||pred2), isMe:uid===STATE.profile.id});
+    });
+
+    rows.sort((a,b)=>{
+      if(!a.hasPred && !b.hasPred) return a.name.localeCompare(b.name);
+      if(!a.hasPred) return 1; if(!b.hasPred) return -1;
+      if(hasReal) return b.pts - a.pts;
+      return a.name.localeCompare(b.name);
+    });
+
+    body.innerHTML='';
+
+    // Legenda
+    const leg = el('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'.75rem',fontSize:'.65rem',color:'var(--muted)'}});
+    leg.appendChild(el('span',{},'🏆 1º e 2º exatos = 10pts cada · invertidos = 5pts cada'));
+    body.appendChild(leg);
+
+    rows.forEach((row,i)=>{
+      const ptsCls = row.pts>=20?'p10':row.pts>=10?'p7':row.pts>0?'p5':'p0';
+      const medal = hasReal ? (i===0&&row.hasPred?'🥇':i===1&&row.hasPred?'🥈':i===2&&row.hasPred?'🥉':null) : null;
+
+      const card = el('div',{style:{
+        display:'flex',alignItems:'center',gap:'8px',padding:'.55rem .75rem',
+        background:row.isMe?'rgba(255,215,0,.08)':i%2===0?'var(--dk3)':'transparent',
+        border:row.isMe?'1px solid rgba(255,215,0,.3)':'1px solid transparent',
+        borderRadius:'8px',marginBottom:'4px'
+      }});
+
+      card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
+        medal||(i+1)+'º'));
+
+      const nameDiv=el('div',{style:{flex:'1',minWidth:'0'}});
+      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+        row.name+(row.isMe?' 👤':'')));
+      card.appendChild(nameDiv);
+
+      // Palpites 1º e 2º
+      const predDiv = el('div',{style:{textAlign:'center',flexShrink:'0',minWidth:'90px'}});
+      if(row.hasPred){
+        predDiv.appendChild(el('div',{style:{fontSize:'.7rem',color:'#94A3B8',lineHeight:'1.3'}},
+          '1º '+(FLAGS[row.pred1]||'🏳')+' '+(row.pred1||'—')));
+        predDiv.appendChild(el('div',{style:{fontSize:'.7rem',color:'#94A3B8',lineHeight:'1.3'}},
+          '2º '+(FLAGS[row.pred2]||'🏳')+' '+(row.pred2||'—')));
+      } else {
+        predDiv.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
+      }
+      card.appendChild(predDiv);
+
+      // Pts
+      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'38px',textAlign:'right'}});
+      if(row.hasPred && hasReal){
+        ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},row.pts+'pts'));
+      } else {
+        ptsDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'—'));
+      }
+      card.appendChild(ptsDiv);
+      body.appendChild(card);
+    });
+
+  } catch(e){
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem',fontSize:'.85rem'}},'Erro: '+e.message));
+  }
+}
+
+async function showThirdsPalpitesPopup(realThirds) {
+  document.getElementById('thirds-palpites-popup')?.remove();
+
+  const hasReal = realThirds && realThirds.length > 0;
+
+  const overlay = el('div',{id:'thirds-palpites-popup',style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.78)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div',{style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'88vh',
+    display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
+  }});
+
+  const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},'👥 Palpites — Melhores 3ºs'));
+  if(hasReal){
+    hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)'}},'Reais: '+realThirds.map(t=>(FLAGS[t]||'🏳')+' '+t).join(' · ')));
+  } else {
+    hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'#FCD34D',fontWeight:'700'}},'⏳ Ainda não definidos'));
+  }
+
+  modal.appendChild(hdr);
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+
+  const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
+  body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  try {
+    const bolaoId = CURRENT_BOLAO?.id;
+    const [members, thirdsRaw] = await Promise.all([
+      dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+      SB.from('group_predictions')
+        .select('user_id,group_id,position,team_name,points')
+        .eq('group_id', '_thirds')
+        .eq('bolao_id', bolaoId)
+        .then(r=>r.data||[])
+    ]);
+
+    const memberIds = new Set((members||[]).map(m=>m.user_id));
+
+    // Agrupar por user: lista de times selecionados como melhores 3ºs
+    const byUser = {};
+    thirdsRaw.filter(p=>memberIds.has(p.user_id)).forEach(p=>{
+      if(!byUser[p.user_id]) byUser[p.user_id]=[];
+      if(p.team_name) byUser[p.user_id].push(p.team_name);
+    });
+
+    const rows = [];
+    memberIds.forEach(uid=>{
+      const prof = STATE.profiles.find(p=>p.id===uid);
+      if(!prof) return;
+      const teams = byUser[uid]||[];
+      const hasPred = teams.length>0;
+      const pts = hasPred && hasReal ? teams.filter(t=>realThirds.includes(t)).length * 5 : 0;
+      rows.push({uid, name:prof.display_name, teams, pts, hasPred, isMe:uid===STATE.profile.id});
+    });
+
+    rows.sort((a,b)=>{
+      if(!a.hasPred&&!b.hasPred) return a.name.localeCompare(b.name);
+      if(!a.hasPred) return 1; if(!b.hasPred) return -1;
+      if(hasReal) return b.pts-a.pts;
+      return a.name.localeCompare(b.name);
+    });
+
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{fontSize:'.65rem',color:'var(--muted)',marginBottom:'.75rem'}},'Cada 3º real acertado = 5pts · máximo 8 escolhas'));
+
+    rows.forEach((row,i)=>{
+      const ptsCls = row.pts>=30?'p10':row.pts>=15?'p7':row.pts>0?'p5':'p0';
+      const medal = hasReal?(i===0&&row.hasPred?'🥇':i===1&&row.hasPred?'🥈':i===2&&row.hasPred?'🥉':null):null;
+
+      const card = el('div',{style:{
+        padding:'.6rem .75rem',
+        background:row.isMe?'rgba(255,215,0,.08)':i%2===0?'var(--dk3)':'transparent',
+        border:row.isMe?'1px solid rgba(255,215,0,.3)':'1px solid transparent',
+        borderRadius:'8px',marginBottom:'4px'
+      }});
+
+      const top = el('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'.3rem'}});
+      top.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},medal||(i+1)+'º'));
+      const nameS=el('div',{style:{flex:'1',fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem'}},row.name+(row.isMe?' 👤':''));
+      top.appendChild(nameS);
+      if(row.hasPred&&hasReal){
+        top.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},row.pts+'pts'));
+      } else {
+        top.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},row.hasPred?'—':'sem palpite'));
+      }
+      card.appendChild(top);
+
+      if(row.hasPred){
+        const teamsDiv = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'4px',paddingLeft:'32px'}});
+        row.teams.forEach(t=>{
+          const isAcerto = hasReal && realThirds.includes(t);
+          teamsDiv.appendChild(el('span',{style:{
+            fontSize:'.68rem',padding:'2px 6px',borderRadius:'4px',
+            background:isAcerto?'rgba(34,197,94,.15)':'rgba(255,255,255,.05)',
+            color:isAcerto?'#4ADE80':'#94A3B8',
+            border:'1px solid '+(isAcerto?'rgba(34,197,94,.3)':'rgba(255,255,255,.08)')
+          }},(FLAGS[t]||'🏳')+' '+t+(isAcerto?' ✓':'')));
+        });
+        card.appendChild(teamsDiv);
+      }
+      body.appendChild(card);
+    });
+
+  } catch(e){
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem',fontSize:'.85rem'}},'Erro: '+e.message));
+  }
+}
+
 function updateGrpSaveBar(){
   let sb=document.getElementById('savebar-matches')||document.getElementById('savebar-ko');
   if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
@@ -3282,7 +3564,14 @@ function renderKnockout(main){
     main.appendChild(el('div',{class:'ch'},'🔥 Fases Eliminatórias'));
     koPreds={};
     (kp||[]).forEach(p=>{ if(!koPreds[p.phase])koPreds[p.phase]=[]; koPreds[p.phase].push({team:p.team_name,pts:p.points}); });
-    PHASES.forEach(ph=>{ if(koPreds[ph.key]&&koPreds[ph.key].length>ph.count) koPreds[ph.key]=koPreds[ph.key].slice(0,ph.count); });
+    PHASES.forEach(ph=>{
+      if(koPreds[ph.key]){
+        // Deduplicar por time primeiro, depois truncar ao limite
+        const seen=new Set();
+        koPreds[ph.key]=koPreds[ph.key].filter(x=>{ if(seen.has(x.team)) return false; seen.add(x.team); return true; });
+        if(koPreds[ph.key].length>ph.count) koPreds[ph.key]=koPreds[ph.key].slice(0,ph.count);
+      }
+    });
     koReal={};
     (rk||[]).forEach(r=>{ koReal[r.phase]=r; });
     koScorer=(sp||[])[0]?.player_name||'';
@@ -3449,8 +3738,14 @@ function buildKoUI(main){
       } else {
         // Selecionar este e remover o adversário do mesmo confronto automaticamente
         if(opponent) koPreds[ph.key]=koPreds[ph.key].filter(x=>x.team!==opponent);
-        koPreds[ph.key].push({team, pts:isReal2?ph.pts:0});
+        // Garantir que não está duplicado antes de adicionar
+        if(!koPreds[ph.key].find(x=>x.team===team)){
+          koPreds[ph.key].push({team, pts:isReal2?ph.pts:0});
+        }
       }
+      // Deduplicar por segurança
+      const seen=new Set();
+      koPreds[ph.key]=koPreds[ph.key].filter(x=>{ if(seen.has(x.team)) return false; seen.add(x.team); return true; });
       koDirty=true;
       const nextMap={round32:['round16','quarter','semi','final','third'],round16:['quarter','semi','final','third'],quarter:['semi','final','third'],semi:['final','third']};
       (nextMap[ph.key]||[]).forEach(np=>{
@@ -3633,12 +3928,12 @@ function buildKoUI(main){
   // ── Disputa de 3º/4º ──
   const thirdPh = PHASES.find(ph=>ph.key==='third');
   if(thirdPh){
-    // Pool: 2 perdedores das semifinais = times do quarter que NÃO foram à semi
+    // Pool: 2 perdedores das semifinais = times que foram à semi mas não à final
     const semiSel = (koPreds['semi']||[]).map(x=>x.team);
     const quarterSel = (koPreds['quarter']||[]).map(x=>x.team);
     const finalSel = (koPreds['final']||[]).map(x=>x.team);
-    // Perdedores das semis = semifinalistas (quarter) que não passaram para a final
-    const thirdPool = quarterSel.filter(t=>!semiSel.includes(t));
+    // Perdedores das semis = semifinalistas que NÃO passaram para a final
+    const thirdPool = semiSel.filter(t=>!finalSel.includes(t));
     const rp3 = koReal['third'];
     const thirdSel = koPreds['third']||[];
     const isFull3 = thirdSel.length>=1;
@@ -3650,7 +3945,7 @@ function buildKoUI(main){
     card3.appendChild(tRow);
     if(thirdPool.length===0){
       // Semi ou Final não preenchidos — sem fallback para dados reais
-      const missingStep = quarterSel.length===0 ? 'Quartas de Final' : semiSel.length===0 ? 'Semifinal' : 'Quartas de Final e Semifinal';
+      const missingStep = semiSel.length===0 ? 'Semifinal' : finalSel.length===0 ? 'Final' : 'Semifinal e Final';
       const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
       msgDiv3.appendChild(el('span',{},'⚠️'));
       msgDiv3.appendChild(el('span',{},'Preencha primeiro: '+missingStep+'.'));
