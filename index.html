@@ -3825,6 +3825,8 @@ function buildKoUI(main){
         const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
         userMatchWinners[m.id]={winner:spicks.find(t=>t===t1||t===t2)||null,t1,t2};
       });
+      // Expor para a disputa de 3º (fora do loop de fases)
+      buildKoUI._semiWinners = SEMI_BRACKET.map(m=>userMatchWinners[m.id]);
 
       // Helpers de label (mesmos do admin)
       function pBracketLabel(matchId) {
@@ -3945,10 +3947,18 @@ function buildKoUI(main){
   const thirdPh = PHASES.find(ph=>ph.key==='third');
   if(thirdPh){
     const semiSel = (koPreds['semi']||[]).map(x=>x.team);
-    const quarterSel = (koPreds['quarter']||[]).map(x=>x.team);
-    const finalSel = (koPreds['final']||[]).map(x=>x.team);
-    // Perdedores das semis = quem foi à semi mas NÃO foi à final
-    const thirdPool = semiSel.filter(t=>!finalSel.includes(t));
+    // Perdedores das semis = o time de cada confronto semi que NÃO foi selecionado como vencedor
+    const semiWinners = buildKoUI._semiWinners||[];
+    const thirdPool = semiWinners
+      .map(m=>{
+        if(!m) return null;
+        // O perdedor é o time conhecido (não placeholder) que não é o winner
+        const loser = (m.winner===m.t1) ? m.t2 : (m.winner===m.t2) ? m.t1 : null;
+        // Só incluir se for um time real (não placeholder como "Venc. J...")
+        if(!loser || loser.startsWith('Venc.') || loser.startsWith('VQ')) return null;
+        return loser;
+      })
+      .filter(Boolean);
     const rp3 = koReal['third'];
     const thirdSel = koPreds['third']||[];
     const isFull3 = thirdSel.length>=1;
@@ -3959,21 +3969,15 @@ function buildKoUI(main){
     tRow.appendChild(el('div',{style:{fontSize:'.75rem',color:isFull3?'var(--ok)':'var(--muted)',fontWeight:'600'}},thirdSel.length+'/1'+(isFull3?' ✓':'')));
     card3.appendChild(tRow);
 
-    // Mostrar apenas quando semi E final estiverem preenchidas
     if(semiSel.length === 0){
       const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
       msgDiv3.appendChild(el('span',{},'⚠️'));
       msgDiv3.appendChild(el('span',{},'Selecione os semifinalistas primeiro.'));
       card3.appendChild(msgDiv3);
-    } else if(finalSel.length === 0){
+    } else if(thirdPool.length < 2){
       const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
       msgDiv3.appendChild(el('span',{},'⚠️'));
-      msgDiv3.appendChild(el('span',{},'Selecione o campeão primeiro.'));
-      card3.appendChild(msgDiv3);
-    } else if(thirdPool.length===0){
-      const msgDiv3=el('div',{style:{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:'8px',padding:'.75rem',fontSize:'.82rem',color:'#FCD34D',display:'flex',alignItems:'center',gap:'8px'}});
-      msgDiv3.appendChild(el('span',{},'⚠️'));
-      msgDiv3.appendChild(el('span',{},'Preencha a Semifinal primeiro.'));
+      msgDiv3.appendChild(el('span',{},'Preencha as Quartas de Final primeiro.'));
       card3.appendChild(msgDiv3);
     } else {
     card3.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',marginBottom:'.5rem'}},'Escolha quem ganha o 3º lugar. Acertar = 10pts.'));
