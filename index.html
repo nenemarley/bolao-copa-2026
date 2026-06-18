@@ -4017,14 +4017,16 @@ function buildKoUI(main){
   si.onchange=()=>{ koScorer=si.value; koDirty=true; };
   scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
   if(koReal['top_scorer']){
-    const realScorer=koReal['top_scorer'].team_ids?.[0]||'-';
-    const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
-    scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
-    if(koScorer){
-      const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?30:0;
-      scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
+    const realScorer=koReal['top_scorer'].team_ids?.[0]||'';
+    if(realScorer && realScorer!=='-'){
+      const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
+      scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
+      if(koScorer){
+        const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?30:0;
+        scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
+      }
+      scard.appendChild(scorerRow);
     }
-    scard.appendChild(scorerRow);
   }
   main.appendChild(scard);
 
