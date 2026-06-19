@@ -2106,30 +2106,133 @@ async function showUserPalpites(userId, userName, isMe=false) {
       });
 
     } else if(activeTab==='fases') {
-      const kp = await dbQ('knockout_predictions',{user_id:userId, bolao_id:bolaoId},'phase,team_name,points');
-      const rk = await dbQ('real_knockouts',{},'phase,team_ids');
+      const [kp, rk, gp] = await Promise.all([
+        dbQ('knockout_predictions',{user_id:userId, bolao_id:bolaoId},'phase,team_name,points'),
+        dbQ('real_knockouts',{},'phase,team_ids'),
+        dbQ('group_predictions',{user_id:userId, bolao_id:bolaoId},'group_id,position,team_name'),
+      ]);
       body.innerHTML='';
       const koMap={};
       (rk||[]).forEach(r=>koMap[r.phase]=r.team_ids||[]);
-      const phaseLabels={round32:'Rodada de 32',round16:'Oitavas',quarter:'Quartas',semi:'Semifinal',final:'Campeão',runner_up:'Vice',third:'3º Lugar'};
+      const phaseLabels={round32:'Rodada de 32',round16:'Oitavas de Final',quarter:'Quartas de Final',semi:'Semifinal',final:'Final (Campeão)',third:'Disputa de 3º/4º Lugar'};
       const byPhase={};
-      (kp||[]).forEach(p=>{ if(!byPhase[p.phase]) byPhase[p.phase]=[]; byPhase[p.phase].push(p); });
-      const phaseOrder=['round32','round16','quarter','semi','final','runner_up','third'];
-      phaseOrder.forEach(ph=>{
-        const items=byPhase[ph]||[];
-        if(items.length===0) return;
-        const phDiv=el('div',{style:{marginBottom:'.75rem'}});
-        phDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'4px'}},phaseLabels[ph]||ph));
-        items.forEach(p=>{
-          const pts=p.points||0;
+      (kp||[]).forEach(p=>{ if(!byPhase[p.phase]) byPhase[p.phase]=[]; byPhase[p.phase].push(p.team_name); });
+      const ptsByPhaseTeam={};
+      (kp||[]).forEach(p=>{ ptsByPhaseTeam[p.phase+'|'+p.team_name]=p.points||0; });
+
+      // Reconstruir standings de grupo do usuário p/ resolver round32
+      const userSt={};
+      (gp||[]).forEach(p=>{
+        if(p.group_id==='_thirds') return;
+        if(!userSt[p.group_id]) userSt[p.group_id]={};
+        userSt[p.group_id][p.position]=p.team_name;
+      });
+      const userThirds=(gp||[]).filter(p=>p.group_id==='_thirds').map(p=>p.team_name);
+
+      const userTop2=new Set();
+      Object.values(userSt).forEach(pos=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
+      const validThirdsOfGroups=new Set(Object.values(userSt).map(p=>p[3]).filter(Boolean));
+      const validUserThirds=userThirds.filter(t=>!userTop2.has(t)&&validThirdsOfGroups.has(t));
+      const thirdsForSlots=validUserThirds.slice(0,8);
+      const thirdAssignment=buildThirdAssignment(thirdsForSlots,userSt);
+
+      const userMatchWinners={};
+      const r32picks=byPhase['round32']||[];
+      ROUND32_BRACKET.forEach(m=>{
+        const i1=resolveSlotInfo(m.slot1,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const i2=resolveSlotInfo(m.slot2,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const t1=i1.team||i1.label, t2=i2.team||i2.label;
+        const winner=r32picks.find(t=>t===t1||t===t2)||null;
+        userMatchWinners[m.id]={t1,t2,winner};
+      });
+      const r16picks=byPhase['round16']||[];
+      ROUND16_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+        const winner=r16picks.find(t=>t===t1||t===t2)||null;
+        userMatchWinners[m.id]={t1,t2,winner};
+      });
+      const qpicks=byPhase['quarter']||[];
+      QUARTER_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||'Venc. J'+m.slot1.matchId;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||'Venc. J'+m.slot2.matchId;
+        const winner=qpicks.find(t=>t===t1||t===t2)||null;
+        userMatchWinners[m.id]={t1,t2,winner};
+      });
+      const spicks=byPhase['semi']||[];
+      SEMI_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||null;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||null;
+        const winner=spicks.find(t=>t===t1||t===t2)||null;
+        userMatchWinners[m.id]={t1,t2,winner};
+      });
+      const fpicks=byPhase['final']||[];
+      FINAL_BRACKET.forEach(m=>{
+        const t1=userMatchWinners[m.slot1.matchId]?.winner||null;
+        const t2=userMatchWinners[m.slot2.matchId]?.winner||null;
+        const winner=fpicks.find(t=>t===t1||t===t2)||null;
+        userMatchWinners[m.id]={t1,t2,winner};
+      });
+
+      const bracketByPhase={round32:ROUND32_BRACKET,round16:ROUND16_BRACKET,quarter:QUARTER_BRACKET,semi:SEMI_BRACKET,final:FINAL_BRACKET};
+      const phaseOrder=['round32','round16','quarter','semi','final','third'];
+
+      function renderMatchRow(t1,t2,winner,pts){
+        const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'6px 0',fontSize:'.8rem'}});
+        const mk=(t,isW)=>el('span',{style:{
+          flex:'1',padding:'4px 8px',borderRadius:'6px',textAlign:'center',
+          background:isW?'rgba(255,215,0,.15)':'transparent',
+          color:isW?'var(--gold)':'var(--muted)',
+          fontWeight:isW?'700':'400',
+          overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'
+        }},(FLAGS[t]||'')+' '+(t||'?'));
+        row.appendChild(mk(t1,winner&&t1===winner));
+        row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',flexShrink:'0'}},'×'));
+        row.appendChild(mk(t2,winner&&t2===winner));
+        if(pts!==null){
           const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
-          const row=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'4px 0',fontSize:'.82rem'}});
-          row.appendChild(el('span',{style:{flex:'1'}},(FLAGS[p.team_name]||'')+' '+p.team_name));
-          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.7rem'}},pts+'pts'));
-          phDiv.appendChild(row);
-        });
+          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem',flexShrink:'0',marginLeft:'4px'}},pts+'pts'));
+        }
+        return row;
+      }
+
+      phaseOrder.forEach(ph=>{
+        const picks=byPhase[ph]||[];
+        if(picks.length===0 && ph!=='third') return;
+
+        const phDiv=el('div',{style:{marginBottom:'1rem'}});
+        phDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'6px',fontSize:'.95rem'}},phaseLabels[ph]||ph));
+
+        if(ph==='third'){
+          // Confronto único: 2 perdedores das semis
+          const semiWinners=SEMI_BRACKET.map(m=>userMatchWinners[m.id]);
+          const losers=semiWinners.map(m=>{
+            if(!m||!m.winner||!m.t1||!m.t2) return null;
+            const l=m.winner===m.t1?m.t2:m.t1;
+            return (l&&!l.startsWith('Venc.'))?l:null;
+          }).filter(Boolean);
+          if(losers.length<2){
+            phDiv.appendChild(el('div',{style:{color:'var(--muted)',fontSize:'.78rem',fontStyle:'italic'}},'Não definido.'));
+          } else {
+            const thirdPick=picks[0]||null;
+            const pts=thirdPick?(ptsByPhaseTeam['third|'+thirdPick]??null):null;
+            phDiv.appendChild(renderMatchRow(losers[0],losers[1],thirdPick,pts));
+          }
+        } else {
+          const bracket=bracketByPhase[ph];
+          bracket.forEach(m=>{
+            const mw=userMatchWinners[m.id];
+            if(!mw) return;
+            const pts=mw.winner?(ptsByPhaseTeam[ph+'|'+mw.winner]??null):null;
+            phDiv.appendChild(renderMatchRow(mw.t1,mw.t2,mw.winner,pts));
+          });
+        }
         body.appendChild(phDiv);
       });
+
+      if(phaseOrder.every(ph=>(byPhase[ph]||[]).length===0)){
+        body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Eliminatórias não palpitadas.'));
+      }
 
     } else if(activeTab==='artilheiro') {
       const sp = await dbQ('scorer_predictions',{user_id:userId,bolao_id:CURRENT_BOLAO?.id},'player_name,points');
