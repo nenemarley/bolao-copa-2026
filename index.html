@@ -1945,12 +1945,16 @@ async function showUserPalpites(userId, userName, isMe=false) {
   // Remover popup anterior
   document.getElementById('user-palpites-modal')?.remove();
 
+  // Bloquear scroll do body enquanto o modal estiver aberto
+  const prevOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
   const overlay = el('div', {id:'user-palpites-modal', style:{
     position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
     background:'rgba(0,0,0,.75)',zIndex:'9999',
     display:'flex',alignItems:'flex-end',justifyContent:'center'
   }});
-  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  overlay.onclick = e => { if(e.target===overlay){ overlay.remove(); document.body.style.overflow = prevOverflow; } };
 
   const modal = el('div', {style:{
     background:'var(--dk2)',borderRadius:'16px 16px 0 0',
@@ -1959,14 +1963,14 @@ async function showUserPalpites(userId, userName, isMe=false) {
   }});
 
   // Header
-  const hdr = el('div',{style:{padding:'1rem 1rem .5rem',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--bdr)'}});
-  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.2rem'}},isMe?'🎯 Meus Palpites':'👤 Palpites de '+userName));
-  hdr.appendChild(el('button',{class:'btn btn-sm',style:{padding:'4px 10px'},onclick:()=>overlay.remove()},'✕'));
+  const hdr = el('div',{style:{padding:'1rem 1rem .5rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.2rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:'0'}},isMe?'🎯 Meus Palpites':'👤 Palpites de '+userName));
+  hdr.appendChild(el('button',{class:'btn btn-sm',style:{padding:'4px 10px',flexShrink:'0'},onclick:()=>{ overlay.remove(); document.body.style.overflow = prevOverflow; }},'✕'));
   modal.appendChild(hdr);
 
   // Abas
   let activeTab = 'jogos';
-  const tabBar = el('div',{style:{display:'flex',gap:'6px',padding:'.6rem 1rem',borderBottom:'1px solid var(--bdr)'}});
+  const tabBar = el('div',{style:{display:'flex',gap:'6px',padding:'.6rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0',overflowX:'auto'}});
   const body = el('div',{style:{flex:'1',overflowY:'auto',padding:'1rem'}});
 
   const secondStarted = isSecondRoundStarted();
@@ -2175,7 +2179,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
       });
 
       const bracketByPhase={round32:ROUND32_BRACKET,round16:ROUND16_BRACKET,quarter:QUARTER_BRACKET,semi:SEMI_BRACKET,final:FINAL_BRACKET};
-      const phaseOrder=['round32','round16','quarter','semi','final','third'];
+      const phaseOrder=['round32','round16','quarter','semi','final','runner_up','third'];
 
       function renderMatchRow(t1,t2,winner,pts){
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'6px 0',fontSize:'.8rem'}});
@@ -2198,6 +2202,26 @@ async function showUserPalpites(userId, userName, isMe=false) {
 
       phaseOrder.forEach(ph=>{
         const picks=byPhase[ph]||[];
+        if(ph==='runner_up'){
+          // Vice = automático, perdedor da final. Mostrar sempre que a final estiver definida.
+          const finalMatch=FINAL_BRACKET[0];
+          const fmw=userMatchWinners[finalMatch.id];
+          if(!fmw||!fmw.winner||!fmw.t1||!fmw.t2) return;
+          const viceTeam = fmw.winner===fmw.t1 ? fmw.t2 : fmw.t1;
+          if(!viceTeam || viceTeam.startsWith('Venc.')) return;
+          const pts = ptsByPhaseTeam['runner_up|'+viceTeam] ?? null;
+          const phDiv=el('div',{style:{marginBottom:'1rem'}});
+          phDiv.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',marginBottom:'6px',fontSize:'.95rem'}},'🥈 Vice-campeão'));
+          const row=el('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'4px 0',fontSize:'.85rem'}});
+          row.appendChild(el('span',{style:{flex:'1',fontWeight:'700',color:'var(--gold)'}},(FLAGS[viceTeam]||'')+' '+viceTeam));
+          if(pts!==null){
+            const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
+            row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem'}},pts+'pts'));
+          }
+          phDiv.appendChild(row);
+          body.appendChild(phDiv);
+          return;
+        }
         if(picks.length===0 && ph!=='third') return;
 
         const phDiv=el('div',{style:{marginBottom:'1rem'}});
@@ -2230,7 +2254,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
         body.appendChild(phDiv);
       });
 
-      if(phaseOrder.every(ph=>(byPhase[ph]||[]).length===0)){
+      if(['round32','round16','quarter','semi','final','third'].every(ph=>(byPhase[ph]||[]).length===0)){
         body.appendChild(el('div',{style:{color:'var(--muted)',textAlign:'center',padding:'2rem'}},'Eliminatórias não palpitadas.'));
       }
 
