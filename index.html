@@ -1041,19 +1041,47 @@ const KNOCKOUT_DATES = {
 // ── Prazo para palpites de classificados e eliminatórias ──────────────────
 const GROUPS_DEADLINE = '2026-06-18'; // 2ª rodada começa 18/06 na Copa real // 1º jogo da 2ª rodada (Grupo A)
 
+// Prazos individuais por bolão (sobrescreve SECOND_ROUND_DATE quando definido)
+// Formato: { bolao_id: 'YYYY-MM-DDTHH:MM' }
+let BOLAO_DEADLINES = {};
+
 function canBetGroups() {
-  // Usa SECOND_ROUND_DATE configurável pelo admin
-  // Se não configurada: liberado (sem bloqueio automático)
-  if(!SECOND_ROUND_DATE) return true;
-  const sr = new Date(SECOND_ROUND_DATE);
+  // Prioridade: prazo específico do bolão atual > prazo global (SECOND_ROUND_DATE)
+  const bolaoId = CURRENT_BOLAO?.id;
+  const specificDeadline = bolaoId ? BOLAO_DEADLINES[bolaoId] : null;
+  const effectiveDeadline = specificDeadline || SECOND_ROUND_DATE;
+  if(!effectiveDeadline) return true;
+  const sr = new Date(effectiveDeadline);
   if(isNaN(sr)) return true;
-  return new Date() < sr;
+  const result = new Date() < sr;
+  if(window.DEBUG_DEADLINES) console.log('[canBetGroups] bolaoId='+bolaoId+' specific='+specificDeadline+' global='+SECOND_ROUND_DATE+' effective='+effectiveDeadline+' → '+(result?'LIBERADO':'BLOQUEADO'));
+  return result;
+}
+
+function getEffectiveGroupsDeadline() {
+  const bolaoId = CURRENT_BOLAO?.id;
+  const specificDeadline = bolaoId ? BOLAO_DEADLINES[bolaoId] : null;
+  return specificDeadline || SECOND_ROUND_DATE || (GROUPS_DEADLINE+'T00:00');
 }
 
 function daysUntilGroupsDeadline() {
   const today = new Date(); today.setHours(0,0,0,0);
-  const cutoff = new Date(GROUPS_DEADLINE + 'T00:00:00');
+  const cutoffStr = getEffectiveGroupsDeadline();
+  const cutoff = new Date(cutoffStr);
+  cutoff.setHours(0,0,0,0);
   return Math.ceil((cutoff - today) / 86400000);
+}
+
+async function loadBolaoDeadlines() {
+  try {
+    const rows = await SB.from('bolao_settings').select('bolao_id,deadline').then(r=>r.data||[]);
+    const map={};
+    rows.forEach(r=>{ if(r.deadline) map[r.bolao_id]=r.deadline; });
+    BOLAO_DEADLINES = map;
+    console.log('[loadBolaoDeadlines] Carregados '+Object.keys(map).length+' prazo(s) específico(s) de bolão:', map);
+  } catch(e) {
+    console.warn('[loadBolaoDeadlines] Falha ao carregar (tabela bolao_settings pode não existir ainda):', e.message);
+  }
 }
 
 let MATCHES_LOCK_START = null; // data configurável pelo admin para início do bloqueio
@@ -1247,6 +1275,7 @@ async function dbDelete(table, filters={}){
 async function init(){
   const {data:{session}} = await SB.auth.getSession();
   loadScorerList(); // carrega lista de artilheiros do banco (não bloqueia)
+  await loadBolaoDeadlines(); // prazos por bolão — precisa estar pronto antes do primeiro render (canBetGroups depende disso)
   if(session?.user) await loadProfile(session.user);
   else {
     // Check URL for invite code
@@ -3873,6 +3902,7 @@ function buildKoUI(main){
     const bracket = bracketMap[ph.key];
 
     function pickTeam(team, opponent) {
+      if(!koOpen){ showToast('🔒 Prazo encerrado! Eliminatórias bloqueadas.','err'); return; }
       if(!koPreds[ph.key]) koPreds[ph.key]=[];
       const alreadySel = koPreds[ph.key].find(x=>x.team===team);
       const isReal2=rp?.team_ids?.includes(team);
@@ -4117,6 +4147,7 @@ function buildKoUI(main){
       const pts3 = rp3?.team_ids?.length>0 ? (isReal3 ? ' ·15p' : (isSel3 ? ' ·0p' : '')) : '';
       const b3=el('button',{class:`btn btn-sm ${cls3}`,style:{flex:'1',textAlign:'center',fontSize:'.78rem'},
         onclick:()=>{
+          if(!koOpen){ showToast('🔒 Prazo encerrado! Eliminatórias bloqueadas.','err'); return; }
           koPreds['third']=isSel3?[]:[{team,pts:isReal3?15:0}];
           koDirty=true; buildKoUI(main);
         }
@@ -4142,6 +4173,7 @@ function buildKoUI(main){
     si.appendChild(o);
   });
   si.onchange=()=>{ koScorer=si.value; koDirty=true; };
+  if(!koOpen) si.disabled=true;
   scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
   if(koReal['top_scorer']){
     const realScorer=koReal['top_scorer'].team_ids?.[0]||'';
@@ -4157,10 +4189,12 @@ function buildKoUI(main){
   }
   main.appendChild(scard);
 
-  // Save bar
+  // Save bar — só mostra se ainda está dentro do prazo
   let sb=document.getElementById('savebar-matches')||document.getElementById('savebar-ko');
   if(!sb){ sb=el('div',{class:'sbar',id:'savebar'}); document.body.appendChild(sb); }
-  sb.innerHTML=''; sb.style.display='flex';
+  sb.innerHTML='';
+  if(!koOpen){ sb.style.display='none'; return; }
+  sb.style.display='flex';
   const inn=el('div',{class:'sbar-in'});
   inn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.82rem'}},koDirty?'Alterações não salvas':''));
   inn.appendChild(el('button',{class:'btn btn-p',onclick:saveKo},'💾 Salvar'));
@@ -6434,6 +6468,70 @@ function buildAdminUI(main){
       statusDiv.appendChild(el('div',{style:{color:'var(--err)'}},'⚠️ Data não configurada — palpites de grupos/eliminatórias não serão bloqueados'));
     }
     cfgCard.appendChild(statusDiv);
+    cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
+
+    // ── PRAZO ESPECÍFICO POR BOLÃO (sobrescreve a data global acima) ──────
+    cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'🎯 Prazo específico por bolão (opcional)'));
+    cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Defina uma data diferente para um bolão específico. Se não configurado, esse bolão usa a data global acima.'));
+
+    const bolaoSelect=el('select',{class:'fi',style:{marginBottom:'8px'}});
+    bolaoSelect.appendChild(el('option',{value:''},'— Selecione o bolão —'));
+    (MY_BOLAOS||[]).forEach(b=>{
+      const o=el('option',{value:b.id},b.name+(BOLAO_DEADLINES[b.id]?' (prazo próprio definido)':''));
+      bolaoSelect.appendChild(o);
+    });
+
+    const bolaoDtInput=el('input',{type:'datetime-local',class:'fi',style:{marginBottom:'8px'}});
+    const bolaoStatusDiv=el('div',{style:{fontSize:'.78rem',color:'var(--muted)',marginBottom:'8px'}});
+
+    function updateBolaoDeadlineUI(){
+      const bid=bolaoSelect.value;
+      if(!bid){ bolaoDtInput.value=''; bolaoStatusDiv.textContent=''; return; }
+      const existing=BOLAO_DEADLINES[bid];
+      if(existing){
+        try{ bolaoDtInput.value=new Date(existing).toISOString().substring(0,16); }catch(e){ bolaoDtInput.value=''; }
+        bolaoStatusDiv.textContent='Prazo próprio: '+new Date(existing).toLocaleString('pt-BR');
+        bolaoStatusDiv.style.color='var(--gold)';
+      } else {
+        bolaoDtInput.value='';
+        bolaoStatusDiv.textContent='Usando o prazo global'+(SECOND_ROUND_DATE?(' ('+new Date(SECOND_ROUND_DATE).toLocaleString('pt-BR')+')'):' (não configurado)');
+        bolaoStatusDiv.style.color='var(--muted)';
+      }
+    }
+    bolaoSelect.onchange=updateBolaoDeadlineUI;
+    cfgCard.appendChild(bolaoSelect);
+    cfgCard.appendChild(bolaoDtInput);
+    cfgCard.appendChild(bolaoStatusDiv);
+
+    const bolaoBtnRow=el('div',{style:{display:'flex',gap:'8px'}});
+    const bolaoSaveBtn=el('button',{class:'btn btn-s',style:{flex:'1'},onclick:async()=>{
+      const bid=bolaoSelect.value;
+      if(!bid){ showToast('Selecione um bolão primeiro','err'); return; }
+      const val=bolaoDtInput.value;
+      if(!val){ showToast('Escolha uma data ou use "Remover prazo próprio"','err'); return; }
+      try{
+        const dt=new Date(val).toISOString();
+        const {error}=await SB.from('bolao_settings').upsert({bolao_id:bid, deadline:dt},{onConflict:'bolao_id'});
+        if(error) throw new Error(error.message);
+        BOLAO_DEADLINES[bid]=dt;
+        showToast('✅ Prazo do bolão salvo: '+new Date(dt).toLocaleString('pt-BR'));
+        buildAdminUI(document.querySelector('.main')||document.body);
+      }catch(e){ showToast('Erro: '+e.message+' (verifique se a tabela bolao_settings existe)','err'); }
+    }},'💾 Salvar Prazo do Bolão');
+    const bolaoRemoveBtn=el('button',{class:'btn btn-o',onclick:async()=>{
+      const bid=bolaoSelect.value;
+      if(!bid){ showToast('Selecione um bolão primeiro','err'); return; }
+      try{
+        const {error}=await SB.from('bolao_settings').delete().eq('bolao_id',bid);
+        if(error) throw new Error(error.message);
+        delete BOLAO_DEADLINES[bid];
+        showToast('✅ Prazo próprio removido — voltará a usar a data global');
+        buildAdminUI(document.querySelector('.main')||document.body);
+      }catch(e){ showToast('Erro: '+e.message,'err'); }
+    }},'🗑️ Remover');
+    bolaoBtnRow.appendChild(bolaoSaveBtn);
+    bolaoBtnRow.appendChild(bolaoRemoveBtn);
+    cfgCard.appendChild(bolaoBtnRow);
 
     // Minutos de bloqueio antes do jogo
     cfgCard.appendChild(el('div',{style:{margin:'1rem 0',borderTop:'1px solid var(--bdr)'}}));
