@@ -1175,6 +1175,7 @@ function setState(patch){
       const sb=document.getElementById(id);
       if(sb) sb.style.display='none';
     });
+    try{ localStorage.setItem('last_page', patch.page); }catch(e){}
   }
   render(); 
 }
@@ -1384,7 +1385,26 @@ async function loadProfile(u){
     }catch(e){ CURRENT_BOLAO = CURRENT_BOLAO || MY_BOLAOS[0]; }
   }
   console.log('[loadProfile] Bolão atual:', CURRENT_BOLAO?.name, '| Total bolões:', MY_BOLAOS.length);
-  setState({user:u, loading:false, page: MY_BOLAOS.length===0?'bolaos':'dashboard'});
+
+  // Restaurar a última aba visitada (se ainda for válida para este usuário/contexto)
+  let restoredPage = 'dashboard';
+  if(MY_BOLAOS.length===0){
+    restoredPage = 'bolaos';
+  } else {
+    try{
+      const lastPage = localStorage.getItem('last_page');
+      const alwaysValid = ['rules','bolaos','dashboard','mine'];
+      const conditionalPages = ['matches','jogos','standings','knockout','ko_matches'];
+      const adminOnlyPages = ['admin'];
+      const validPages = [
+        ...alwaysValid,
+        ...conditionalPages.filter(k=>tabEnabled(k==='jogos'?'matches':k)),
+        ...(STATE.profile?.is_admin ? adminOnlyPages : [])
+      ];
+      if(lastPage && validPages.includes(lastPage)) restoredPage = lastPage;
+    }catch(e){}
+  }
+  setState({user:u, loading:false, page: restoredPage});
 }
 
 async function loadMyBolaos(uid){
