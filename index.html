@@ -6494,10 +6494,27 @@ function buildAdminUI(main){
     cfgCard.appendChild(el('div',{style:{fontSize:'.85rem',color:'var(--muted)',marginBottom:'.3rem'}},'🎯 Prazo específico por bolão (opcional)'));
     cfgCard.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.75rem'}},'Defina uma data diferente para um bolão específico. Se não configurado, esse bolão usa a data global acima.'));
 
+    // Resumo: lista de todos os bolões com o prazo que cada um está usando
+    const summaryDiv=el('div',{style:{display:'flex',flexDirection:'column',gap:'4px',marginBottom:'1rem'}});
+    (MY_BOLAOS||[]).forEach(b=>{
+      const dl=BOLAO_DEADLINES[b.id];
+      const row=el('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:'var(--dk3)',borderRadius:'7px',fontSize:'.78rem'}});
+      row.appendChild(el('span',{style:{fontWeight:'600',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'55%'}},b.name));
+      if(dl){
+        row.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',textAlign:'right'}},'🎯 '+new Date(dl).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})));
+      } else {
+        row.appendChild(el('span',{style:{color:'var(--muted)',textAlign:'right'}},'usa global'+(SECOND_ROUND_DATE?(' ('+new Date(SECOND_ROUND_DATE).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+')'):'')));
+      }
+      summaryDiv.appendChild(row);
+    });
+    cfgCard.appendChild(summaryDiv);
+
     const bolaoSelect=el('select',{class:'fi',style:{marginBottom:'8px'}});
     bolaoSelect.appendChild(el('option',{value:''},'— Selecione o bolão —'));
     (MY_BOLAOS||[]).forEach(b=>{
-      const o=el('option',{value:b.id},b.name+(BOLAO_DEADLINES[b.id]?' (prazo próprio definido)':''));
+      const dl=BOLAO_DEADLINES[b.id];
+      const label=b.name+(dl?(' — 🎯 '+new Date(dl).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})):' — usa global');
+      const o=el('option',{value:b.id},label);
       bolaoSelect.appendChild(o);
     });
 
