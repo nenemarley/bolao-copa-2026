@@ -2111,6 +2111,12 @@ async function showUserPalpites(userId, userName, isMe=false) {
       });
 
     } else if(activeTab==='grupos') {
+      body.innerHTML='';
+      if(canBetGroups()){
+        body.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:'.85rem'}},
+          '🔒 Os palpites de grupos ainda estão abertos neste bolão.\nEles só aparecem aqui depois do prazo encerrar.'));
+        return;
+      }
       const gp = await dbQ('group_predictions',{user_id:userId, bolao_id:bolaoId},'group_id,position,team_name,points');
       const rg = await dbQ('real_group_standings',{},'group_id,position,team_name');
       body.innerHTML='';
@@ -2139,6 +2145,12 @@ async function showUserPalpites(userId, userName, isMe=false) {
       });
 
     } else if(activeTab==='thirds') {
+      body.innerHTML='';
+      if(canBetGroups()){
+        body.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:'.85rem'}},
+          '🔒 Os palpites de 3ºs ainda estão abertos neste bolão.\nEles só aparecem aqui depois do prazo encerrar.'));
+        return;
+      }
       const gp = await dbQ('group_predictions',{user_id:userId,bolao_id:CURRENT_BOLAO?.id},'group_id,position,team_name,points');
       const rk = await dbQ('real_knockouts',{phase:'best_thirds'},'team_ids');
       body.innerHTML='';
@@ -2159,6 +2171,12 @@ async function showUserPalpites(userId, userName, isMe=false) {
       });
 
     } else if(activeTab==='fases') {
+      body.innerHTML='';
+      if(canBetGroups()){
+        body.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:'.85rem'}},
+          '🔒 As eliminatórias ainda estão abertas neste bolão.\nElas só aparecem aqui depois do prazo encerrar.'));
+        return;
+      }
       const [kp, rk, gp] = await Promise.all([
         dbQ('knockout_predictions',{user_id:userId, bolao_id:bolaoId},'phase,team_name,points'),
         dbQ('real_knockouts',{},'phase,team_ids'),
