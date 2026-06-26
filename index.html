@@ -4510,6 +4510,7 @@ function renderMine(main){
 
 // ── Ko Matches (Jogos Eliminatórios) ───────────────────────────────────────
 let koMatchPreds={}, koMatchReal={}, koMatchDirty=false, koMatchDirtySet=new Set(), koMatchPhase='round32', koMatchRealSt={}, koMatchMainEl=null;
+let koMatchRealStandings={}, koMatchBestThirds=[];
 
 function resolveSlot(slot, realStandings) {
   if(slot.type==='1'||slot.type==='2') {
@@ -4553,13 +4554,26 @@ function renderKoMatches(main){
     dbQ('match_predictions',{user_id:STATE.profile.id,bolao_id:CURRENT_BOLAO.id},'match_number,predicted_score1,predicted_score2,points'),
     dbQ('group_matches',{},'match_number,team1_name,team2_name,real_score1,real_score2,is_finished,group_id'),
     dbQ('real_knockouts',{},'phase,team_ids'),
-  ]).then(([mp,rm,rk])=>{
+    dbQ('real_group_standings',{},'group_id,position,team_name'),
+  ]).then(([mp,rm,rk,rgs])=>{
     if(PAGE_VERSION!==v) return;
     // Carregar configs
     const srRow=(rk||[]).find(r=>r.phase==='second_round_date');
     if(srRow?.team_ids?.[0]) SECOND_ROUND_DATE=srRow.team_ids[0];
     const mlRow=(rk||[]).find(r=>r.phase==='matches_lock_start');
     if(mlRow?.team_ids?.[0]) MATCHES_LOCK_START=mlRow.team_ids[0];
+
+    // Reconstruir standings reais dos grupos (1º/2º/3º de cada grupo) — mesma fonte que o admin usa
+    const realStandings={};
+    (rgs||[]).forEach(r=>{
+      if(!realStandings[r.group_id]) realStandings[r.group_id]={};
+      realStandings[r.group_id][r.position]=r.team_name;
+    });
+    koMatchRealStandings = realStandings;
+
+    // Melhores 3ºs reais definidos pelo admin
+    const bestThirdsRow=(rk||[]).find(r=>r.phase==='best_thirds');
+    koMatchBestThirds = bestThirdsRow?.team_ids||[];
 
     // Palpites em memória (só jogos KO >= 73)
     koMatchPreds={};
@@ -4577,7 +4591,6 @@ function renderKoMatches(main){
     // Resolver best_thirds: mapear grupo → 3º colocado
     // best_thirds é lista de nomes; precisamos saber de qual grupo cada time é 3º
     // Fonte: real_group_standings (position=3) OU adminStandings
-    const bestThirdsRow=(rk||[]).find(r=>r.phase==='best_thirds');
     koMatchRealSt={ bestThirds:{} };
     if(bestThirdsRow?.team_ids?.length) {
       dbQ('real_group_standings',{},'group_id,position,team_name').then(gs=>{
@@ -4629,7 +4642,27 @@ function buildKoMatchesUI(main){
     else phaseMatches.push({match_number:n,team1_name:null,team2_name:null,is_finished:false,real_score1:null,real_score2:null,_placeholder:true});
   }
 
-  const hasAnyTeams = phaseMatches.some(m=>m.team1_name && m.team2_name);
+  // hasAnyTeams: pelo menos 1 jogo da fase tem os 2 times resolvíveis (salvos OU calculados via grupos/3ºs reais)
+  const _hasAnyThirdAssign = buildThirdAssignment(koMatchBestThirds, koMatchRealStandings);
+  function _resolveRealTeam(slot, matchId){
+    if(slot.type==='1'||slot.type==='2'){
+      const pos=slot.type==='1'?1:2;
+      return koMatchRealStandings?.[slot.group]?.[pos] || null;
+    }
+    if(slot.type==='3'){
+      const info = resolveSlotInfo(slot, koMatchRealStandings, koMatchBestThirds, _hasAnyThirdAssign, matchId);
+      return info?.team || null;
+    }
+    return null;
+  }
+  const hasAnyTeams = phaseMatches.some(m=>{
+    if(m.team1_name && m.team2_name) return true;
+    if(m.match_number>88) return false; // fases seguintes dependem de jogo anterior finalizado — não conta aqui
+    const allBrackets=[...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
+    const bm=allBrackets.find(b=>b.id===m.match_number);
+    if(!bm) return false;
+    return !!(_resolveRealTeam(bm.slot1,m.match_number) && _resolveRealTeam(bm.slot2,m.match_number));
+  });
 
   // Placar padrão
   if(!window._koMatchDef) window._koMatchDef={s1:null,s2:null};
@@ -4666,8 +4699,60 @@ function buildKoMatchesUI(main){
 
   phaseMatches.forEach(m=>{
     const p=koMatchPreds[m.match_number]||{};
+
+    // Resolver nome dos times — primeiro tenta times REAIS (igual ao admin), senão cai no label genérico
+    const _thirdAssign = buildThirdAssignment(koMatchBestThirds, koMatchRealStandings);
+    function koMatchLabel(matchNum, slot) {
+      // Buscar no bracket qual é o label deste slot
+      const allBrackets = [...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
+      const bm = allBrackets.find(b=>b.id===matchNum);
+      if(!bm) return {name:slot===1?'Time A':'Time B', real:false};
+      const s = slot===1 ? bm.slot1 : bm.slot2;
+
+      // Tentar resolver time real (Rodada de 32 usa grupos/3ºs reais; fases seguintes usam vencedores reais já calculados em koMatchReal)
+      if(matchNum<=88){
+        // Checar diretamente nos standings reais — resolveSlotInfo tem fallback fictício que não deve ser tratado como real
+        if(s.type==='1'||s.type==='2'){
+          const pos=s.type==='1'?1:2;
+          const realTeam = koMatchRealStandings?.[s.group]?.[pos];
+          if(realTeam) return {name:realTeam, real:true};
+        } else if(s.type==='3'){
+          const info = resolveSlotInfo(s, koMatchRealStandings, koMatchBestThirds, _thirdAssign, matchNum);
+          if(info?.team) return {name:info.team, real:true};
+        }
+      } else {
+        if(s.type==='W'){
+          const prevM = koMatchReal[s.matchId];
+          if(prevM?.is_finished && prevM.real_score1!=null){
+            if(prevM.real_score1>prevM.real_score2) return {name:prevM.team1_name, real:true};
+            if(prevM.real_score2>prevM.real_score1) return {name:prevM.team2_name, real:true};
+          }
+        }
+        if(s.type==='L'){
+          const prevM = koMatchReal[s.matchId];
+          if(prevM?.is_finished && prevM.real_score1!=null){
+            if(prevM.real_score1<prevM.real_score2) return {name:prevM.team1_name, real:true};
+            if(prevM.real_score2<prevM.real_score1) return {name:prevM.team2_name, real:true};
+          }
+        }
+      }
+
+      // Fallback: label genérico do chaveamento (ainda não definido)
+      if(s.type==='1') return {name:'1º Grupo '+s.group, real:false};
+      if(s.type==='2') return {name:'2º Grupo '+s.group, real:false};
+      if(s.type==='3') return {name:'3º (vaga '+s.slotKey+')', real:false};
+      if(s.type==='W') return {name:'V. Jogo '+(s.matchId-72), real:false};
+      if(s.type==='L') return {name:'Perd. Semi '+(s.matchId-100), real:false};
+      return {name:'?', real:false};
+    }
+
+    const r1 = m.team1_name ? {name:m.team1_name, real:true} : koMatchLabel(m.match_number, 1);
+    const r2 = m.team2_name ? {name:m.team2_name, real:true} : koMatchLabel(m.match_number, 2);
+    const t1 = r1.name, t2 = r2.name;
+    const t1Known = r1.real, t2Known = r2.real;
+
     // Considerar 0 como "sem palpite" se o jogo ainda não tem times definidos ou se foi zerado
-    const hasTeams = !!(m.team1_name && m.team2_name);
+    const hasTeams = t1Known && t2Known;
     // v1/v2: null = não palpitou ainda (mostra —)
     // Se predicted_score1=0 e não tem times, tratar como não palpitado
     const v1 = (!hasTeams && p.s1===0) ? null : (p.s1??null);
@@ -4676,26 +4761,6 @@ function buildKoMatchesUI(main){
     const hasResult=m.is_finished;
     const pts=p.pts||0;
     const ptsCls=pts===10?'p10':pts===7?'p7':pts===5?'p5':pts===2?'p2':'p0';
-
-    // Resolver nome dos times — usar label do chaveamento se null
-    function koMatchLabel(matchNum, slot) {
-      // Buscar no bracket qual é o label deste slot
-      const allBrackets = [...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
-      const bm = allBrackets.find(b=>b.id===matchNum);
-      if(!bm) return slot===1?'Time A':'Time B';
-      const s = slot===1 ? bm.slot1 : bm.slot2;
-      if(s.type==='1') return '1º Grupo '+s.group;
-      if(s.type==='2') return '2º Grupo '+s.group;
-      if(s.type==='3') return '3º (vaga '+s.slotKey+')';
-      if(s.type==='W') return 'V. Jogo '+(s.matchId-72);
-      if(s.type==='L') return 'Perd. Semi '+(s.matchId-100);
-      return '?';
-    }
-
-    const t1 = m.team1_name || koMatchLabel(m.match_number, 1);
-    const t2 = m.team2_name || koMatchLabel(m.match_number, 2);
-    const t1Known = !!m.team1_name;
-    const t2Known = !!m.team2_name;
 
     const mc=el('div',{style:{background:'var(--dk3)',borderRadius:'12px',padding:'1rem',marginBottom:'10px',
       border: canBetNow ? '1px solid var(--bdr)' : '1px solid rgba(245,158,11,.2)'}});
@@ -5858,18 +5923,46 @@ function buildAdminUI(main){
       else phMatches.push({match_number:n,team1_name:null,team2_name:null,real_score1:null,real_score2:null,is_finished:false,_virtual:true});
     }
 
-    // Função para gerar label do chaveamento
+    // Função para gerar label do chaveamento — resolve times REAIS quando possível
+    const _adminThirdAssign = buildThirdAssignment(adminKo['best_thirds']?.team_ids||[], adminStandings);
     function adminKoLabel(matchNum, slot){
       const allB=[...ROUND32_BRACKET,...ROUND16_BRACKET,...QUARTER_BRACKET,...SEMI_BRACKET,...FINAL_BRACKET,...THIRD_BRACKET];
       const bm=allB.find(b=>b.id===matchNum);
-      if(!bm) return slot===1?'Time A':'Time B';
+      if(!bm) return {name:slot===1?'Time A':'Time B', real:false};
       const s=slot===1?bm.slot1:bm.slot2;
-      if(s.type==='1') return '1º Gr.'+s.group;
-      if(s.type==='2') return '2º Gr.'+s.group;
-      if(s.type==='3') return '3º(vaga '+s.slotKey+')';
-      if(s.type==='W') return 'V.Jogo '+(s.matchId-72);
-      if(s.type==='L') return 'Perd.Semi '+(s.matchId-100);
-      return '?';
+
+      if(matchNum<=88){
+        if(s.type==='1'||s.type==='2'){
+          const pos=s.type==='1'?1:2;
+          const realTeam = adminStandings?.[s.group]?.[pos];
+          if(realTeam) return {name:realTeam, real:true};
+        } else if(s.type==='3'){
+          const info = resolveSlotInfo(s, adminStandings, adminKo['best_thirds']?.team_ids||[], _adminThirdAssign, matchNum);
+          if(info?.team) return {name:info.team, real:true};
+        }
+      } else {
+        if(s.type==='W'){
+          const prevM = adminMatches[s.matchId];
+          if(prevM?.is_finished && prevM.real_score1!=null){
+            if(prevM.real_score1>prevM.real_score2) return {name:prevM.team1_name, real:true};
+            if(prevM.real_score2>prevM.real_score1) return {name:prevM.team2_name, real:true};
+          }
+        }
+        if(s.type==='L'){
+          const prevM = adminMatches[s.matchId];
+          if(prevM?.is_finished && prevM.real_score1!=null){
+            if(prevM.real_score1<prevM.real_score2) return {name:prevM.team1_name, real:true};
+            if(prevM.real_score2<prevM.real_score1) return {name:prevM.team2_name, real:true};
+          }
+        }
+      }
+
+      if(s.type==='1') return {name:'1º Gr.'+s.group, real:false};
+      if(s.type==='2') return {name:'2º Gr.'+s.group, real:false};
+      if(s.type==='3') return {name:'3º(vaga '+s.slotKey+')', real:false};
+      if(s.type==='W') return {name:'V.Jogo '+(s.matchId-72), real:false};
+      if(s.type==='L') return {name:'Perd.Semi '+(s.matchId-100), real:false};
+      return {name:'?', real:false};
     }
 
     if(phMatches.length===0){
@@ -5942,10 +6035,11 @@ function buildAdminUI(main){
         card.appendChild(el('div',{style:{textAlign:'center',fontSize:'.62rem',color:'var(--muted)',fontWeight:'600',marginBottom:'.3rem'}},formatted));
       }
 
-      // Times — usar label do chaveamento se null
-      const t1=m.team1_name||adminKoLabel(m.match_number,1);
-      const t2=m.team2_name||adminKoLabel(m.match_number,2);
-      const t1Known=!!m.team1_name, t2Known=!!m.team2_name;
+      // Times — usar nome real resolvido se possível, senão label do chaveamento
+      const r1adm = m.team1_name ? {name:m.team1_name, real:true} : adminKoLabel(m.match_number,1);
+      const r2adm = m.team2_name ? {name:m.team2_name, real:true} : adminKoLabel(m.match_number,2);
+      const t1=r1adm.name, t2=r2adm.name;
+      const t1Known=r1adm.real, t2Known=r2adm.real;
       const hdr=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'.6rem'}});
       hdr.appendChild(el('span',{style:{fontWeight:t1Known?'600':'400',fontSize:t1Known?'.85rem':'.75rem',color:t1Known?'var(--text)':'var(--muted)'}},t1Known?(FLAGS[t1]||'')+' '+t1:t1));
       hdr.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.75rem'}},'×'));
