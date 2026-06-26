@@ -2906,7 +2906,7 @@ function appendMatchCard(main, m, forceFinalized) {
   main.appendChild(mc);
 }
 
-async function showMatchPalpitesPopup(m, r, hasResult=false) {
+async function showMatchPalpitesPopup(m, r, hasResult=false, headerOverride=null) {
   document.getElementById('match-palpites-popup')?.remove();
 
   const overlay = el('div',{id:'match-palpites-popup',style:{
@@ -2923,20 +2923,25 @@ async function showMatchPalpitesPopup(m, r, hasResult=false) {
     position:'relative'
   }});
 
-  // Header
+  // Header — usa dados padrão (1ª fase) ou override (eliminatórias)
+  const matchNum = headerOverride?.matchNumber ?? m.num;
+  const groupLabel = headerOverride?.subtitle ?? ('Grupo '+m.group);
+  const t1 = headerOverride?.t1 ?? m.t1;
+  const t2 = headerOverride?.t2 ?? m.t2;
+
   const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
   hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
-    '👥 Palpites — Jogo #'+m.num+' · Grupo '+m.group));
+    '👥 Palpites — Jogo #'+matchNum+' · '+groupLabel));
 
   // Times e resultado real (ou "em andamento")
   const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
-  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},(FLAGS[m.t1]||'🏳')+' '+m.t1));
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},(FLAGS[t1]||'🏳')+' '+t1));
   if(hasResult && r){
     matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},r.real_score1+' — '+r.real_score2));
   } else {
     matchInfo.appendChild(el('span',{style:{fontSize:'.72rem',color:'#FCD34D',margin:'0 6px',fontWeight:'700'}},'🔴 EM ANDAMENTO'));
   }
-  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},m.t2+' '+(FLAGS[m.t2]||'🏳')));
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},t2+' '+(FLAGS[t2]||'🏳')));
   hdr.appendChild(matchInfo);
 
   modal.appendChild(hdr);
@@ -2957,7 +2962,7 @@ async function showMatchPalpitesPopup(m, r, hasResult=false) {
       dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
       SB.from('match_predictions')
         .select('user_id,predicted_score1,predicted_score2,points')
-        .eq('match_number', m.num)
+        .eq('match_number', matchNum)
         .eq('bolao_id', bolaoId)
         .then(res=>res.data||[])
     ]);
@@ -4806,8 +4811,31 @@ function buildKoMatchesUI(main){
     }, !canBetNow||locked, _matchDirty));
     mc.appendChild(scoreRow);
 
-    // Resultado real
-    if(hasResult){
+    // Quando bloqueado (prazo encerrado ou jogo já rolou) — mostrar "Meu palpite" + ver todos
+    if(hasTeams && !canBetNow){
+      const sep = el('div',{style:{borderTop:'1px solid rgba(45,55,72,.5)',marginTop:'.3rem',paddingTop:'.3rem',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'6px',flexWrap:'wrap',cursor:'pointer'},
+        onclick: ()=>showMatchPalpitesPopup(
+          {num:m.match_number},
+          m,
+          hasResult,
+          {matchNumber:m.match_number, subtitle:KO_PHASE_LABELS[koMatchPhase]||'', t1, t2}
+        ),
+        title:'Clique para ver palpites de todos'
+      });
+      const leftDiv = el('div',{style:{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}});
+      leftDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'Meu palpite:'));
+      if(v1!==null && v2!==null){
+        leftDiv.appendChild(el('span',{style:{fontSize:'.75rem',color:'#94A3B8',fontWeight:'600'}},v1+' × '+v2));
+        if(hasResult) leftDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem'}},pts+'pts'));
+      } else {
+        leftDiv.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)'}},'Sem palpite'));
+        if(hasResult) leftDiv.appendChild(el('span',{class:'pp p0',style:{fontSize:'.65rem'}},'0pts'));
+      }
+      sep.appendChild(leftDiv);
+      sep.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)',flexShrink:'0'}},hasResult?'👥 ver todos':'👥 ver palpites'));
+      mc.appendChild(sep);
+    } else if(hasResult){
+      // Fallback (não deveria ocorrer já que hasResult implica !canBetNow, mas mantém compatibilidade)
       const rr=el('div',{style:{textAlign:'center',fontSize:'.7rem',color:'var(--muted)'}});
       rr.appendChild(document.createTextNode('Resultado real: '));
       rr.appendChild(el('span',{style:{color:'var(--gold)',fontWeight:'700',fontSize:'.9rem'}},m.real_score1+' — '+m.real_score2));
