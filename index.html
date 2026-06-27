@@ -2445,14 +2445,14 @@ function renderDashboard(main){
     const _mode = bolaoMode();
     const rankCols = [
       { header:'Placar\n1ªFase',   val: r => r.j1,       show: _mode !== 'classificados' },
-      { header:'Placar\nFinais',   val: r => r.je,       show: _mode !== 'classificados' },
-      { header:'Classifi-\ncados', val: r => r.g,        show: _mode !== 'placares' },
+      { header:'Classifi-\ncadas', val: r => r.g,        show: _mode !== 'placares' },
       { header:'Melhores\n3º',     val: r => r.t3,       show: _mode !== 'placares' },
+      { header:'Placar\nFinais',   val: r => r.je,       show: _mode !== 'classificados' },
       { header:'Elimina-\ntórias', val: r => r.fk,       show: _mode !== 'placares' },
       { header:'Pódio',            val: r => r.fc + r.s, show: _mode !== 'placares' },
     ];
     const visCols = rankCols.filter(c => c.show);
-    const headers = ['#','Palpiteiro',...visCols.map(c=>c.header),'Total'];
+    const headers = ['#','Palpiteiro','Total',...visCols.map(c=>c.header)];
     t.appendChild(el('thead',{},el('tr',{},...headers.map(h=>el('th',{style:{whiteSpace:'pre-wrap',fontSize:'.65rem',padding:'5px 3px',textAlign:'center',lineHeight:'1.2'}},h)))));
     const em=['🥇','🥈','🥉'],rc=['r1','r2','r3'];
     const tbody=el('tbody');
@@ -2468,6 +2468,7 @@ function renderDashboard(main){
       nameTd.appendChild(nameSpan);
       if(r.prof.is_admin) nameTd.appendChild(el('span',{class:'badge'},'ADMIN'));
       tr.appendChild(nameTd);
+      const totalTd=el('td',{style:{textAlign:'center'}}); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
       // Pódio = campeão/vice/3ºlugar + artilheiro somados
       visCols.forEach(c=>{
         const v=c.val(r);
@@ -2475,7 +2476,6 @@ function renderDashboard(main){
         td.appendChild(el('span',{style:{color:v>0?'var(--ok)':'var(--muted)'}},''+v));
         tr.appendChild(td);
       });
-      const totalTd=el('td',{style:{textAlign:'center'}}); totalTd.appendChild(el('span',{class:'pbadge'},''+r.total)); tr.appendChild(totalTd);
       tbody.appendChild(tr);
     });
     t.appendChild(tbody);
