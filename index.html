@@ -4301,9 +4301,13 @@ function buildKoUI(main){
 
         // Botão "ver todos" — só quando o resultado REAL deste jogo específico já foi definido
         if(rpHasResult){
+          // Usar os nomes REAIS salvos em group_matches (team1_name/team2_name) para o header do popup,
+          // não o confronto calculado a partir dos palpites do usuário logado
+          const realT1 = thisMatchReal.team1_name || t1;
+          const realT2 = thisMatchReal.team2_name || t2;
           const verBtn = el('div',{
             style:{textAlign:'center',fontSize:'.65rem',color:'var(--muted)',marginTop:'4px',cursor:'pointer'},
-            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, t1, t2, thisMatchReal, ph.pts)
+            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, realT1, realT2, thisMatchReal, ph.pts)
           }, '👥 ver todos');
           wrap.appendChild(verBtn);
         }
