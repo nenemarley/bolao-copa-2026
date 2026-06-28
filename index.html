@@ -2910,7 +2910,7 @@ function appendMatchCard(main, m, forceFinalized) {
 }
 
 // ── Popup de palpites de eliminatórias (escolha de time vencedor, sem placar) ──
-async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal) {
+async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phasePts=10) {
   document.getElementById('ko-team-picks-popup')?.remove();
 
   const overlay = el('div',{id:'ko-team-picks-popup',style:{
@@ -2999,18 +2999,36 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal) {
         borderRadius:'8px',marginBottom:'4px'
       }});
       card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
-        row.correct?'✅':(i+1)+'º'));
+        row.correct?'🥇':row.pick?(i+1)+'º':'—'));
       const nameDiv=el('div',{style:{flex:'1',minWidth:'0'}});
-      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:'3px'}},
         row.name+(row.isMe?' 👤':'')));
-      card.appendChild(nameDiv);
-      const pickDiv=el('div',{style:{textAlign:'right',flexShrink:'0'}});
+      // Confronto: time escolhido destacado em verde (acertou) ou vermelho (errou)
       if(row.pick){
-        pickDiv.appendChild(el('span',{style:{fontSize:'.78rem',color:row.correct?'var(--ok)':'#94A3B8',fontWeight:'600'}},(FLAGS[row.pick]||'')+' '+row.pick));
+        const isT1 = row.pick===t1;
+        const matchRow = el('div',{style:{display:'flex',alignItems:'center',gap:'4px',fontSize:'.78rem'}});
+        const mk=(team,picked)=>el('span',{style:{
+          fontWeight:picked?'700':'400',
+          color: !picked ? 'var(--muted)' : (row.correct ? '#4ADE80' : '#F87171')
+        }},(FLAGS[team]||'')+' '+team);
+        matchRow.appendChild(mk(t1,isT1));
+        matchRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem'}},'×'));
+        matchRow.appendChild(mk(t2,!isT1));
+        nameDiv.appendChild(matchRow);
       } else {
-        pickDiv.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
+        nameDiv.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
       }
-      card.appendChild(pickDiv);
+      card.appendChild(nameDiv);
+      // Pontuação
+      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right'}});
+      if(row.pick){
+        const pts = row.correct ? phasePts : 0;
+        const ptsCls = row.correct?'p10':'p0';
+        ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},pts+'pts'));
+      } else {
+        ptsDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'—'));
+      }
+      card.appendChild(ptsDiv);
       body.appendChild(card);
     });
 
@@ -4217,7 +4235,7 @@ function buildKoUI(main){
         if(rpHasResult){
           const verBtn = el('div',{
             style:{textAlign:'center',fontSize:'.65rem',color:'var(--muted)',marginTop:'4px',cursor:'pointer'},
-            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, t1, t2, thisMatchReal)
+            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, t1, t2, thisMatchReal, ph.pts)
           }, '👥 ver todos');
           wrap.appendChild(verBtn);
         }
