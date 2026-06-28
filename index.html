@@ -2938,7 +2938,6 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
   matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t2?'var(--gold)':'inherit'}},t2+' '+(FLAGS[t2]||'🏳')));
   hdr.appendChild(matchInfo);
   if(winner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Vencedor: '+winner));
-  hdr.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',marginTop:'6px'}},'Time escolhido por cada participante para vencer este confronto'));
 
   modal.appendChild(hdr);
   modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
@@ -2951,7 +2950,6 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
 
   try {
     const bolaoId = CURRENT_BOLAO?.id;
-    // Descobrir qual fase esse matchId pertence, para buscar knockout_predictions
     let phaseKey = null;
     if(matchId>=73 && matchId<=88) phaseKey='round32';
     else if(matchId>=89 && matchId<=96) phaseKey='round16';
@@ -2960,27 +2958,93 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
     else if(matchId===103) phaseKey='third';
     else if(matchId===104) phaseKey='final';
 
-    const [members, allPicks] = await Promise.all([
+    const [members, allKnockoutPreds, allGroupPreds] = await Promise.all([
       dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
-      SB.from('knockout_predictions')
-        .select('user_id,team_name')
-        .eq('phase', phaseKey)
-        .eq('bolao_id', bolaoId)
-        .in('team_name', [t1,t2])
-        .then(r=>r.data||[])
+      // Buscar TODAS as fases (não só a atual) — precisamos delas em cascata para reconstruir o bracket de cada usuário
+      SB.from('knockout_predictions').select('user_id,phase,team_name').eq('bolao_id', bolaoId).then(r=>r.data||[]),
+      SB.from('group_predictions').select('user_id,group_id,position,team_name').eq('bolao_id', bolaoId).then(r=>r.data||[]),
     ]);
 
     const memberIds = new Set((members||[]).map(m=>m.user_id));
-    const pickByUser = {};
-    allPicks.filter(p=>memberIds.has(p.user_id)).forEach(p=>{ pickByUser[p.user_id]=p.team_name; });
+
+    // Agrupar palpites de grupo e de eliminatórias por usuário
+    const grpByUser = {};
+    allGroupPreds.filter(p=>memberIds.has(p.user_id)).forEach(p=>{
+      if(!grpByUser[p.user_id]) grpByUser[p.user_id]={};
+      if(p.group_id==='_thirds') return;
+      if(!grpByUser[p.user_id][p.group_id]) grpByUser[p.user_id][p.group_id]={};
+      grpByUser[p.user_id][p.group_id][p.position]=p.team_name;
+    });
+    const thirdsByUser = {};
+    allGroupPreds.filter(p=>memberIds.has(p.user_id) && p.group_id==='_thirds').forEach(p=>{
+      if(!thirdsByUser[p.user_id]) thirdsByUser[p.user_id]=[];
+      thirdsByUser[p.user_id].push(p.team_name);
+    });
+    const koByUser = {};
+    allKnockoutPreds.filter(p=>memberIds.has(p.user_id)).forEach(p=>{
+      if(!koByUser[p.user_id]) koByUser[p.user_id]={};
+      if(!koByUser[p.user_id][p.phase]) koByUser[p.user_id][p.phase]=[];
+      koByUser[p.user_id][p.phase].push(p.team_name);
+    });
+
+    const bracketByPhase={round32:ROUND32_BRACKET,round16:ROUND16_BRACKET,quarter:QUARTER_BRACKET,semi:SEMI_BRACKET,final:FINAL_BRACKET,third:THIRD_BRACKET};
+
+    // Para cada usuário, reconstruir o bracket completo até a fase do matchId, igual ao popup de Ranking faz
+    function buildUserMatchup(uid){
+      const userSt = grpByUser[uid]||{};
+      const userThirdsRaw = thirdsByUser[uid]||[];
+      const userTop2=new Set();
+      Object.values(userSt).forEach(pos=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
+      const validThirdsOfGroups=new Set(Object.values(userSt).map(p=>p[3]).filter(Boolean));
+      const validUserThirds=userThirdsRaw.filter(t=>!userTop2.has(t)&&validThirdsOfGroups.has(t));
+      const thirdsForSlots=validUserThirds.slice(0,8);
+      const thirdAssignment=buildThirdAssignment(thirdsForSlots,userSt);
+
+      const mw={};
+      const r32picks=koByUser[uid]?.['round32']||[];
+      ROUND32_BRACKET.forEach(m=>{
+        const i1=resolveSlotInfo(m.slot1,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const i2=resolveSlotInfo(m.slot2,userSt,thirdsForSlots,thirdAssignment,m.id);
+        const tt1=i1.team||i1.label, tt2=i2.team||i2.label;
+        mw[m.id]={t1:tt1,t2:tt2,winner:r32picks.find(t=>t===tt1||t===tt2)||null};
+      });
+      const r16picks=koByUser[uid]?.['round16']||[];
+      ROUND16_BRACKET.forEach(m=>{
+        const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+        mw[m.id]={t1:tt1,t2:tt2,winner:r16picks.find(t=>t===tt1||t===tt2)||null};
+      });
+      const qpicks=koByUser[uid]?.['quarter']||[];
+      QUARTER_BRACKET.forEach(m=>{
+        const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+        mw[m.id]={t1:tt1,t2:tt2,winner:qpicks.find(t=>t===tt1||t===tt2)||null};
+      });
+      const spicks=koByUser[uid]?.['semi']||[];
+      SEMI_BRACKET.forEach(m=>{
+        const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+        mw[m.id]={t1:tt1,t2:tt2,winner:spicks.find(t=>t===tt1||t===tt2)||null};
+      });
+      const fpicks=koByUser[uid]?.['final']||[];
+      FINAL_BRACKET.forEach(m=>{
+        const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+        mw[m.id]={t1:tt1,t2:tt2,winner:fpicks.find(t=>t===tt1||t===tt2)||null};
+      });
+      // 3º lugar: t1/t2 são os 2 perdedores da semi
+      const semiM = SEMI_BRACKET.map(m=>mw[m.id]);
+      const losers = semiM.map(m=>{ if(!m?.winner||!m.t1||!m.t2) return null; return m.winner===m.t1?m.t2:m.t1; }).filter(Boolean);
+      const thirdPicks = koByUser[uid]?.['third']||[];
+      mw[103]={t1:losers[0]||null,t2:losers[1]||null,winner:thirdPicks.find(t=>t===losers[0]||t===losers[1])||null};
+
+      return mw[matchId] || {t1:null,t2:null,winner:null};
+    }
 
     const rows = [];
     memberIds.forEach(uid=>{
       const prof = STATE.profiles.find(p=>p.id===uid);
       if(!prof) return;
-      const pick = pickByUser[uid]||null;
+      const userMatch = buildUserMatchup(uid);
+      const pick = userMatch.winner;
       const correct = pick && winner && pick===winner;
-      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id});
+      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id, userT1:userMatch.t1, userT2:userMatch.t2});
     });
 
     rows.sort((a,b)=>{
@@ -3002,22 +3066,27 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
         row.correct?'🥇':row.pick?(i+1)+'º':'—'));
       const nameDiv=el('div',{style:{flex:'1',minWidth:'0'}});
-      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:'3px'}},
         row.name+(row.isMe?' 👤':'')));
-      card.appendChild(nameDiv);
-      // Time escolhido pelo participante — verde se acertou, vermelho se errou
-      // Não mostramos um "confronto" fixo (Time A x Time B) pois cada participante pode ter
-      // palpitado em um momento diferente, quando o chaveamento ainda podia ser outro
-      const pickDiv = el('div',{style:{textAlign:'right',flexShrink:'0',minWidth:'110px'}});
-      if(row.pick){
-        pickDiv.appendChild(el('span',{style:{
-          fontSize:'.8rem',fontWeight:'700',
-          color: row.correct ? '#4ADE80' : '#F87171'
-        }},(FLAGS[row.pick]||'')+' '+row.pick));
+      // Confronto individual desse participante (pode ser diferente do confronto real,
+      // pois cada um pode ter apostado em classificações de grupo diferentes)
+      if(row.pick && row.userT1 && row.userT2){
+        const isT1 = row.pick===row.userT1;
+        const matchSpan = el('div',{style:{fontSize:'.78rem',display:'flex',alignItems:'center',gap:'4px'}});
+        const mk=(team,picked)=>el('span',{style:{
+          fontWeight:picked?'700':'400',
+          color: !picked ? 'var(--muted)' : (row.correct ? '#4ADE80' : '#F87171')
+        }},(FLAGS[team]||'')+' '+team);
+        matchSpan.appendChild(mk(row.userT1,isT1));
+        matchSpan.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem'}},'×'));
+        matchSpan.appendChild(mk(row.userT2,!isT1));
+        nameDiv.appendChild(matchSpan);
+      } else if(row.pick){
+        nameDiv.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'700',color:row.correct?'#4ADE80':'#F87171'}},(FLAGS[row.pick]||'')+' '+row.pick));
       } else {
-        pickDiv.appendChild(el('span',{style:{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
+        nameDiv.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
       }
-      card.appendChild(pickDiv);
+      card.appendChild(nameDiv);
       // Pontuação
       const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px'}});
       if(row.pick){
