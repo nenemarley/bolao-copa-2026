@@ -2938,6 +2938,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
   matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t2?'var(--gold)':'inherit'}},t2+' '+(FLAGS[t2]||'🏳')));
   hdr.appendChild(matchInfo);
   if(winner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Vencedor: '+winner));
+  hdr.appendChild(el('div',{style:{fontSize:'.68rem',color:'var(--muted)',marginTop:'6px'}},'Time escolhido por cada participante para vencer este confronto'));
 
   modal.appendChild(hdr);
   modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
@@ -3001,26 +3002,24 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
         row.correct?'🥇':row.pick?(i+1)+'º':'—'));
       const nameDiv=el('div',{style:{flex:'1',minWidth:'0'}});
-      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:'3px'}},
+      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
         row.name+(row.isMe?' 👤':'')));
-      // Confronto: time escolhido destacado em verde (acertou) ou vermelho (errou)
-      if(row.pick){
-        const isT1 = row.pick===t1;
-        const matchRow = el('div',{style:{display:'flex',alignItems:'center',gap:'4px',fontSize:'.78rem'}});
-        const mk=(team,picked)=>el('span',{style:{
-          fontWeight:picked?'700':'400',
-          color: !picked ? 'var(--muted)' : (row.correct ? '#4ADE80' : '#F87171')
-        }},(FLAGS[team]||'')+' '+team);
-        matchRow.appendChild(mk(t1,isT1));
-        matchRow.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem'}},'×'));
-        matchRow.appendChild(mk(t2,!isT1));
-        nameDiv.appendChild(matchRow);
-      } else {
-        nameDiv.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
-      }
       card.appendChild(nameDiv);
+      // Time escolhido pelo participante — verde se acertou, vermelho se errou
+      // Não mostramos um "confronto" fixo (Time A x Time B) pois cada participante pode ter
+      // palpitado em um momento diferente, quando o chaveamento ainda podia ser outro
+      const pickDiv = el('div',{style:{textAlign:'right',flexShrink:'0',minWidth:'110px'}});
+      if(row.pick){
+        pickDiv.appendChild(el('span',{style:{
+          fontSize:'.8rem',fontWeight:'700',
+          color: row.correct ? '#4ADE80' : '#F87171'
+        }},(FLAGS[row.pick]||'')+' '+row.pick));
+      } else {
+        pickDiv.appendChild(el('span',{style:{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
+      }
+      card.appendChild(pickDiv);
       // Pontuação
-      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right'}});
+      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px'}});
       if(row.pick){
         const pts = row.correct ? phasePts : 0;
         const ptsCls = row.correct?'p10':'p0';
