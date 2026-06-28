@@ -5833,8 +5833,9 @@ function buildAdminUI(main){
           adminStandings[g][pos]=sel.value;
           try{
             await dbUpsert('real_group_standings',{group_id:g,position:pos,team_name:sel.value});
-            // Recalcular pontos dos palpites
-            await recalcGroupPts(g, pos, adminStandings, adminKo['best_thirds']?.team_ids||[]);
+            // Recalcular pontos dos palpites — SEMPRE recalcular 1º E 2º juntos,
+            // pois a pontuação de cada posição depende do resultado das duas (invertido=5pts)
+            await recalcGroupPts(g, null, adminStandings, adminKo['best_thirds']?.team_ids||[]);
             // Se mudou o 3º de um grupo, verificar se o time antigo estava em best_thirds
             if(pos===3 && adminKo['best_thirds']?.team_ids){
               const oldTeamInPos = adminStandings[g]?.[3];
