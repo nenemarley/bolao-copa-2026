@@ -5521,6 +5521,7 @@ async function syncAdminKoWithStandings(changedGroup){
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 let adminTab='jogos_admin', adminGrp='A', adminKoPhase='round32', adminMatches={}, adminStandings={}, adminKo={};
+let _prevThirdByGroup={}; // rastreia o 3º colocado atual de cada grupo, para detectar troca real ao editar
 
 // Lista de artilheiros dinâmica (carregada do banco ou fallback hardcoded)
 let SCORER_LIST_DYNAMIC = [
@@ -5629,6 +5630,9 @@ function renderAdmin(main){
     adminMatches={}; (m||[]).forEach(x=>adminMatches[x.match_number]=x);
     adminStandings={}; (s||[]).forEach(x=>{ if(!adminStandings[x.group_id])adminStandings[x.group_id]={}; adminStandings[x.group_id][x.position]=x.team_name; });
     adminKo={}; (k||[]).forEach(x=>adminKo[x.phase]=x);
+    // Inicializar rastreamento do 3º colocado de cada grupo (estado real vindo do banco)
+    _prevThirdByGroup={};
+    Object.entries(adminStandings).forEach(([g,pos])=>{ if(pos[3]) _prevThirdByGroup[g]=pos[3]; });
     buildAdminUI(main);
   });
 }
@@ -5832,23 +5836,25 @@ function buildAdminUI(main){
           if(!adminStandings[g])adminStandings[g]={};
           adminStandings[g][pos]=sel.value;
           try{
+            // Capturar o time ANTIGO antes de sobrescrever (para detectar se ele saiu do 3º lugar)
+            const oldThirdTeam = pos===3 ? _prevThirdByGroup[g] : null;
             await dbUpsert('real_group_standings',{group_id:g,position:pos,team_name:sel.value});
             // Recalcular pontos dos palpites — SEMPRE recalcular 1º E 2º juntos,
             // pois a pontuação de cada posição depende do resultado das duas (invertido=5pts)
             await recalcGroupPts(g, null, adminStandings, adminKo['best_thirds']?.team_ids||[]);
-            // Se mudou o 3º de um grupo, verificar se o time antigo estava em best_thirds
-            if(pos===3 && adminKo['best_thirds']?.team_ids){
-              const oldTeamInPos = adminStandings[g]?.[3];
-              // oldTeamInPos foi sobrescrito antes — usar sel.value como novo
-              // Verificar se algum time em best_thirds não é mais 3º de nenhum grupo
-              const valid3rds=Object.values(adminStandings).map(p=>p[3]).filter(Boolean);
-              const cleanedThirds=adminKo['best_thirds'].team_ids.filter(t=>valid3rds.includes(t));
-              if(cleanedThirds.length!==adminKo['best_thirds'].team_ids.length){
-                await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:cleanedThirds});
-                adminKo['best_thirds'].team_ids=cleanedThirds;
-                await recalcGroupPts('_thirds', null, {}, cleanedThirds);
-              }
+            // Se mudou o 3º de um grupo, remover do best_thirds APENAS o time antigo específico
+            // que saiu dessa posição — nunca reconstruir a lista comparando com adminStandings,
+            // pois esse objeto pode estar parcialmente carregado/incompleto no momento da edição
+            // (outros grupos podem ainda não ter a posição 3 definida), o que removeria
+            // incorretamente times válidos de outros grupos.
+            if(pos===3 && oldThirdTeam && oldThirdTeam!==sel.value && adminKo['best_thirds']?.team_ids?.includes(oldThirdTeam)){
+              const cleanedThirds = adminKo['best_thirds'].team_ids.filter(t=>t!==oldThirdTeam);
+              await dbUpsert('real_knockouts',{phase:'best_thirds',team_ids:cleanedThirds});
+              adminKo['best_thirds'].team_ids=cleanedThirds;
+              await recalcGroupPts('_thirds', null, {}, cleanedThirds);
+              showToast('⚠️ '+oldThirdTeam+' removido dos Melhores 3ºs (não é mais 3º de nenhum grupo)');
             }
+            if(pos===3) _prevThirdByGroup[g]=sel.value;
             // Cascata: limpar fases eliminatórias reais se o pool mudou
             await syncAdminKoWithStandings(g);
             showToast('✅ Grupo '+g+' pos.'+pos+' salvo!');
