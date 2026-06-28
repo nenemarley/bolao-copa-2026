@@ -2909,6 +2909,120 @@ function appendMatchCard(main, m, forceFinalized) {
   main.appendChild(mc);
 }
 
+// ── Popup de palpites de eliminatórias (escolha de time vencedor, sem placar) ──
+async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal) {
+  document.getElementById('ko-team-picks-popup')?.remove();
+
+  const overlay = el('div',{id:'ko-team-picks-popup',style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.78)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div',{style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'88vh',
+    display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
+  }});
+
+  const winner = matchReal.real_score1>matchReal.real_score2 ? t1
+    : matchReal.real_score2>matchReal.real_score1 ? t2 : null; // empate não deveria existir em mata-mata
+
+  const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
+    '👥 Quem venceu? — Jogo #'+matchId+' · '+phaseLabel));
+  const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t1?'var(--gold)':'inherit'}},(FLAGS[t1]||'🏳')+' '+t1));
+  matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},matchReal.real_score1+' — '+matchReal.real_score2));
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t2?'var(--gold)':'inherit'}},t2+' '+(FLAGS[t2]||'🏳')));
+  hdr.appendChild(matchInfo);
+  if(winner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Vencedor: '+winner));
+
+  modal.appendChild(hdr);
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+
+  const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
+  body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  try {
+    const bolaoId = CURRENT_BOLAO?.id;
+    // Descobrir qual fase esse matchId pertence, para buscar knockout_predictions
+    let phaseKey = null;
+    if(matchId>=73 && matchId<=88) phaseKey='round32';
+    else if(matchId>=89 && matchId<=96) phaseKey='round16';
+    else if(matchId>=97 && matchId<=100) phaseKey='quarter';
+    else if(matchId>=101 && matchId<=102) phaseKey='semi';
+    else if(matchId===103) phaseKey='third';
+    else if(matchId===104) phaseKey='final';
+
+    const [members, allPicks] = await Promise.all([
+      dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+      SB.from('knockout_predictions')
+        .select('user_id,team_name')
+        .eq('phase', phaseKey)
+        .eq('bolao_id', bolaoId)
+        .in('team_name', [t1,t2])
+        .then(r=>r.data||[])
+    ]);
+
+    const memberIds = new Set((members||[]).map(m=>m.user_id));
+    const pickByUser = {};
+    allPicks.filter(p=>memberIds.has(p.user_id)).forEach(p=>{ pickByUser[p.user_id]=p.team_name; });
+
+    const rows = [];
+    memberIds.forEach(uid=>{
+      const prof = STATE.profiles.find(p=>p.id===uid);
+      if(!prof) return;
+      const pick = pickByUser[uid]||null;
+      const correct = pick && winner && pick===winner;
+      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id});
+    });
+
+    rows.sort((a,b)=>{
+      if(a.correct && !b.correct) return -1;
+      if(!a.correct && b.correct) return 1;
+      if(!a.pick && b.pick) return 1;
+      if(a.pick && !b.pick) return -1;
+      return a.name.localeCompare(b.name);
+    });
+
+    body.innerHTML='';
+    rows.forEach((row,i)=>{
+      const card = el('div',{style:{
+        display:'flex',alignItems:'center',gap:'10px',padding:'.6rem .75rem',
+        background:row.isMe?'rgba(255,215,0,.08)':i%2===0?'var(--dk3)':'transparent',
+        border:row.isMe?'1px solid rgba(255,215,0,.3)':'1px solid transparent',
+        borderRadius:'8px',marginBottom:'4px'
+      }});
+      card.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},
+        row.correct?'✅':(i+1)+'º'));
+      const nameDiv=el('div',{style:{flex:'1',minWidth:'0'}});
+      nameDiv.appendChild(el('div',{style:{fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+        row.name+(row.isMe?' 👤':'')));
+      card.appendChild(nameDiv);
+      const pickDiv=el('div',{style:{textAlign:'right',flexShrink:'0'}});
+      if(row.pick){
+        pickDiv.appendChild(el('span',{style:{fontSize:'.78rem',color:row.correct?'var(--ok)':'#94A3B8',fontWeight:'600'}},(FLAGS[row.pick]||'')+' '+row.pick));
+      } else {
+        pickDiv.appendChild(el('span',{style:{fontSize:'.7rem',color:'var(--muted)',fontStyle:'italic'}},'sem palpite'));
+      }
+      card.appendChild(pickDiv);
+      body.appendChild(card);
+    });
+
+    if(rows.length===0){
+      body.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'2rem'}},'Nenhum participante encontrado.'));
+    }
+  } catch(e){
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem',fontSize:'.85rem'}},'Erro: '+e.message));
+  }
+}
+
 async function showMatchPalpitesPopup(m, r, hasResult=false, headerOverride=null) {
   document.getElementById('match-palpites-popup')?.remove();
 
@@ -4099,17 +4213,12 @@ function buildKoUI(main){
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         wrap.appendChild(row);
 
-        // Botão "ver todos" — só quando os 2 times são conhecidos (palpitável ou já decidido)
-        if(t1Known && t2Known){
+        // Botão "ver todos" — só quando o resultado REAL deste jogo específico já foi definido
+        if(rpHasResult){
           const verBtn = el('div',{
             style:{textAlign:'center',fontSize:'.65rem',color:'var(--muted)',marginTop:'4px',cursor:'pointer'},
-            onclick:()=>showMatchPalpitesPopup(
-              {num:m.id},
-              thisMatchReal,
-              rpHasResult,
-              {matchNumber:m.id, subtitle:phPrefix, t1, t2}
-            )
-          }, rpHasResult?'👥 ver todos':'👥 ver palpites');
+            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, t1, t2, thisMatchReal)
+          }, '👥 ver todos');
           wrap.appendChild(verBtn);
         }
         return wrap;
