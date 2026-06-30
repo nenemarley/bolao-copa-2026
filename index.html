@@ -2926,15 +2926,21 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
     display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
   }});
 
-  const winner = matchReal.real_score1>matchReal.real_score2 ? t1
-    : matchReal.real_score2>matchReal.real_score1 ? t2 : null; // empate não deveria existir em mata-mata
+  const hasResult = !!(matchReal?.is_finished && matchReal?.real_score1!=null);
+  const winner = hasResult
+    ? (matchReal.real_score1>matchReal.real_score2 ? t1 : matchReal.real_score2>matchReal.real_score1 ? t2 : null)
+    : null;
 
   const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
   hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
     '👥 Quem venceu? — Jogo #'+matchId+' · '+phaseLabel));
   const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
   matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t1?'var(--gold)':'inherit'}},(FLAGS[t1]||'🏳')+' '+t1));
-  matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},matchReal.real_score1+' — '+matchReal.real_score2));
+  if(hasResult){
+    matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},matchReal.real_score1+' — '+matchReal.real_score2));
+  } else {
+    matchInfo.appendChild(el('span',{style:{fontSize:'.72rem',color:'#FCD34D',margin:'0 6px',fontWeight:'700'}},'⏳ Aguardando resultado'));
+  }
   matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t2?'var(--gold)':'inherit'}},t2+' '+(FLAGS[t2]||'🏳')));
   hdr.appendChild(matchInfo);
   if(winner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Vencedor: '+winner));
@@ -3089,7 +3095,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       card.appendChild(nameDiv);
       // Pontuação
       const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px'}});
-      if(row.pick){
+      if(row.pick && hasResult){
         const pts = row.correct ? phasePts : 0;
         const ptsCls = row.correct?'p10':'p0';
         ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},pts+'pts'));
@@ -4299,16 +4305,15 @@ function buildKoUI(main){
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         wrap.appendChild(row);
 
-        // Botão "ver todos" — só quando o resultado REAL deste jogo específico já foi definido
-        if(rpHasResult){
-          // Usar os nomes REAIS salvos em group_matches (team1_name/team2_name) para o header do popup,
-          // não o confronto calculado a partir dos palpites do usuário logado
-          const realT1 = thisMatchReal.team1_name || t1;
-          const realT2 = thisMatchReal.team2_name || t2;
+        // Botão "ver todos" — aparece para todos os jogos com times conhecidos
+        // A pontuação dentro do popup só aparece quando rpHasResult=true (resultado real definido)
+        if(t1Known && t2Known){
+          const realT1 = thisMatchReal?.team1_name || t1;
+          const realT2 = thisMatchReal?.team2_name || t2;
           const verBtn = el('div',{
             style:{textAlign:'center',fontSize:'.65rem',color:'var(--muted)',marginTop:'4px',cursor:'pointer'},
             onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, realT1, realT2, thisMatchReal, ph.pts)
-          }, '👥 ver todos');
+          }, rpHasResult ? '👥 ver todos' : '👥 ver palpites');
           wrap.appendChild(verBtn);
         }
         return wrap;
