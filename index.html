@@ -6780,12 +6780,19 @@ function buildAdminUI(main){
     const koClrDiv=el('div',{style:{display:'flex',justifyContent:'flex-end',gap:'8px',marginBottom:'.75rem',flexWrap:'wrap'}});
     koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--gold)',border:'1px solid var(--gold)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
       try{
+        // Buscar SEMPRE fresco do banco — não confiar em adminKo (memória), que pode estar
+        // desatualizado em relação ao que foi realmente salvo/limpo no banco.
+        const freshKo = await dbQ('real_knockouts',{},'phase,team_ids');
+        const freshMap = {};
+        (freshKo||[]).forEach(r=>{ freshMap[r.phase]=r.team_ids||[]; });
         const phasesToCalc = ['round32','round16','quarter','semi','final','third','champion','runner_up'];
         for(const phase of phasesToCalc){
-          const teamIds = adminKo[phase]?.team_ids||[];
+          const teamIds = freshMap[phase]||[];
           await recalcKnockoutPts(phase, teamIds);
+          if(adminKo[phase]) adminKo[phase].team_ids = teamIds;
         }
         showToast('✅ Pontuações das eliminatórias recalculadas para todos os participantes!');
+        buildAdminUI(main);
       }catch(e){ showToast('Erro: '+e.message,'err'); }
     }},'🔄 Recalcular Pontuações'));
     koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
