@@ -2921,7 +2921,10 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
     background:'rgba(0,0,0,.78)',zIndex:'9999',
     display:'flex',alignItems:'flex-end',justifyContent:'center'
   }});
-  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  const _prevBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  function closeUnifiedPopup(){ overlay.remove(); document.body.style.overflow = _prevBodyOverflow; }
+  overlay.onclick = e => { if(e.target===overlay) closeUnifiedPopup(); };
 
   const modal = el('div',{style:{
     background:'var(--dk2)',borderRadius:'16px 16px 0 0',
@@ -2968,7 +2971,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
   hdr.appendChild(legendRow);
 
   modal.appendChild(hdr);
-  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem',zIndex:'10'},onclick:closeUnifiedPopup},'✕'));
 
   const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
   body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
@@ -3233,7 +3236,10 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
     background:'rgba(0,0,0,.78)',zIndex:'9999',
     display:'flex',alignItems:'flex-end',justifyContent:'center'
   }});
-  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+  const _prevBodyOverflow2 = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  function closeKoTeamPicksPopup(){ overlay.remove(); document.body.style.overflow = _prevBodyOverflow2; }
+  overlay.onclick = e => { if(e.target===overlay) closeKoTeamPicksPopup(); };
 
   const modal = el('div',{style:{
     background:'var(--dk2)',borderRadius:'16px 16px 0 0',
@@ -3241,18 +3247,23 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
     display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
   }});
 
-  // Vencedor é determinado APENAS pela lista de classificados que o admin marcou
-  // na aba Eliminat. (real_knockouts) — NUNCA pelo placar. O placar é o confronto real
-  // (usado só na pontuação da aba "Jogos Elim."), mas aqui cada participante pode ter
-  // definido um confronto diferente (times diferentes), então o único critério válido
-  // é comparar com quem o admin oficialmente marcou como vencedor/classificado.
   let phaseKeyForWinner = null;
   if(matchId>=73 && matchId<=88) phaseKeyForWinner='round32';
   else if(matchId>=89 && matchId<=96) phaseKeyForWinner='round16';
   else if(matchId>=97 && matchId<=100) phaseKeyForWinner='quarter';
   else if(matchId>=101 && matchId<=102) phaseKeyForWinner='semi';
+  else if(matchId===103) phaseKeyForWinner='third';
   else if(matchId===104) phaseKeyForWinner='final';
-  const classifiedTeams = phaseKeyForWinner ? (koReal?.[phaseKeyForWinner]?.team_ids || []) : [];
+
+  // Buscar SEMPRE fresco do banco — não confiar na variável global koReal, que só é
+  // populada quando o usuário visita a aba "Eliminat." nessa sessão.
+  let classifiedTeams = [];
+  try{
+    const { data } = await SB.from('real_knockouts').select('team_ids').eq('phase', phaseKeyForWinner).single();
+    classifiedTeams = data?.team_ids || [];
+    if(phaseKeyForWinner){ if(!koReal) koReal={}; koReal[phaseKeyForWinner] = {phase:phaseKeyForWinner, team_ids:classifiedTeams}; }
+  }catch(e){ classifiedTeams = phaseKeyForWinner ? (koReal?.[phaseKeyForWinner]?.team_ids || []) : []; }
+
   let winner = null;
   if(classifiedTeams.includes(t1) && !classifiedTeams.includes(t2)) winner = t1;
   else if(classifiedTeams.includes(t2) && !classifiedTeams.includes(t1)) winner = t2;
@@ -3274,7 +3285,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
   if(winner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Vencedor: '+winner));
 
   modal.appendChild(hdr);
-  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem',zIndex:'10'},onclick:closeKoTeamPicksPopup},'✕'));
 
   const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
   body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
@@ -4678,7 +4689,7 @@ function buildKoUI(main){
           const realT2 = thisMatchReal?.team2_name || t2;
           const verBtn = el('div',{
             style:{textAlign:'center',fontSize:'.65rem',color:'var(--muted)',marginTop:'4px',cursor:'pointer'},
-            onclick:()=>showKoUnifiedPopup(m.id, phPrefix, realT1, realT2, thisMatchReal, ph.pts)
+            onclick:()=>showKoTeamPicksPopup(m.id, phPrefix, realT1, realT2, thisMatchReal, ph.pts)
           }, rpHasResult ? '👥 ver todos' : '👥 ver palpites');
           wrap.appendChild(verBtn);
         }
