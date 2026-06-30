@@ -6776,8 +6776,18 @@ function buildAdminUI(main){
   }
 
   if(adminTab==='knockout'){
-    // Botão limpar todas as eliminatórias
-    const koClrDiv=el('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:'.75rem'}});
+    // Botão limpar todas as eliminatórias + botão recalcular pontuações (garantia manual)
+    const koClrDiv=el('div',{style:{display:'flex',justifyContent:'flex-end',gap:'8px',marginBottom:'.75rem',flexWrap:'wrap'}});
+    koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--gold)',border:'1px solid var(--gold)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
+      try{
+        const phasesToCalc = ['round32','round16','quarter','semi','final','third','champion','runner_up'];
+        for(const phase of phasesToCalc){
+          const teamIds = adminKo[phase]?.team_ids||[];
+          await recalcKnockoutPts(phase, teamIds);
+        }
+        showToast('✅ Pontuações das eliminatórias recalculadas para todos os participantes!');
+      }catch(e){ showToast('Erro: '+e.message,'err'); }
+    }},'🔄 Recalcular Pontuações'));
     koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
       if(!confirm('Limpar TODAS as fases eliminatórias e zerar pontos dos participantes?')) return;
       try{
@@ -6957,14 +6967,30 @@ function buildAdminUI(main){
             if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
             adminKo['champion'].team_ids=[champ];
             if(vice){if(!adminKo['runner_up'])adminKo['runner_up']={phase:'runner_up',team_ids:[]}; adminKo['runner_up'].team_ids=[vice];}
+          } else if(ph.key==='final' && next.length===0){
+            // Se a final foi limpa, também limpar champion/runner_up para não deixar pontuação presa
+            await dbUpsert('real_knockouts',{phase:'champion',team_ids:[]});
+            await dbUpsert('real_knockouts',{phase:'runner_up',team_ids:[]});
+            if(!adminKo['champion']) adminKo['champion']={phase:'champion',team_ids:[]};
+            adminKo['champion'].team_ids=[];
+            if(!adminKo['runner_up']) adminKo['runner_up']={phase:'runner_up',team_ids:[]};
+            adminKo['runner_up'].team_ids=[];
           }
           await cascadeAdminKo(ph.key);
+          // CRÍTICO: recalcular pontos dos participantes imediatamente após qualquer mudança
+          // de seleção — antes esse recálculo nunca era disparado automaticamente, deixando
+          // pontuações de pódio "presas" mesmo depois do admin corrigir/limpar a seleção.
+          await recalcKnockoutPts(ph.key, next);
+          if(ph.key==='final'){
+            await recalcKnockoutPts('champion', adminKo['champion']?.team_ids||[]);
+            await recalcKnockoutPts('runner_up', adminKo['runner_up']?.team_ids||[]);
+          }
           buildAdminUI(main); // rerender sem toast (troca é imediata)
           propagateKoMatchTeams(); // atualizar group_matches em background (fire & forget)
         }catch(e){ showToast(e.message,'err'); }
       }
 
-      // Recalcular pontos dos participantes (chamado pelo botão Salvar)
+      // Recalcular pontos dos participantes (botão manual, para garantir sincronização total)
       async function recalcAdminPhasePoints() {
         try{
           const phasesToCalc = ['round32','round16','quarter','semi','final','third','champion','runner_up'];
