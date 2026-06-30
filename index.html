@@ -3081,7 +3081,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
         const matchSpan = el('div',{style:{fontSize:'.78rem',display:'flex',alignItems:'center',gap:'4px'}});
         const mk=(team,picked)=>el('span',{style:{
           fontWeight:picked?'700':'400',
-          color: !picked ? 'var(--muted)' : (row.correct ? '#4ADE80' : '#F87171')
+          color: !picked ? 'var(--muted)' : hasResult ? (row.correct ? '#4ADE80' : '#F87171') : 'var(--gold)'
         }},(FLAGS[team]||'')+' '+team);
         matchSpan.appendChild(mk(row.userT1,isT1));
         matchSpan.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem'}},'×'));
