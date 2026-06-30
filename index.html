@@ -2926,10 +2926,23 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
     display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
   }});
 
-  const hasResult = !!(matchReal?.is_finished && matchReal?.real_score1!=null);
-  const winner = hasResult
-    ? (matchReal.real_score1>matchReal.real_score2 ? t1 : matchReal.real_score2>matchReal.real_score1 ? t2 : null)
-    : null;
+  // Vencedor é determinado APENAS pela lista de classificados que o admin marcou
+  // na aba Eliminat. (real_knockouts) — NUNCA pelo placar. O placar é o confronto real
+  // (usado só na pontuação da aba "Jogos Elim."), mas aqui cada participante pode ter
+  // definido um confronto diferente (times diferentes), então o único critério válido
+  // é comparar com quem o admin oficialmente marcou como vencedor/classificado.
+  let phaseKeyForWinner = null;
+  if(matchId>=73 && matchId<=88) phaseKeyForWinner='round32';
+  else if(matchId>=89 && matchId<=96) phaseKeyForWinner='round16';
+  else if(matchId>=97 && matchId<=100) phaseKeyForWinner='quarter';
+  else if(matchId>=101 && matchId<=102) phaseKeyForWinner='semi';
+  else if(matchId===104) phaseKeyForWinner='final';
+  const classifiedTeams = phaseKeyForWinner ? (koReal?.[phaseKeyForWinner]?.team_ids || []) : [];
+  let winner = null;
+  if(classifiedTeams.includes(t1) && !classifiedTeams.includes(t2)) winner = t1;
+  else if(classifiedTeams.includes(t2) && !classifiedTeams.includes(t1)) winner = t2;
+  // hasResult = o admin já definiu oficialmente o vencedor deste confronto
+  const hasResult = winner !== null;
 
   const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
   hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
@@ -2937,7 +2950,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
   const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
   matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:winner===t1?'var(--gold)':'inherit'}},(FLAGS[t1]||'🏳')+' '+t1));
   if(hasResult){
-    matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.15rem',color:'var(--gold)',margin:'0 6px'}},matchReal.real_score1+' — '+matchReal.real_score2));
+    matchInfo.appendChild(el('span',{style:{fontSize:'1.1rem',margin:'0 6px'}},'🆚'));
   } else {
     matchInfo.appendChild(el('span',{style:{fontSize:'.72rem',color:'#FCD34D',margin:'0 6px',fontWeight:'700'}},'⏳ Aguardando resultado'));
   }
