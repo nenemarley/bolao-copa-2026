@@ -4294,7 +4294,7 @@ async function saveStandings(){
   try{
     await upsertWithReplicate('group_predictions',rows);
     // Ao salvar grupos, limpar fases KO do banco (pool mudou, seleções anteriores inválidas)
-    const koPhases=['round32','round16','quarter','semi','final','runner_up','third'];
+    const koPhases=['round32','round16','quarter','semi','final','champion','runner_up','third'];
     const bolaoIdsKo = REPLICATE_ALL ? MY_BOLAOS.map(b=>b.id) : [CURRENT_BOLAO?.id];
     for(const bid of bolaoIdsKo){
       if(bid) await SB.from('knockout_predictions').delete()
@@ -6798,7 +6798,7 @@ function buildAdminUI(main){
     koClrDiv.appendChild(el('button',{class:'btn btn-sm',style:{color:'var(--err)',border:'1px solid var(--err)',background:'transparent',fontSize:'.72rem'},onclick:async()=>{
       if(!confirm('Limpar TODAS as fases eliminatórias e zerar pontos dos participantes?')) return;
       try{
-        const phases=['round32','round16','quarter','semi','final','third','best_thirds','top_scorer'];
+        const phases=['round32','round16','quarter','semi','final','third','champion','runner_up','best_thirds','top_scorer'];
         for(const ph of phases){
           await dbUpsert('real_knockouts',{phase:ph,team_ids:[]});
           if(adminKo[ph]) adminKo[ph].team_ids=[];
