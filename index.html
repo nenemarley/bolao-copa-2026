@@ -2929,7 +2929,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
     display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
   }});
 
-  // ── Determinar fase e classificados reais (igual showKoTeamPicksPopup) ──
+  // ── Determinar fase deste jogo (necessário para buscar classificados reais) ──
   let phaseKey = null;
   if(matchId>=73 && matchId<=88) phaseKey='round32';
   else if(matchId>=89 && matchId<=96) phaseKey='round16';
@@ -2937,11 +2937,6 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
   else if(matchId>=101 && matchId<=102) phaseKey='semi';
   else if(matchId===103) phaseKey='third';
   else if(matchId===104) phaseKey='final';
-  const classifiedTeams = phaseKey ? (koReal?.[phaseKey]?.team_ids || []) : [];
-  let classifWinner = null;
-  if(classifiedTeams.includes(t1) && !classifiedTeams.includes(t2)) classifWinner = t1;
-  else if(classifiedTeams.includes(t2) && !classifiedTeams.includes(t1)) classifWinner = t2;
-  const hasClassifResult = classifWinner !== null;
 
   // ── Resultado real de placar (group_matches) ──
   const hasPlacarResult = !!(matchReal?.is_finished && matchReal?.real_score1!=null);
@@ -2954,16 +2949,17 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
   const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
   hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},
     '👥 Jogo #'+matchId+' · '+phaseLabel));
-  const matchInfo = el('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
-  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:classifWinner===t1?'var(--gold)':'inherit'}},(FLAGS[t1]||'🏳')+' '+t1));
+  const matchInfo = el('div',{id:'ko-unified-matchinfo',style:{display:'flex',alignItems:'center',gap:'6px'}});
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},(FLAGS[t1]||'🏳')+' '+t1));
   if(hasPlacarResult){
     matchInfo.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.1rem',color:'var(--gold)',margin:'0 6px'}},matchReal.real_score1+' — '+matchReal.real_score2));
   } else {
     matchInfo.appendChild(el('span',{style:{fontSize:'1rem',margin:'0 6px'}},'🆚'));
   }
-  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600',color:classifWinner===t2?'var(--gold)':'inherit'}},t2+' '+(FLAGS[t2]||'🏳')));
+  matchInfo.appendChild(el('span',{style:{fontSize:'.82rem',fontWeight:'600'}},t2+' '+(FLAGS[t2]||'🏳')));
   hdr.appendChild(matchInfo);
-  if(classifWinner) hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px'}},'🏆 Classificado: '+classifWinner));
+  const classifWinnerLine = el('div',{id:'ko-unified-classifwinner',style:{fontSize:'.72rem',color:'var(--ok)',marginTop:'4px',minHeight:'1em'}});
+  hdr.appendChild(classifWinnerLine);
 
   // Legenda das 2 colunas — fundamental para tirar a dúvida dos participantes
   const legendRow = el('div',{style:{display:'flex',gap:'12px',marginTop:'8px',fontSize:'.68rem',color:'var(--muted)'}});
@@ -2985,13 +2981,37 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
     const phaseRanges = {round32:[73,88], round16:[89,96], quarter:[97,100], semi:[101,102], third:[103,103], final:[104,104]};
     const [phMin, phMax] = phaseRanges[phaseKey] || [matchId, matchId];
 
-    const [members, allKnockoutPreds, allGroupPreds, phaseRealMatches, placarPreds] = await Promise.all([
+    const [members, allKnockoutPreds, allGroupPreds, phaseRealMatches, placarPreds, realKnockoutsFresh] = await Promise.all([
       dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
       SB.from('knockout_predictions').select('user_id,phase,team_name').eq('bolao_id', bolaoId).then(r=>r.data||[]),
       SB.from('group_predictions').select('user_id,group_id,position,team_name').eq('bolao_id', bolaoId).then(r=>r.data||[]),
       SB.from('group_matches').select('match_number,team1_name,team2_name,is_finished').gte('match_number',phMin).lte('match_number',phMax).then(r=>r.data||[]),
       SB.from('match_predictions').select('user_id,predicted_score1,predicted_score2,points').eq('match_number', matchId).eq('bolao_id', bolaoId).then(r=>r.data||[]),
+      // Buscar SEMPRE fresco do banco — não confiar na variável global koReal, que só é
+      // populada quando o usuário visita a aba "Eliminat." nessa sessão. Se o usuário entra
+      // direto em "Jogos Elim.", koReal fica vazio e a classificação real nunca é encontrada.
+      SB.from('real_knockouts').select('phase,team_ids').eq('phase', phaseKey).then(r=>r.data?.[0]?.team_ids||[]),
     ]);
+
+    // Atualizar a variável global koReal com o dado fresco, para manter consistência
+    // caso outras partes da UI dependam dela depois
+    if(phaseKey){ if(!koReal) koReal={}; koReal[phaseKey] = {phase:phaseKey, team_ids:realKnockoutsFresh}; }
+
+    const classifiedTeams = realKnockoutsFresh || [];
+    let classifWinner = null;
+    if(classifiedTeams.includes(t1) && !classifiedTeams.includes(t2)) classifWinner = t1;
+    else if(classifiedTeams.includes(t2) && !classifiedTeams.includes(t1)) classifWinner = t2;
+
+    // Atualizar header agora que sabemos o vencedor real
+    const matchInfoEl = document.getElementById('ko-unified-matchinfo');
+    if(matchInfoEl){
+      const spans = matchInfoEl.querySelectorAll('span');
+      if(spans[0]) spans[0].style.color = classifWinner===t1 ? 'var(--gold)' : 'inherit';
+      const lastSpan = spans[spans.length-1];
+      if(lastSpan) lastSpan.style.color = classifWinner===t2 ? 'var(--gold)' : 'inherit';
+    }
+    const classifWinnerLineEl = document.getElementById('ko-unified-classifwinner');
+    if(classifWinnerLineEl && classifWinner) classifWinnerLineEl.textContent = '🏆 Classificado: '+classifWinner;
 
     const allRealKnockoutDecidedTeams = new Set();
     (phaseRealMatches||[]).forEach(m=>{
@@ -3155,7 +3175,29 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       // Coluna classificação
       const classifCol = el('div',{style:{flex:'1',background:'rgba(255,255,255,.03)',borderRadius:'7px',padding:'.45rem .55rem'}});
       classifCol.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--muted)',marginBottom:'2px'}},'🔥 Passa de fase'));
-      if(row.classifPick){
+      if(row.classifPick && row.userT1 && row.userT2){
+        // Mostrar o confronto completo que esse participante montou no bracket dele,
+        // com o time escolhido em destaque — igual ao popup antigo
+        const isT1 = row.classifPick===row.userT1;
+        const color = row.classifPickDecided ? (row.classifCorrect?'#4ADE80':'#F87171') : 'var(--gold)';
+        const cMatch = el('div',{style:{fontSize:'.68rem',display:'flex',alignItems:'center',gap:'3px',flexWrap:'wrap',marginBottom:'2px'}});
+        const mk=(team,picked)=>el('span',{style:{
+          fontWeight:picked?'700':'400',
+          color: picked ? color : 'var(--muted)'
+        }},(FLAGS[team]||'')+' '+team);
+        cMatch.appendChild(mk(row.userT1,isT1));
+        cMatch.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.62rem'}},'×'));
+        cMatch.appendChild(mk(row.userT2,!isT1));
+        classifCol.appendChild(cMatch);
+        const ptsRow = el('div',{style:{textAlign:'right'}});
+        if(row.classifPickDecided){
+          const cCls = row.classifCorrect?'p10':'p0';
+          ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},(row.classifCorrect?phasePts:0)+'pts'));
+        } else {
+          ptsRow.appendChild(el('span',{style:{fontSize:'.6rem',color:'var(--muted)'}},'—'));
+        }
+        classifCol.appendChild(ptsRow);
+      } else if(row.classifPick){
         const cRow = el('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'4px'}});
         const color = row.classifPickDecided ? (row.classifCorrect?'#4ADE80':'#F87171') : 'var(--gold)';
         cRow.appendChild(el('span',{style:{fontSize:'.74rem',fontWeight:'700',color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(FLAGS[row.classifPick]||'')+' '+row.classifPick));
