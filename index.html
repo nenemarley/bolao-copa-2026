@@ -2997,8 +2997,8 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
     {phase:'final',   ids:[104], label:'Final'},
   ];
 
-  const SLOT_H = 58;     // altura de cada slot na coluna base (Rodada 32)
-  const CARD_H = 44;
+  const SLOT_H = 72;     // altura de cada slot na coluna base (Rodada 32)
+  const CARD_H = 58;     // numLabel(~11px) + teamRow(21px) + divider(1px) + teamRow(21px) + margem de segurança
   const CARD_W = 122;
   const COL_GAP = 34;    // espaço horizontal reservado para as linhas de conexão
   const N_BASE = 16;
@@ -3020,7 +3020,7 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
     const isEmpty = !team;
     const row = el('div',{style:{
       display:'flex', alignItems:'center', gap:'4px',
-      padding:'2px 6px', height:'21px',
+      padding:'2px 6px', height:'21px', boxSizing:'border-box',
       background: isWinner ? 'rgba(74,222,128,.15)' : 'transparent',
       cursor: (!isEmpty && matchId) ? 'pointer' : 'default',
       fontSize:'.68rem', fontWeight: isWinner?'700':'400',
@@ -3091,9 +3091,9 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
       const card = el('div',{style:{
         position:'absolute', left:x+'px', top:cardTop+'px', width:CARD_W+'px', height:CARD_H+'px',
         background:'var(--dk2)', border:'1px solid var(--bdr)', borderRadius:'7px',
-        overflow:'hidden', boxShadow:'0 1px 3px rgba(0,0,0,.3)',
+        overflow:'hidden', boxShadow:'0 1px 3px rgba(0,0,0,.3)', boxSizing:'border-box',
       }});
-      const numLabel = el('div',{style:{fontSize:'.5rem',color:'var(--muted)',padding:'1px 6px 0'}},'#'+matchId);
+      const numLabel = el('div',{style:{fontSize:'.5rem',color:'var(--muted)',padding:'2px 6px 1px',lineHeight:'1',boxSizing:'border-box'}},'#'+matchId);
       card.appendChild(numLabel);
       card.appendChild(teamRow(t1, matchId, col.phase, w1));
       card.appendChild(el('div',{style:{height:'1px', background:'var(--bdr)'}}));
