@@ -2937,8 +2937,9 @@ function appendMatchCard(main, m, forceFinalized) {
 // ── Popup unificado de eliminatórias: placar + quem passa de fase, lado a lado ──
 // ── Chaveamento Visual na aba Ranking ──────────────────────────────────────
 function renderBracketView(container, koMatchRealData, koRealData, grpStandingsData) {
-  // Layout original (vertical): Chave A em colunas no topo, Final+3º no centro, Chave B embaixo.
-  // Times propagados em tempo real a partir de real_group_standings + real_knockouts.
+  // Layout: 5 colunas horizontais, uma por fase. Rodada de 32 (16 jogos) à esquerda,
+  // afunilando para a direita até a Final (1 jogo). Cada card se conecta por linha SVG
+  // ao card resultante na coluna seguinte. Times propagados em tempo real.
 
   const adminStandingsLocal = grpStandingsData || {};
   const bestThirdsIds = koRealData?.best_thirds?.team_ids || [];
@@ -2966,14 +2967,6 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
     const sel = koRealData?.final?.team_ids||[];
     mw[m.id] = {t1, t2, winner: sel.find(t=>t===t1||t===t2)||null};
   });
-  THIRD_BRACKET.forEach(m=>{
-    const s1=mw[m.slot1.matchId], s2=mw[m.slot2.matchId];
-    const semiSel=koRealData?.semi?.team_ids||[];
-    const t1=s1?(semiSel.includes(s1.t1)?s1.t2:s1.t1):null;
-    const t2=s2?(semiSel.includes(s2.t1)?s2.t2:s2.t1):null;
-    const sel=koRealData?.third?.team_ids||[];
-    mw[m.id] = {t1, t2, winner: sel.find(t=>t===t1||t===t2)||null};
-  });
 
   function getMatchTeams(matchId){
     const propagated = mw[matchId];
@@ -2991,43 +2984,57 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
   const semiw    = new Set(koRealData?.semi?.team_ids||[]);
   const finalw   = new Set(koRealData?.final?.team_ids||[]);
 
-  const phaseLabels = {round32:'Rodada de 32', round16:'Oitavas', quarter:'Quartas', semi:'Semifinal', final:'Final', third:'3º Lugar'};
-  const phasePtsMap = {round32:10, round16:10, quarter:10, semi:10, final:50, third:15};
+  const phaseLabels = {round32:'Rodada de 32', round16:'Oitavas', quarter:'Quartas', semi:'Semifinal', final:'Final'};
+  const phasePtsMap = {round32:10, round16:10, quarter:10, semi:10, final:50};
   const winnersByPhase = {round32:round32w, round16:round16w, quarter:quarterw, semi:semiw, final:finalw};
 
-  const chaveA = {
-    round32: [77,74,73,75,83,84,81,82],
-    round16: [89,90,91,92],
-    quarter: [97,98],
-    semi:    [101],
-  };
-  const chaveB = {
-    round32: [87,85,88,86,80,79,78,76],
-    round16: [93,94,95,96],
-    quarter: [99,100],
-    semi:    [102],
-  };
+  // Colunas da esquerda (R32, 16 jogos) para a direita (Final, 1 jogo)
+  const columns = [
+    {phase:'round32', ids:[77,74,73,75,83,84,81,82, 87,85,88,86,80,79,78,76], label:'Rodada 32'},
+    {phase:'round16', ids:[89,90,91,92, 93,94,95,96], label:'Oitavas'},
+    {phase:'quarter', ids:[97,98, 99,100], label:'Quartas'},
+    {phase:'semi',    ids:[101, 102], label:'Semifinal'},
+    {phase:'final',   ids:[104], label:'Final'},
+  ];
 
-  function teamBtn(team, matchId, phase, isWinner){
+  const SLOT_H = 58;     // altura de cada slot na coluna base (Rodada 32)
+  const CARD_H = 44;
+  const CARD_W = 122;
+  const COL_GAP = 34;    // espaço horizontal reservado para as linhas de conexão
+  const N_BASE = 16;
+
+  function centerY(colIdx, idxInCol){
+    if(colIdx===0) return idxInCol*SLOT_H + SLOT_H/2;
+    const prevCount = columns[colIdx-1].ids.length;
+    const childrenPerParent = prevCount / columns[colIdx].ids.length;
+    const firstChildIdx = idxInCol*childrenPerParent;
+    const yTop = centerY(colIdx-1, firstChildIdx);
+    const yBot = centerY(colIdx-1, firstChildIdx+childrenPerParent-1);
+    return (yTop+yBot)/2;
+  }
+
+  const totalHeight = N_BASE*SLOT_H;
+  const totalWidth = columns.length*(CARD_W+COL_GAP);
+
+  function teamRow(team, matchId, phase, isWinner){
     const isEmpty = !team;
-    const btn = el('div',{style:{
+    const row = el('div',{style:{
       display:'flex', alignItems:'center', gap:'4px',
-      padding:'4px 6px', borderRadius:'6px', minWidth:'90px',
-      background: isWinner ? 'rgba(74,222,128,.15)' : isEmpty ? 'transparent' : 'var(--dk3)',
-      border: isWinner ? '1px solid #4ADE80' : '1px solid var(--bdr)',
+      padding:'2px 6px', height:'21px',
+      background: isWinner ? 'rgba(74,222,128,.15)' : 'transparent',
       cursor: (!isEmpty && matchId) ? 'pointer' : 'default',
-      marginBottom:'2px', fontSize:'.72rem', fontWeight: isWinner?'700':'400',
+      fontSize:'.68rem', fontWeight: isWinner?'700':'400',
       color: isWinner ? '#4ADE80' : isEmpty ? 'var(--muted)' : 'var(--txt)',
-      minHeight: '26px',
+      whiteSpace:'nowrap', overflow:'hidden',
     }});
     if(isEmpty){
-      btn.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.65rem'}},'a definir'));
+      row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.6rem'}},'a definir'));
     } else {
-      btn.appendChild(el('span',{style:{fontSize:'.78rem'}},(FLAGS[team]||'🏳')));
-      btn.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'70px'}},team));
+      row.appendChild(el('span',{style:{fontSize:'.72rem',flexShrink:'0'}},(FLAGS[team]||'🏳')));
+      row.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis'}},team));
     }
     if(!isEmpty && matchId){
-      btn.onclick = (e)=>{
+      row.onclick = (e)=>{
         e.stopPropagation();
         const {t1,t2} = getMatchTeams(matchId);
         const real = getRealScoreInfo(matchId);
@@ -3036,89 +3043,79 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
         showKoUnifiedPopup(matchId, phaseLabel, t1||team, t2||team, real, pts);
       };
     }
-    return btn;
+    return row;
   }
 
-  function matchCard(matchId, phase){
-    const {t1,t2} = getMatchTeams(matchId);
-    const winners = winnersByPhase[phase]||new Set();
-    const w1 = t1 && winners.has(t1);
-    const w2 = t2 && winners.has(t2);
+  const wrap = el('div',{style:{overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}});
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width', totalWidth);
+  svg.setAttribute('height', totalHeight+30);
+  svg.style.display='block';
+  svg.style.position='absolute';
+  svg.style.top='0'; svg.style.left='0';
 
-    const card = el('div',{style:{
-      background:'var(--dk2)', borderRadius:'8px', padding:'4px 6px',
-      border:'1px solid var(--bdr)', marginBottom:'4px', display:'inline-block',
-      minWidth:'110px',
-    }});
-    card.appendChild(el('div',{style:{fontSize:'.55rem',color:'var(--muted)',marginBottom:'2px'}},
-      '#'+matchId));
-    card.appendChild(teamBtn(t1, matchId, phase, w1));
-    card.appendChild(teamBtn(t2, matchId, phase, w2));
-    return card;
+  const stage = el('div',{style:{position:'relative', width:totalWidth+'px', height:(totalHeight+30)+'px'}});
+  stage.appendChild(svg);
+
+  function drawLine(x1,y1,x2,y2){
+    const midX = x1 + (x2-x1)/2;
+    const path = document.createElementNS(svgNS,'path');
+    path.setAttribute('d', `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`);
+    path.setAttribute('stroke', 'rgba(255,255,255,.18)');
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('fill', 'none');
+    svg.appendChild(path);
   }
 
-  function finalSection(){
-    const sec = el('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'8px',padding:'0 4px'}});
-    sec.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--gold)',fontWeight:'700',textAlign:'center',marginBottom:'2px'}},'FINAL'));
-    const {t1:ft1,t2:ft2} = getMatchTeams(104);
-    const champ = koRealData?.champion?.team_ids?.[0]||null;
+  // Labels de coluna no topo
+  columns.forEach((col, colIdx)=>{
+    const x = colIdx*(CARD_W+COL_GAP);
+    const lbl = el('div',{style:{
+      position:'absolute', left:x+'px', top:'0px', width:CARD_W+'px',
+      textAlign:'center', fontSize:'.62rem', color:'var(--gold)', fontWeight:'700',
+    }}, col.label);
+    stage.appendChild(lbl);
+  });
 
-    const fc = el('div',{style:{background:'var(--dk2)',borderRadius:'8px',padding:'4px 6px',border:'1px solid rgba(255,215,0,.4)',minWidth:'110px'}});
-    fc.appendChild(el('div',{style:{fontSize:'.55rem',color:'var(--gold)',marginBottom:'2px'}},'#104'));
-    const fw1 = ft1 && champ===ft1, fw2 = ft2 && champ===ft2;
-    fc.appendChild(teamBtn(ft1,104,'final',fw1));
-    fc.appendChild(teamBtn(ft2,104,'final',fw2));
-    sec.appendChild(fc);
+  columns.forEach((col, colIdx)=>{
+    const x = colIdx*(CARD_W+COL_GAP);
+    col.ids.forEach((matchId, idxInCol)=>{
+      const {t1,t2} = getMatchTeams(matchId);
+      const winners = winnersByPhase[col.phase]||new Set();
+      const w1 = t1 && winners.has(t1);
+      const w2 = t2 && winners.has(t2);
+      const cy = centerY(colIdx, idxInCol) + 20; // +20 para dar espaço ao label
+      const cardTop = cy - CARD_H/2;
 
-    if(champ){
-      sec.appendChild(el('div',{style:{textAlign:'center',fontSize:'.75rem',marginTop:'4px'}},
-        '🏆 '+(FLAGS[champ]||'')+' '+champ));
-    }
+      const card = el('div',{style:{
+        position:'absolute', left:x+'px', top:cardTop+'px', width:CARD_W+'px', height:CARD_H+'px',
+        background:'var(--dk2)', border:'1px solid var(--bdr)', borderRadius:'7px',
+        overflow:'hidden', boxShadow:'0 1px 3px rgba(0,0,0,.3)',
+      }});
+      const numLabel = el('div',{style:{fontSize:'.5rem',color:'var(--muted)',padding:'1px 6px 0'}},'#'+matchId);
+      card.appendChild(numLabel);
+      card.appendChild(teamRow(t1, matchId, col.phase, w1));
+      card.appendChild(el('div',{style:{height:'1px', background:'var(--bdr)'}}));
+      card.appendChild(teamRow(t2, matchId, col.phase, w2));
+      stage.appendChild(card);
 
-    sec.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--muted)',fontWeight:'700',textAlign:'center',marginTop:'8px',marginBottom:'2px'}},'3º Lugar'));
-    const {t1:tt1,t2:tt2} = getMatchTeams(103);
-    const thirdW = koRealData?.third?.team_ids?.[0]||null;
-    const tc = el('div',{style:{background:'var(--dk2)',borderRadius:'8px',padding:'4px 6px',border:'1px solid var(--bdr)',minWidth:'110px'}});
-    tc.appendChild(el('div',{style:{fontSize:'.55rem',color:'var(--muted)',marginBottom:'2px'}},'#103'));
-    tc.appendChild(teamBtn(tt1,103,'third',tt1&&thirdW===tt1));
-    tc.appendChild(teamBtn(tt2,103,'third',tt2&&thirdW===tt2));
-    sec.appendChild(tc);
-    return sec;
-  }
+      if(colIdx < columns.length-1){
+        const nextChildrenPerParent = col.ids.length / columns[colIdx+1].ids.length;
+        const nextIdx = Math.floor(idxInCol/nextChildrenPerParent);
+        const nextCy = centerY(colIdx+1, nextIdx) + 20;
+        const lineX1 = x + CARD_W;
+        const lineX2 = x + CARD_W + COL_GAP;
+        drawLine(lineX1, cy, lineX2, nextCy);
+      }
+    });
+  });
 
-  function buildColumn(matchIds, phase, label){
-    const col = el('div',{style:{display:'flex',flexDirection:'column',gap:'4px',alignItems:'center',minWidth:'120px'}});
-    col.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--gold)',fontWeight:'700',textAlign:'center',marginBottom:'2px',whiteSpace:'nowrap'}},label));
-    matchIds.forEach(mid=>col.appendChild(matchCard(mid,phase)));
-    return col;
-  }
-
-  const secA = el('div',{style:{marginBottom:'1rem'}});
-  secA.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem',marginBottom:'6px',borderBottom:'1px solid var(--bdr)',paddingBottom:'4px'}},'◀ CHAVE A'));
-  const rowA = el('div',{style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'6px'}});
-  rowA.appendChild(buildColumn(chaveA.round32,'round32','Rodada 32'));
-  rowA.appendChild(buildColumn(chaveA.round16,'round16','Oitavas'));
-  rowA.appendChild(buildColumn(chaveA.quarter,'quarter','Quartas'));
-  rowA.appendChild(buildColumn(chaveA.semi,'semi','Semifinal'));
-  secA.appendChild(rowA);
-  container.appendChild(secA);
-
-  const center = el('div',{style:{display:'flex',justifyContent:'center',margin:'8px 0 12px'}});
-  center.appendChild(finalSection());
-  container.appendChild(center);
-
-  const secB = el('div');
-  secB.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1rem',marginBottom:'6px',borderBottom:'1px solid var(--bdr)',paddingBottom:'4px'}},'▶ CHAVE B'));
-  const rowB = el('div',{style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'6px'}});
-  rowB.appendChild(buildColumn(chaveB.round32,'round32','Rodada 32'));
-  rowB.appendChild(buildColumn(chaveB.round16,'round16','Oitavas'));
-  rowB.appendChild(buildColumn(chaveB.quarter,'quarter','Quartas'));
-  rowB.appendChild(buildColumn(chaveB.semi,'semi','Semifinal'));
-  secB.appendChild(rowB);
-  container.appendChild(secB);
+  wrap.appendChild(stage);
+  container.appendChild(wrap);
 
   // ── Campeão / Vice / 3º Lugar / Artilheiro em destaque abaixo do bracket ────
-  const champFinal = koRealData?.champion?.team_ids?.[0]||null;
+  const champ = koRealData?.champion?.team_ids?.[0]||null;
   const vice = koRealData?.runner_up?.team_ids?.[0]||null;
   const thirdWTeam = koRealData?.third?.team_ids?.[0]||null;
   const topScorer = koRealData?.top_scorer?.team_ids?.[0]||null;
@@ -3132,7 +3129,7 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
       value ? (isFlag?(FLAGS[value]||'')+' ':'⚽ ')+value : 'a definir'));
     return b;
   }
-  podium.appendChild(podiumBadge('🏆','Campeão',champFinal,true));
+  podium.appendChild(podiumBadge('🏆','Campeão',champ,true));
   podium.appendChild(podiumBadge('🥈','Vice',vice,true));
   podium.appendChild(podiumBadge('🥉','3º Lugar',thirdWTeam,true));
   podium.appendChild(podiumBadge('👟','Artilheiro',topScorer,false));
