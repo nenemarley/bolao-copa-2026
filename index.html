@@ -3016,7 +3016,7 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
   const totalHeight = N_BASE*SLOT_H;
   const totalWidth = columns.length*(CARD_W+COL_GAP);
 
-  function teamRow(team, matchId, phase, isWinner){
+  function teamRow(team, matchId, phase, isWinner, score){
     const isEmpty = !team;
     const row = el('div',{style:{
       display:'flex', alignItems:'center', gap:'4px',
@@ -3031,7 +3031,10 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
       row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.6rem'}},'a definir'));
     } else {
       row.appendChild(el('span',{style:{fontSize:'.72rem',flexShrink:'0'}},(FLAGS[team]||'🏳')));
-      row.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis'}},team));
+      row.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis',flex:'1'}},team));
+      if(score!=null){
+        row.appendChild(el('span',{style:{flexShrink:'0',fontWeight:'700',fontSize:'.7rem',color:isWinner?'#4ADE80':'var(--muted)',marginLeft:'4px'}},String(score)));
+      }
     }
     if(!isEmpty && matchId){
       row.onclick = (e)=>{
@@ -3095,9 +3098,21 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
       }});
       const numLabel = el('div',{style:{fontSize:'.5rem',color:'var(--muted)',padding:'2px 6px 1px',lineHeight:'1',boxSizing:'border-box'}},'#'+matchId);
       card.appendChild(numLabel);
-      card.appendChild(teamRow(t1, matchId, col.phase, w1));
+      // Placar real: real_score1/2 são sempre relativos a team1_name/team2_name salvos em
+      // group_matches, então precisamos casar pelo NOME do time (t1/t2 podem já ter sido
+      // recalculados pela propagação e não bater 1:1 com a ordem salva no banco).
+      const realInfo = getRealScoreInfo(matchId);
+      const hasScore = realInfo?.is_finished && realInfo?.real_score1!=null;
+      let score1=null, score2=null;
+      if(hasScore){
+        if(realInfo.team1_name===t1) score1=realInfo.real_score1;
+        else if(realInfo.team2_name===t1) score1=realInfo.real_score2;
+        if(realInfo.team1_name===t2) score2=realInfo.real_score1;
+        else if(realInfo.team2_name===t2) score2=realInfo.real_score2;
+      }
+      card.appendChild(teamRow(t1, matchId, col.phase, w1, score1));
       card.appendChild(el('div',{style:{height:'1px', background:'var(--bdr)'}}));
-      card.appendChild(teamRow(t2, matchId, col.phase, w2));
+      card.appendChild(teamRow(t2, matchId, col.phase, w2, score2));
       stage.appendChild(card);
 
       if(colIdx < columns.length-1){
