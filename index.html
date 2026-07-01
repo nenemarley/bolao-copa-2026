@@ -2385,16 +2385,23 @@ function renderDashboard(main){
     dbQ('profiles',{},'id,display_name,is_admin,username'),
     dbQ('real_knockouts',{},'phase,team_ids'),
     dbQ('group_matches',{},'match_number,team1_name,team2_name,real_score1,real_score2,is_finished'),
-  ]).then(([mp,gp,kp,sp,members,freshProfiles,freshKoReal,freshKoMatches])=>{
+    dbQ('real_group_standings',{},'group_id,position,team_name'),
+  ]).then(([mp,gp,kp,sp,members,freshProfiles,freshKoReal,freshKoMatches,freshGrpStandings])=>{
     if(PAGE_VERSION !== v) return;
     main.innerHTML='';
     // Atualizar variáveis globais usadas pelo bracket e pelos popups
+    const bracketKoReal = {};
     if(freshKoReal){
-      freshKoReal.forEach(r=>{ if(!koReal) koReal={}; koReal[r.phase]={phase:r.phase,team_ids:r.team_ids||[]}; });
+      freshKoReal.forEach(r=>{ bracketKoReal[r.phase]={phase:r.phase,team_ids:r.team_ids||[]}; if(!koReal) koReal={}; koReal[r.phase]=bracketKoReal[r.phase]; });
     }
     if(freshKoMatches){
       freshKoMatches.forEach(m=>{ if(m.match_number>=73) koMatchReal[m.match_number]=m; });
     }
+    const bracketGrpStandings = {};
+    (freshGrpStandings||[]).forEach(r=>{
+      if(!bracketGrpStandings[r.group_id]) bracketGrpStandings[r.group_id]={};
+      bracketGrpStandings[r.group_id][r.position]=r.team_name;
+    });
     // Seletor de bolão — aparece após o loading para não piscar
     if(MY_BOLAOS.length>1) renderGroupSelector(main, ()=>renderDashboard(main));
     if(freshProfiles && freshProfiles.length>0) STATE.profiles = freshProfiles;
@@ -2501,7 +2508,7 @@ function renderDashboard(main){
     const bracketBody = el('div',{style:{padding:'0 .5rem 1rem'}});
     bracketCard.appendChild(bracketBody);
     main.appendChild(bracketCard);
-    renderBracketView(bracketBody, koMatchReal, koReal);
+    renderBracketView(bracketBody, koMatchReal, bracketKoReal, bracketGrpStandings);
   });
 }
 
@@ -2929,13 +2936,49 @@ function appendMatchCard(main, m, forceFinalized) {
 // ── Popup de palpites de eliminatórias (escolha de time vencedor, sem placar) ──
 // ── Popup unificado de eliminatórias: placar + quem passa de fase, lado a lado ──
 // ── Chaveamento Visual na aba Ranking ──────────────────────────────────────
-function renderBracketView(container, koMatchRealData, koRealData) {
-  // koRealData: {round32:{team_ids:[]}, round16:{team_ids:[]}, ...}
-  // koMatchRealData: {73:{team1_name:'...', team2_name:'...'}, ...}
+function renderBracketView(container, koMatchRealData, koRealData, grpStandingsData) {
+  // Layout: linhas horizontais empilhadas, uma por fase (Final no topo, Rodada de 32 na base).
+  // Times de cada confronto são PROPAGADOS em tempo real (igual propagateKoMatchTeams),
+  // usando real_group_standings + best_thirds + real_knockouts — não depende de
+  // group_matches estar sincronizado, então nunca fica desatualizado.
+
+  const adminStandingsLocal = grpStandingsData || {};
+  const bestThirdsIds = koRealData?.best_thirds?.team_ids || [];
+  const thirdAssign = buildThirdAssignment(bestThirdsIds, adminStandingsLocal);
+
+  // Propagar vencedores por todo o bracket, a partir dos dados reais atuais
+  const mw = {};
+  ROUND32_BRACKET.forEach(m=>{
+    const i1 = resolveSlotInfo(m.slot1, adminStandingsLocal, bestThirdsIds, thirdAssign, m.id);
+    const i2 = resolveSlotInfo(m.slot2, adminStandingsLocal, bestThirdsIds, thirdAssign, m.id);
+    const t1 = i1.team||null, t2 = i2.team||null;
+    const sel = koRealData?.round32?.team_ids||[];
+    mw[m.id] = {t1, t2, winner: sel.find(t=>t===t1||t===t2)||null};
+  });
+  [['round16',ROUND16_BRACKET],['quarter',QUARTER_BRACKET],['semi',SEMI_BRACKET]].forEach(([phase,bracket])=>{
+    bracket.forEach(m=>{
+      const t1 = mw[m.slot1.matchId]?.winner||null;
+      const t2 = mw[m.slot2.matchId]?.winner||null;
+      const sel = koRealData?.[phase]?.team_ids||[];
+      mw[m.id] = {t1, t2, winner: sel.find(t=>t===t1||t===t2)||null};
+    });
+  });
+  FINAL_BRACKET.forEach(m=>{
+    const t1 = mw[m.slot1.matchId]?.winner||null;
+    const t2 = mw[m.slot2.matchId]?.winner||null;
+    const sel = koRealData?.final?.team_ids||[];
+    mw[m.id] = {t1, t2, winner: sel.find(t=>t===t1||t===t2)||null};
+  });
 
   function getMatchTeams(matchId){
+    const propagated = mw[matchId];
+    if(propagated && (propagated.t1 || propagated.t2)) return {t1:propagated.t1, t2:propagated.t2};
+    // Fallback: usar group_matches se a propagação não resolveu (dados incompletos)
     const m = koMatchRealData?.[matchId];
-    return {t1: m?.team1_name||null, t2: m?.team2_name||null, real: m};
+    return {t1: m?.team1_name||null, t2: m?.team2_name||null};
+  }
+  function getRealScoreInfo(matchId){
+    return koMatchRealData?.[matchId] || null;
   }
 
   const round32w = new Set(koRealData?.round32?.team_ids||[]);
@@ -2948,79 +2991,43 @@ function renderBracketView(container, koMatchRealData, koRealData) {
   const phasePtsMap = {round32:10, round16:10, quarter:10, semi:10, final:50, third:15};
   const winnersByPhase = {round32:round32w, round16:round16w, quarter:quarterw, semi:semiw, final:finalw};
 
-  // Ordem visual dos jogos de cada coluna (16 jogos na Rodada de 32, 8 nas Oitavas, etc)
-  // Ordem espelha a estrutura real do chaveamento: metade esquerda (Chave A) + metade direita (Chave B)
-  const columns = [
-    {phase:'round32', ids:[77,74,73,75,83,84,81,82, 87,85,88,86,80,79,78,76]},
-    {phase:'round16', ids:[89,90,91,92, 93,94,95,96]},
-    {phase:'quarter', ids:[97,98, 99,100]},
-    {phase:'semi',    ids:[101, 102]},
-    {phase:'final',   ids:[104]},
+  const rows = [
+    {phase:'final',   ids:[104], label:'FINAL'},
+    {phase:'semi',    ids:[101,102], label:'SEMIFINAL'},
+    {phase:'quarter', ids:[97,98,99,100], label:'QUARTAS'},
+    {phase:'round16', ids:[89,90,91,92,93,94,95,96], label:'OITAVAS'},
+    {phase:'round32', ids:[77,74,73,75,83,84,81,82,87,85,88,86,80,79,78,76], label:'RODADA DE 32'},
   ];
+  // Índice (na Rodada de 32, 16 confrontos) onde termina a Chave A e começa a Chave B
+  const CHAVE_A_COUNT = 8; // primeiros 8 ids de round32.ids pertencem à Chave A
 
-  // ── Layout matemático: cada jogo da 1ª coluna ocupa 1 "slot" de altura SLOT_H.
-  // Jogos das colunas seguintes ficam centralizados entre seus 2 jogos de origem.
-  const SLOT_H = 54;     // altura de cada slot na 1ª coluna (round32)
-  const CARD_H = 42;     // altura do card do confronto
-  const COL_W = 128;     // largura de cada coluna
-  const GAP_X = 36;      // espaço horizontal entre colunas (para as linhas)
-  const N_R32 = 16;
-
-  // Posição Y central de cada jogo por coluna (índice dentro da coluna)
-  function centerY(colIdx, idxInCol){
-    if(colIdx===0) return idxInCol*SLOT_H + SLOT_H/2;
-    const prevCount = columns[colIdx-1].ids.length;
-    const childrenPerParent = prevCount / columns[colIdx].ids.length;
-    const firstChildIdx = idxInCol*childrenPerParent;
-    const yTop = centerY(colIdx-1, firstChildIdx);
-    const yBot = centerY(colIdx-1, firstChildIdx+childrenPerParent-1);
-    return (yTop+yBot)/2;
-  }
-
-  const totalHeight = N_R32*SLOT_H;
-  const totalWidth = columns.length*(COL_W+GAP_X) + COL_W;
-
-  const wrap = el('div',{style:{overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch'}});
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS,'svg');
-  svg.setAttribute('width', totalWidth);
-  svg.setAttribute('height', totalHeight+20);
-  svg.style.display='block';
-
-  const stage = el('div',{style:{position:'relative', width:totalWidth+'px', height:(totalHeight+20)+'px'}});
-  stage.appendChild(svg);
-
-  function drawLine(x1,y1,x2,y2){
-    const line = document.createElementNS(svgNS,'path');
-    const midX = x1 + (x2-x1)/2;
-    line.setAttribute('d', `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`);
-    line.setAttribute('stroke', 'rgba(255,255,255,.15)');
-    line.setAttribute('stroke-width', '1.5');
-    line.setAttribute('fill', 'none');
-    svg.appendChild(line);
-  }
+  const CARD_W = 108;
+  const CARD_H = 40;
+  const GAP_X = 8;
+  const ROW_GAP = 28;
 
   function teamRow(team, matchId, phase, isWinner){
     const isEmpty = !team;
     const row = el('div',{style:{
-      display:'flex', alignItems:'center', gap:'4px',
-      padding:'2px 6px', height:'19px',
+      display:'flex', alignItems:'center', gap:'3px',
+      padding:'1px 5px', height:'19px',
       background: isWinner ? 'rgba(74,222,128,.15)' : 'transparent',
       cursor: (!isEmpty && matchId) ? 'pointer' : 'default',
-      fontSize:'.68rem', fontWeight: isWinner?'700':'400',
+      fontSize:'.64rem', fontWeight: isWinner?'700':'400',
       color: isWinner ? '#4ADE80' : isEmpty ? 'var(--muted)' : 'var(--txt)',
       whiteSpace:'nowrap', overflow:'hidden',
     }});
     if(isEmpty){
-      row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.62rem'}},'—'));
+      row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.58rem'}},'—'));
     } else {
-      row.appendChild(el('span',{style:{fontSize:'.72rem',flexShrink:'0'}},(FLAGS[team]||'🏳')));
+      row.appendChild(el('span',{style:{fontSize:'.68rem',flexShrink:'0'}},(FLAGS[team]||'🏳')));
       row.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis'}},team));
     }
     if(!isEmpty && matchId){
       row.onclick = (e)=>{
         e.stopPropagation();
-        const {t1,t2,real} = getMatchTeams(matchId);
+        const {t1,t2} = getMatchTeams(matchId);
+        const real = getRealScoreInfo(matchId);
         const phaseLabel = phaseLabels[phase]||phase;
         const pts = phasePtsMap[phase]||10;
         showKoUnifiedPopup(matchId, phaseLabel, t1||team, t2||team, real, pts);
@@ -3029,62 +3036,109 @@ function renderBracketView(container, koMatchRealData, koRealData) {
     return row;
   }
 
-  columns.forEach((col, colIdx)=>{
-    const x = colIdx*(COL_W+GAP_X);
-    col.ids.forEach((matchId, idxInCol)=>{
-      const {t1,t2} = getMatchTeams(matchId);
-      const winners = winnersByPhase[col.phase]||new Set();
-      const w1 = t1 && winners.has(t1);
-      const w2 = t2 && winners.has(t2);
-      const cy = centerY(colIdx, idxInCol);
-      const cardTop = cy - CARD_H/2;
+  function matchCard(matchId, phase){
+    const {t1,t2} = getMatchTeams(matchId);
+    const winners = winnersByPhase[phase]||new Set();
+    const w1 = t1 && winners.has(t1);
+    const w2 = t2 && winners.has(t2);
+    const card = el('div',{style:{
+      width:CARD_W+'px', height:CARD_H+'px', flexShrink:'0',
+      background:'var(--dk2)', border:'1px solid var(--bdr)', borderRadius:'6px',
+      overflow:'hidden', boxShadow:'0 1px 2px rgba(0,0,0,.25)',
+      display:'flex', flexDirection:'column', justifyContent:'center',
+    }});
+    card.appendChild(teamRow(t1, matchId, phase, w1));
+    card.appendChild(el('div',{style:{height:'1px', background:'var(--bdr)'}}));
+    card.appendChild(teamRow(t2, matchId, phase, w2));
+    return card;
+  }
 
-      const card = el('div',{style:{
-        position:'absolute', left:x+'px', top:cardTop+'px', width:COL_W+'px', height:CARD_H+'px',
-        background:'var(--dk2)', border:'1px solid var(--bdr)', borderRadius:'6px',
-        overflow:'hidden', boxShadow:'0 1px 3px rgba(0,0,0,.3)',
-      }});
-      card.appendChild(teamRow(t1, matchId, col.phase, w1));
-      const divider = el('div',{style:{height:'1px', background:'var(--bdr)'}});
-      card.appendChild(divider);
-      card.appendChild(teamRow(t2, matchId, col.phase, w2));
-      stage.appendChild(card);
+  const baseCount = rows[rows.length-1].ids.length; // 16
+  const totalWidth = baseCount*(CARD_W+GAP_X) - GAP_X;
 
-      // Desenhar linha de conexão até a próxima coluna (se houver)
-      if(colIdx < columns.length-1){
-        const nextChildrenPerParent = col.ids.length / columns[colIdx+1].ids.length;
-        const nextIdx = Math.floor(idxInCol/nextChildrenPerParent);
-        const nextCy = centerY(colIdx+1, nextIdx);
-        const lineX1 = x + COL_W;
-        const lineX2 = x + COL_W + GAP_X;
-        drawLine(lineX1, cy, lineX2, nextCy);
-      }
+  const wrap = el('div',{style:{overflowX:'auto', WebkitOverflowScrolling:'touch'}});
+  const inner = el('div',{style:{width:totalWidth+'px', position:'relative'}});
+
+  rows.forEach((row, rowIdx)=>{
+    const isLast = rowIdx === rows.length-1;
+    const nCards = row.ids.length;
+    const groupWidth = totalWidth / nCards;
+
+    const rowLabel = el('div',{style:{fontSize:'.58rem',color:'var(--gold)',fontWeight:'700',textAlign:'center',marginBottom:'4px',letterSpacing:'.5px'}}, row.label);
+    inner.appendChild(rowLabel);
+
+    const rowLine = el('div',{style:{display:'flex', position:'relative', width:totalWidth+'px'}});
+
+    row.ids.forEach((matchId)=>{
+      const slot = el('div',{style:{width:groupWidth+'px', display:'flex', justifyContent:'center'}});
+      slot.appendChild(matchCard(matchId, row.phase));
+      rowLine.appendChild(slot);
     });
+
+    inner.appendChild(rowLine);
+
+    // Separador visual CHAVE A / CHAVE B — só na linha da Rodada de 32 (base, mais larga)
+    if(row.phase==='round32'){
+      const dividerWrap = el('div',{style:{display:'flex', width:totalWidth+'px', marginTop:'4px'}});
+      const halfW = totalWidth/2;
+      const chaveALabel = el('div',{style:{width:halfW+'px', textAlign:'center', fontSize:'.6rem', color:'var(--muted)', fontWeight:'700', letterSpacing:'.5px', borderTop:'1px dashed var(--bdr)', paddingTop:'4px'}}, '◀ CHAVE A');
+      const chaveBLabel = el('div',{style:{width:halfW+'px', textAlign:'center', fontSize:'.6rem', color:'var(--muted)', fontWeight:'700', letterSpacing:'.5px', borderTop:'1px dashed var(--bdr)', paddingTop:'4px'}}, 'CHAVE B ▶');
+      dividerWrap.appendChild(chaveALabel);
+      dividerWrap.appendChild(chaveBLabel);
+      inner.appendChild(dividerWrap);
+    }
+
+    if(!isLast){
+      const nextRow = rows[rowIdx+1];
+      const nextCount = nextRow.ids.length;
+      const connH = ROW_GAP;
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNS,'svg');
+      svg.setAttribute('width', totalWidth);
+      svg.setAttribute('height', connH);
+      svg.style.display='block';
+      const nextGroupWidth = totalWidth / nextCount;
+      const childrenPerParent = nextCount / nCards;
+      for(let i=0;i<nCards;i++){
+        const parentCx = i*groupWidth + groupWidth/2;
+        const childStart = i*childrenPerParent;
+        const child1Cx = childStart*nextGroupWidth + nextGroupWidth/2;
+        const child2Cx = (childStart+childrenPerParent-1)*nextGroupWidth + nextGroupWidth/2;
+        const path = document.createElementNS(svgNS,'path');
+        path.setAttribute('d', `M${parentCx},0 L${parentCx},${connH/2} L${child1Cx},${connH/2} L${child1Cx},${connH} M${parentCx},${connH/2} L${child2Cx},${connH/2} L${child2Cx},${connH}`);
+        path.setAttribute('stroke', 'rgba(255,255,255,.18)');
+        path.setAttribute('stroke-width', '1.5');
+        path.setAttribute('fill', 'none');
+        svg.appendChild(path);
+      }
+      inner.appendChild(svg);
+    }
   });
 
-  wrap.appendChild(stage);
+  wrap.appendChild(inner);
   container.appendChild(wrap);
 
-  // ── Campeão / Vice / 3º Lugar em destaque abaixo do bracket ────────────
+  // ── Campeão / Vice / 3º Lugar / Artilheiro em destaque abaixo do bracket ────
   const champ = koRealData?.champion?.team_ids?.[0]||null;
   const vice = koRealData?.runner_up?.team_ids?.[0]||null;
   const thirdW = koRealData?.third?.team_ids?.[0]||null;
+  const topScorer = koRealData?.top_scorer?.team_ids?.[0]||null;
 
   const podium = el('div',{style:{display:'flex',gap:'10px',justifyContent:'center',flexWrap:'wrap',marginTop:'1rem',paddingTop:'.75rem',borderTop:'1px solid var(--bdr)'}});
-  function podiumBadge(icon,label,team){
+  function podiumBadge(icon,label,value,isFlag){
     const b = el('div',{style:{textAlign:'center',minWidth:'80px'}});
     b.appendChild(el('div',{style:{fontSize:'1.3rem'}}, icon));
     b.appendChild(el('div',{style:{fontSize:'.62rem',color:'var(--muted)'}}, label));
-    b.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'700',color:team?'var(--gold)':'var(--muted)'}},
-      team ? (FLAGS[team]||'')+' '+team : 'a definir'));
+    b.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'700',color:value?'var(--gold)':'var(--muted)'}},
+      value ? (isFlag?(FLAGS[value]||'')+' ':'⚽ ')+value : 'a definir'));
     return b;
   }
-  podium.appendChild(podiumBadge('🏆','Campeão',champ));
-  podium.appendChild(podiumBadge('🥈','Vice',vice));
-  podium.appendChild(podiumBadge('🥉','3º Lugar',thirdW));
+  podium.appendChild(podiumBadge('🏆','Campeão',champ,true));
+  podium.appendChild(podiumBadge('🥈','Vice',vice,true));
+  podium.appendChild(podiumBadge('🥉','3º Lugar',thirdW,true));
+  podium.appendChild(podiumBadge('👟','Artilheiro',topScorer,false));
   container.appendChild(podium);
 }
-
 
 async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phasePts=10) {
   document.getElementById('ko-unified-popup')?.remove();
