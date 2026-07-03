@@ -2448,11 +2448,6 @@ function renderDashboard(main){
       ...t, total:t.j1+t.je+t.g+t.t3+t.fk+t.fc+t.s
     })).sort((a,b)=>b.total-a.total);
 
-    const stats=el('div',{class:'stats'});
-    [{v:bolaoProfiles.length,l:'Participantes'},{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
-      .forEach(s=>stats.appendChild(el('div',{class:'sv'},el('div',{class:'svv'},''+s.v),el('div',{class:'svl'},s.l))));
-    main.appendChild(stats);
-
     const card=el('div',{class:'card'});
     card.appendChild(el('div',{class:'ch'},'🏆 Ranking Geral'));
 
@@ -5161,6 +5156,20 @@ async function saveKo(){
 function renderRules(main){
   main.innerHTML='';
   main.appendChild(el('div',{class:'ch'},'📖 Regras do Bolão'));
+
+  // ── Cards totalizadores (movidos da aba Ranking) ──────────────────
+  const stats=el('div',{class:'stats'});
+  const statParticipantes = el('div',{class:'sv'},el('div',{class:'svv'},'—'),el('div',{class:'svl'},'Participantes'));
+  stats.appendChild(statParticipantes);
+  [{v:MATCHES.length,l:'Jogos 1ª Fase'},{v:12,l:'Grupos'},{v:48,l:'Seleções'}]
+    .forEach(s=>stats.appendChild(el('div',{class:'sv'},el('div',{class:'svv'},''+s.v),el('div',{class:'svl'},s.l))));
+  main.appendChild(stats);
+  if(CURRENT_BOLAO?.id){
+    dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id').then(members=>{
+      const vv = statParticipantes.querySelector('.svv');
+      if(vv) vv.textContent = String((members||[]).length);
+    }).catch(()=>{});
+  }
 
   const _mode = bolaoMode();
   const showPlacares      = _mode === 'full' || _mode === 'placares';
