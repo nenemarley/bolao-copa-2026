@@ -5553,6 +5553,16 @@ function buildKoMatchesUI(main){
     if(m) phaseMatches.push(m);
     else phaseMatches.push({match_number:n,team1_name:null,team2_name:null,is_finished:false,real_score1:null,real_score2:null,_placeholder:true});
   }
+  // Ordenar por data (mais recente/próxima primeiro). Jogos sem data definida no
+  // KO_MATCH_DATES ficam no final, na ordem original de match_number.
+  phaseMatches.sort((a,b)=>{
+    const da = KO_MATCH_DATES[a.match_number];
+    const db = KO_MATCH_DATES[b.match_number];
+    if(da && db) return new Date(da) - new Date(db);
+    if(da && !db) return -1;
+    if(!da && db) return 1;
+    return a.match_number - b.match_number;
+  });
 
   // hasAnyTeams: pelo menos 1 jogo da fase tem os 2 times resolvíveis (salvos OU calculados via grupos/3ºs reais)
   const _hasAnyThirdAssign = buildThirdAssignment(koMatchBestThirds, koMatchRealStandings);
