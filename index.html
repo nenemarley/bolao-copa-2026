@@ -1001,13 +1001,20 @@ const KO_MATCH_DATES = {
   80:'2026-07-01T13:00', 82:'2026-07-01T17:00', 81:'2026-07-01T21:00',
   84:'2026-07-02T16:00', 83:'2026-07-02T20:00',
   85:'2026-07-03T00:00', 88:'2026-07-03T15:00', 86:'2026-07-03T19:00', 87:'2026-07-03T22:30',
-  // Oitavas de Final (89-96) — horário oficial de Brasília
-  89:'2026-07-04T14:00', 90:'2026-07-04T18:00',
-  91:'2026-07-05T17:00', 92:'2026-07-05T21:00',
-  93:'2026-07-06T16:00', 94:'2026-07-06T21:00',
-  95:'2026-07-07T13:00', 96:'2026-07-07T17:00',
-  // Quartas de Final (97-100) — horário oficial de Brasília
-  97:'2026-07-09T17:00', 98:'2026-07-10T16:00', 99:'2026-07-11T18:00', 100:'2026-07-11T22:00',
+  // Oitavas de Final (89-96) — horário oficial de Brasília (confirmado via InfoMoney 01/07/2026)
+  89:'2026-07-04T18:00',  // Oitavas 1: Paraguai x França
+  90:'2026-07-04T14:00',  // Oitavas 2: Canadá x Marrocos
+  91:'2026-07-06T16:00',  // Oitavas 3: Portugal x Espanha
+  92:'2026-07-06T21:00',  // Oitavas 4: Estados Unidos x Bélgica
+  96:'2026-07-05T17:00',  // Oitavas 5: Brasil x Noruega
+  95:'2026-07-05T21:00',  // Oitavas 6: México x Inglaterra
+  94:'2026-07-07T13:00',  // Oitavas 7: Egito x (Argentina/Cabo Verde)
+  93:'2026-07-07T17:00',  // Oitavas 8: Suíça x Colômbia
+  // Quartas de Final (97-100) — horário oficial de Brasília (confirmado via InfoMoney 01/07/2026)
+  97:'2026-07-09T17:00',   // Quartas 1: WO1 x WO2
+  98:'2026-07-10T16:00',   // Quartas 2: WO3 x WO4
+  100:'2026-07-11T18:00',  // Quartas 3: WO5 x WO6
+  99:'2026-07-11T22:00',   // Quartas 4: WO7 x WO8
   // Semifinais (101-102) — horário oficial de Brasília
   101:'2026-07-14T16:00', 102:'2026-07-15T16:00',
   // 3º lugar (103) e Final (104) — horário oficial de Brasília
@@ -5687,11 +5694,22 @@ function buildKoMatchesUI(main){
       t2Known?t2+' '+(FLAGS[t2]||'') : t2));
     mc.appendChild(nameRow);
 
-    // Controles de placar — só se os times estiverem definidos
+    // Controles de placar — só se os times estiverem definidos.
+    // Quando o jogo JÁ TERMINOU (hasResult), mostrar o RESULTADO REAL aqui em vez dos
+    // controles de palpite — antes isso sempre mostrava o palpite do usuário (v1/v2)
+    // mesmo depois do jogo acabar, fazendo parecer que "resultado real" e "meu palpite"
+    // eram a mesma coisa quando na verdade só o palpite estava sendo exibido duas vezes.
     const scoreRow=el('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',marginBottom:'.5rem'}});
     const _koDirty = (matchNum)=>()=>{ koMatchDirty=true; koMatchDirtySet.add(matchNum); updateKoMatchSaveBar(); };
     const _matchDirty = _koDirty(m.match_number);
     const locked = !t1Known || !t2Known; // bloquear se times não definidos
+
+    if(hasResult){
+      // Jogo já terminou: mostrar o placar REAL, grande e não editável
+      scoreRow.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.6rem',color:'var(--gold)',minWidth:'36px',textAlign:'center'}}, String(m.real_score1)));
+      scoreRow.appendChild(el('span',{style:{color:'var(--muted)',fontWeight:'700'}},'×'));
+      scoreRow.appendChild(el('span',{style:{fontFamily:"'Bebas Neue',cursive",fontSize:'1.6rem',color:'var(--gold)',minWidth:'36px',textAlign:'center'}}, String(m.real_score2)));
+    } else {
     scoreRow.appendChild(makeMatchCtrl(v1, v=>{
       const cur=koMatchPreds[m.match_number]||{};
       const newS2=cur.s2??0;
@@ -5709,6 +5727,7 @@ function buildKoMatchesUI(main){
       const badge=mc.querySelector('.pts-badge');
       if(badge&&m.is_finished){badge.textContent=newPts+'pts';badge.className='pp pts-badge '+(newPts===10?'p10':newPts===7?'p7':newPts===5?'p5':newPts===2?'p2':'p0');}
     }, !canBetNow||locked, _matchDirty));
+    }
     mc.appendChild(scoreRow);
 
     // Quando bloqueado (prazo encerrado ou jogo já rolou) — mostrar "Meu palpite" + ver todos
