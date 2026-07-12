@@ -3443,20 +3443,22 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       const placarPts = (hasPlacarPred && hasPlacarResult) ? calcPts(placarPred.predicted_score1, placarPred.predicted_score2||0, matchReal.real_score1, matchReal.real_score2) : null;
 
       rows.push({
-        uid, name:prof.display_name, isMe:uid===STATE.profile.id,
+        uid, name:prof.display_name, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin,
         userT1:userMatch.t1, userT2:userMatch.t2,
         classifPick, classifCorrect, classifPickDecided, sawDifferentMatch,
         placarS1:placarPred?.predicted_score1, placarS2:placarPred?.predicted_score2, hasPlacarPred, placarPts,
       });
     });
 
-    // Ordenar: total combinado de pontos (classificação + placar, se já revelado) desc, depois nome
+    // Ordenar: total combinado de pontos (classificação + placar, se já revelado) desc,
+    // depois admin primeiro em caso de empate, depois nome
     rows.sort((a,b)=>{
       const aPlacarPts = placarLocked ? (a.placarPts||0) : 0;
       const bPlacarPts = placarLocked ? (b.placarPts||0) : 0;
       const aTotal = (a.classifPickDecided&&a.classifCorrect?phasePts:0) + aPlacarPts;
       const bTotal = (b.classifPickDecided&&b.classifCorrect?phasePts:0) + bPlacarPts;
       if(aTotal!==bTotal) return bTotal-aTotal;
+      if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
       return a.name.localeCompare(b.name);
     });
 
@@ -3753,7 +3755,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       // assim que isso for verdade, mesmo que o confronto real ESPECÍFICO sendo
       // visualizado aqui (#83, #87...) ainda não tenha sido decidido.
       const pickDecided = pick ? (classifiedTeams.includes(pick) || allRealKnockoutDecidedTeams.has(pick)) : false;
-      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id, userT1:userMatch.t1, userT2:userMatch.t2, sawDifferentMatch, pickDecided});
+      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin, userT1:userMatch.t1, userT2:userMatch.t2, sawDifferentMatch, pickDecided});
     });
 
     rows.sort((a,b)=>{
@@ -3763,6 +3765,7 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       if(!a.pick && b.pick) return 1;
       if(a.sawDifferentMatch && !b.sawDifferentMatch) return -1;
       if(!a.sawDifferentMatch && b.sawDifferentMatch) return 1;
+      if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
       return a.name.localeCompare(b.name);
     });
 
@@ -3896,15 +3899,21 @@ async function showMatchPalpitesPopup(m, r, hasResult=false, headerOverride=null
       const s2 = pred?.predicted_score2;
       const hasPred = s1 !== undefined && s1 !== null;
       const pts = (hasPred && hasResult && r) ? calcPts(s1, s2||0, r.real_score1, r.real_score2) : null;
-      rows.push({uid, name:prof.display_name, s1, s2, pts, hasPred, isMe: uid===STATE.profile.id});
+      rows.push({uid, name:prof.display_name, s1, s2, pts, hasPred, isMe: uid===STATE.profile.id, isAdmin:!!prof.is_admin});
     });
 
     // Ordenar: se tem resultado, por pts desc; se não tem, alfabético. Sem palpite sempre no final.
+    // Em caso de empate de pontos, admin fica na frente.
     rows.sort((a,b)=>{
       if(!a.hasPred && !b.hasPred) return a.name.localeCompare(b.name);
       if(!a.hasPred) return 1;
       if(!b.hasPred) return -1;
-      if(hasResult) return (b.pts??0) - (a.pts??0);
+      if(hasResult){
+        const diff = (b.pts??0) - (a.pts??0);
+        if(diff!==0) return diff;
+        if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
+        return a.name.localeCompare(b.name);
+      }
       return a.name.localeCompare(b.name);
     });
 
@@ -4397,13 +4406,17 @@ async function showGroupPalpitesPopup(groupId, realStandings) {
         if(pred1===r1) pts+=10; else if(pred1===r2) pts+=5;
         if(pred2===r2) pts+=10; else if(pred2===r1) pts+=5;
       }
-      rows.push({uid, name:prof.display_name, pred1, pred2, pts, hasPred:!!(pred1||pred2), isMe:uid===STATE.profile.id});
+      rows.push({uid, name:prof.display_name, pred1, pred2, pts, hasPred:!!(pred1||pred2), isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin});
     });
 
     rows.sort((a,b)=>{
       if(!a.hasPred && !b.hasPred) return a.name.localeCompare(b.name);
       if(!a.hasPred) return 1; if(!b.hasPred) return -1;
-      if(hasReal) return b.pts - a.pts;
+      if(hasReal){
+        if(b.pts!==a.pts) return b.pts - a.pts;
+        if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
+        return a.name.localeCompare(b.name);
+      }
       return a.name.localeCompare(b.name);
     });
 
@@ -4524,13 +4537,17 @@ async function showThirdsPalpitesPopup(realThirds) {
       const teams = byUser[uid]||[];
       const hasPred = teams.length>0;
       const pts = hasPred && hasReal ? teams.filter(t=>realThirds.includes(t)).length * 5 : 0;
-      rows.push({uid, name:prof.display_name, teams, pts, hasPred, isMe:uid===STATE.profile.id});
+      rows.push({uid, name:prof.display_name, teams, pts, hasPred, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin});
     });
 
     rows.sort((a,b)=>{
       if(!a.hasPred&&!b.hasPred) return a.name.localeCompare(b.name);
       if(!a.hasPred) return 1; if(!b.hasPred) return -1;
-      if(hasReal) return b.pts-a.pts;
+      if(hasReal){
+        if(b.pts!==a.pts) return b.pts-a.pts;
+        if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
+        return a.name.localeCompare(b.name);
+      }
       return a.name.localeCompare(b.name);
     });
 
