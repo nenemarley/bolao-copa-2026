@@ -1284,9 +1284,69 @@ async function dbDelete(table, filters={}){
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 async function init(){
+  // IMPORTANTE: o client SB é criado com detectSessionInUrl:false (de propósito, para
+  // evitar um bug antigo de troca de sessão entre abas). Isso significa que o supabase-js
+  // NÃO processa automaticamente o token de recovery que vem no link do e-mail — precisamos
+  // fazer isso manualmente aqui, checando o hash da URL (#access_token=...&type=recovery).
+  const hashParams = new URLSearchParams((window.location.hash||'').replace(/^#/,''));
+  const hashType = hashParams.get('type');
+  const hashAccessToken = hashParams.get('access_token');
+  const hashRefreshToken = hashParams.get('refresh_token');
+
+  // DEBUG TEMPORÁRIO — remover depois de diagnosticar o fluxo de recovery.
+  // Mostra na tela o que realmente chegou na URL (hash + querystring), pois no
+  // celular não dá pra abrir o console do DevTools facilmente.
+  if(window.location.hash || window.location.search){
+    const dbg = document.createElement('div');
+    dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#111;color:#0f0;font-size:11px;padding:8px;word-break:break-all;border-bottom:2px solid #0f0;max-height:40vh;overflow:auto;';
+    dbg.innerHTML = '<b>[DEBUG URL]</b> href: '+window.location.href+
+      '<br><b>hash:</b> '+(window.location.hash||'(vazio)')+
+      '<br><b>search:</b> '+(window.location.search||'(vazio)')+
+      '<br><b>type parseado:</b> '+hashType+' | <b>access_token:</b> '+(hashAccessToken?hashAccessToken.substring(0,15)+'...':'(ausente)')+
+      '<br><button id="dbgClose" style="margin-top:6px;padding:4px 8px;">Fechar</button>';
+    document.body.appendChild(dbg);
+    dbg.querySelector('#dbgClose').onclick = ()=>dbg.remove();
+  }
+
+  let recoveryHandledEarly = false;
+
+  if(hashType==='recovery' && hashAccessToken && hashRefreshToken){
+    // Estabelecer a sessão manualmente a partir dos tokens do link de recovery.
+    // IMPORTANTE: setSession() com token inválido NÃO lança exceção — ele retorna
+    // {data:{session:null}, error:{...}} normalmente. Precisamos checar `error`
+    // explicitamente, não só confiar no try/catch.
+    try{
+      const {data, error} = await SB.auth.setSession({ access_token: hashAccessToken, refresh_token: hashRefreshToken });
+      if(error || !data?.session){
+        console.error('[init] Link de recovery inválido ou expirado:', error?.message);
+      } else {
+        recoveryHandledEarly = true;
+        setState({loading:false, passwordRecoveryMode:true});
+      }
+      // Limpar o hash da URL por segurança, mesmo se inválido (não deixar exposto)
+      window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    }catch(e){
+      console.error('[init] Erro ao processar link de recovery:', e);
+    }
+  }
+
+  // Listener para futuras mudanças de sessão (login normal, logout, refresh de token, etc.)
+  SB.auth.onAuthStateChange(async(event,sess)=>{
+    if(event==='PASSWORD_RECOVERY'){
+      setState({loading:false, passwordRecoveryMode:true});
+      return;
+    }
+    if(STATE.passwordRecoveryMode) return; // não deixar outros eventos tirarem da tela de recovery
+    if(sess?.user) await loadProfile(sess.user);
+    else setState({user:null,profile:null,loading:false});
+  });
+
   const {data:{session}} = await SB.auth.getSession();
   loadScorerList(); // carrega lista de artilheiros do banco (não bloqueia)
   await loadBolaoDeadlines(); // prazos por bolão — precisa estar pronto antes do primeiro render (canBetGroups depende disso)
+
+  if(recoveryHandledEarly || STATE.passwordRecoveryMode) return; // a tela de recovery já está sendo mostrada
+
   if(session?.user) await loadProfile(session.user);
   else {
     // Check URL for invite code
@@ -1294,16 +1354,6 @@ async function init(){
     if(urlCode) localStorage.setItem('pending_invite',urlCode.toUpperCase());
     setState({loading:false});
   }
-  SB.auth.onAuthStateChange(async(event,sess)=>{
-    if(event==='PASSWORD_RECOVERY'){
-      // Usuário clicou no link de redefinição do e-mail — o Supabase já autenticou
-      // a sessão automaticamente. Mostramos a tela para ele definir a nova senha.
-      setState({loading:false, passwordRecoveryMode:true});
-      return;
-    }
-    if(sess?.user) await loadProfile(sess.user);
-    else setState({user:null,profile:null,loading:false});
-  });
 }
 
 async function loadProfile(u){
