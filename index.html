@@ -2600,7 +2600,184 @@ function renderDashboard(main){
     bracketCard.appendChild(bracketBody);
     main.appendChild(bracketCard);
     renderBracketView(bracketBody, koMatchReal, bracketKoReal, bracketGrpStandings);
+
+    // ── Gráfico de Evolução por Categoria ────────────────────────────────
+    const evoCard = el('div',{class:'card'});
+    evoCard.appendChild(el('div',{class:'ch'},'📈 Evolução da Pontuação'));
+    evoCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
+      'Pontuação acumulada de cada participante ao longo das categorias. Toque em um nome para destacar.'));
+    const evoBody = el('div');
+    evoCard.appendChild(evoBody);
+    main.appendChild(evoCard);
+    renderEvolutionChart(evoBody, rows, categories);
   });
+}
+
+// ── Gráfico de linha: evolução acumulada de pontos por categoria/fase ──────
+function renderEvolutionChart(container, rows, categories){
+  if(!rows || rows.length===0 || !categories || categories.length===0){
+    container.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'1.5rem'}},'Sem dados suficientes ainda.'));
+    return;
+  }
+
+  // Paleta de cores distintas para até ~12 participantes
+  const PALETTE = ['#4ADE80','#60A5FA','#FBBF24','#F87171','#C084FC','#2DD4BF','#FB923C','#F472B6','#A3E635','#818CF8','#FCD34D','#34D399'];
+
+  // Calcular série acumulada por participante: em cada ponto do eixo X (categoria),
+  // o valor é a SOMA de todas as categorias até ali (acumulado), não o valor isolado —
+  // assim a linha sempre sobe, mostrando a evolução total do placar ao longo do bolão.
+  const series = rows.map((r,idx)=>{
+    let acc = 0;
+    const points = categories.map(cat=>{ acc += cat.val(r); return acc; });
+    return {
+      uid: r.prof.id, name: r.prof.display_name, isAdmin: !!r.prof.is_admin,
+      color: PALETTE[idx % PALETTE.length],
+      points,
+    };
+  });
+
+  const maxY = Math.max(1, ...series.map(s=>Math.max(...s.points)));
+  const N = categories.length;
+
+  const W = Math.max(320, N*90);
+  const H = 220;
+  const PAD_L = 36, PAD_R = 12, PAD_T = 14, PAD_B = 34;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  function xFor(i){ return PAD_L + (N===1 ? plotW/2 : (i/(N-1))*plotW); }
+  function yFor(v){ return PAD_T + plotH - (v/maxY)*plotH; }
+
+  let selectedUid = null; // null = mostrar todos
+
+  const wrap = el('div',{style:{overflowX:'auto', WebkitOverflowScrolling:'touch'}});
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.style.display='block';
+
+  // Linhas de grade horizontais + labels do eixo Y
+  const gridSteps = 4;
+  for(let g=0; g<=gridSteps; g++){
+    const val = Math.round((maxY/gridSteps)*g);
+    const y = yFor(val);
+    const gridLine = document.createElementNS(svgNS,'line');
+    gridLine.setAttribute('x1', PAD_L); gridLine.setAttribute('x2', W-PAD_R);
+    gridLine.setAttribute('y1', y); gridLine.setAttribute('y2', y);
+    gridLine.setAttribute('stroke', 'rgba(255,255,255,.08)');
+    gridLine.setAttribute('stroke-width', '1');
+    svg.appendChild(gridLine);
+    const label = document.createElementNS(svgNS,'text');
+    label.setAttribute('x', PAD_L-6); label.setAttribute('y', y+3);
+    label.setAttribute('text-anchor','end'); label.setAttribute('font-size','9');
+    label.setAttribute('fill','var(--muted)');
+    label.textContent = String(val);
+    svg.appendChild(label);
+  }
+
+  // Labels do eixo X (categorias)
+  categories.forEach((cat,i)=>{
+    const x = xFor(i);
+    const label = document.createElementNS(svgNS,'text');
+    label.setAttribute('x', x); label.setAttribute('y', H-PAD_B+16);
+    label.setAttribute('text-anchor','middle'); label.setAttribute('font-size','8');
+    label.setAttribute('fill','var(--muted)');
+    label.textContent = cat.icon;
+    svg.appendChild(label);
+    const label2 = document.createElementNS(svgNS,'text');
+    label2.setAttribute('x', x); label2.setAttribute('y', H-PAD_B+27);
+    label2.setAttribute('text-anchor','middle'); label2.setAttribute('font-size','7');
+    label2.setAttribute('fill','var(--muted)');
+    const shortLabel = cat.label.length>12 ? cat.label.slice(0,11)+'…' : cat.label;
+    label2.textContent = shortLabel;
+    svg.appendChild(label2);
+    // linha vertical guia
+    const vLine = document.createElementNS(svgNS,'line');
+    vLine.setAttribute('x1',x); vLine.setAttribute('x2',x);
+    vLine.setAttribute('y1',PAD_T); vLine.setAttribute('y2',H-PAD_B);
+    vLine.setAttribute('stroke','rgba(255,255,255,.04)'); vLine.setAttribute('stroke-width','1');
+    svg.appendChild(vLine);
+  });
+
+  const lineEls = {}; // uid -> {path, dots:[circle,...]}
+
+  function drawSeries(){
+    // Limpar linhas/pontos antigos
+    Object.values(lineEls).forEach(({path,dots})=>{ path.remove(); dots.forEach(d=>d.remove()); });
+    for(const k in lineEls) delete lineEls[k];
+
+    series.forEach(s=>{
+      const isDimmed = selectedUid && selectedUid!==s.uid;
+      const pathD = s.points.map((v,i)=> (i===0?'M':'L') + xFor(i) + ',' + yFor(v)).join(' ');
+      const path = document.createElementNS(svgNS,'path');
+      path.setAttribute('d', pathD);
+      path.setAttribute('fill','none');
+      path.setAttribute('stroke', s.color);
+      path.setAttribute('stroke-width', isDimmed ? '1.5' : '2.5');
+      path.setAttribute('opacity', isDimmed ? '0.15' : '0.95');
+      path.style.cursor='pointer';
+      path.style.transition='opacity .15s, stroke-width .15s';
+      path.onclick = ()=>{ selectedUid = (selectedUid===s.uid) ? null : s.uid; drawSeries(); updateLegend(); };
+      svg.appendChild(path);
+
+      const dots = s.points.map((v,i)=>{
+        const c = document.createElementNS(svgNS,'circle');
+        c.setAttribute('cx', xFor(i)); c.setAttribute('cy', yFor(v));
+        c.setAttribute('r', isDimmed ? '2' : '3');
+        c.setAttribute('fill', s.color);
+        c.setAttribute('opacity', isDimmed ? '0.15' : '1');
+        c.style.cursor='pointer';
+        c.style.transition='opacity .15s';
+        c.onclick = ()=>{ selectedUid = (selectedUid===s.uid) ? null : s.uid; drawSeries(); updateLegend(); };
+        svg.appendChild(c);
+        return c;
+      });
+
+      lineEls[s.uid] = {path, dots};
+    });
+  }
+
+  drawSeries();
+  wrap.appendChild(svg);
+  container.appendChild(wrap);
+
+  // ── Legenda clicável ──────────────────────────────────────────────────
+  const legend = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px',marginTop:'.75rem'}});
+  container.appendChild(legend);
+
+  function updateLegend(){
+    legend.innerHTML='';
+    series.forEach(s=>{
+      const isSelected = selectedUid===s.uid;
+      const isDimmed = selectedUid && !isSelected;
+      const chip = el('div',{
+        style:{
+          display:'flex',alignItems:'center',gap:'5px',
+          padding:'4px 9px',borderRadius:'999px',cursor:'pointer',
+          background: isSelected ? s.color+'26' : 'var(--dk3)',
+          border:'1px solid '+(isSelected?s.color:'var(--bdr)'),
+          opacity: isDimmed?0.4:1,
+          fontSize:'.7rem',fontWeight: isSelected?'700':'500',
+          transition:'opacity .15s',
+        },
+        onclick: ()=>{ selectedUid = (selectedUid===s.uid) ? null : s.uid; drawSeries(); updateLegend(); }
+      });
+      chip.appendChild(el('span',{style:{width:'9px',height:'9px',borderRadius:'50%',background:s.color,flexShrink:'0'}}));
+      chip.appendChild(el('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'110px'}},
+        s.name+(s.isAdmin?' 👑':'')));
+      legend.appendChild(chip);
+    });
+    if(selectedUid){
+      const clearBtn = el('div',{
+        style:{padding:'4px 9px',borderRadius:'999px',cursor:'pointer',background:'var(--dk3)',border:'1px solid var(--bdr)',fontSize:'.7rem',color:'var(--muted)'},
+        onclick: ()=>{ selectedUid=null; drawSeries(); updateLegend(); }
+      }, '✕ mostrar todos');
+      legend.appendChild(clearBtn);
+    }
+  }
+  updateLegend();
 }
 
 // ── Group Matches ──────────────────────────────────────────────────────────
