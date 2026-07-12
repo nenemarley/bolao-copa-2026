@@ -2453,7 +2453,11 @@ function renderDashboard(main){
 
     const rows=Object.values(totals).map(t=>({
       ...t, total:t.j1+t.je+t.g+t.t3+t.fk+t.fc+t.s
-    })).sort((a,b)=>b.total-a.total);
+    })).sort((a,b)=>{
+      if(b.total!==a.total) return b.total-a.total;
+      // Empate: admin fica na frente
+      return (b.prof.is_admin?1:0) - (a.prof.is_admin?1:0);
+    });
 
     const card=el('div',{class:'card'});
     card.appendChild(el('div',{class:'ch'},'🏆 Ranking Geral'));
@@ -2531,7 +2535,10 @@ function renderDashboard(main){
       if(!cat) return;
       const catRows = rows
         .map(r=>({...r, catVal: cat.val(r)}))
-        .sort((a,b)=>b.catVal-a.catVal)
+        .sort((a,b)=>{
+          if(b.catVal!==a.catVal) return b.catVal-a.catVal;
+          return (b.prof.is_admin?1:0) - (a.prof.is_admin?1:0);
+        })
         .slice(0,8);
 
       const maxVal = catRows[0]?.catVal || 1;
