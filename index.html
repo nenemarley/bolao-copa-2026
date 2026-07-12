@@ -2606,7 +2606,7 @@ function renderDashboard(main){
     const evoCard = el('div',{class:'card'});
     evoCard.appendChild(el('div',{class:'ch'},'📈 Evolução da Pontuação'));
     evoCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
-      'Pontuação acumulada de cada participante ao longo das categorias. Toque em um nome para destacar.'));
+      'Pontuação de cada participante em cada categoria (não acumulada — mostra quem foi melhor em cada fase). Toque em um nome para destacar.'));
     const evoBody = el('div');
     evoCard.appendChild(evoBody);
     main.appendChild(evoCard);
@@ -2624,12 +2624,14 @@ function renderEvolutionChart(container, rows, categories){
   // Paleta de cores distintas para até ~12 participantes
   const PALETTE = ['#4ADE80','#60A5FA','#FBBF24','#F87171','#C084FC','#2DD4BF','#FB923C','#F472B6','#A3E635','#818CF8','#FCD34D','#34D399'];
 
-  // Calcular série acumulada por participante: em cada ponto do eixo X (categoria),
-  // o valor é a SOMA de todas as categorias até ali (acumulado), não o valor isolado —
-  // assim a linha sempre sobe, mostrando a evolução total do placar ao longo do bolão.
+  // Excluir a categoria "Todos" deste gráfico — ela é uma soma agregada, não uma fase
+  // real do bolão, então incluí-la aqui distorceria a comparação entre fases.
+  const chartCategories = (categories||[]).filter(c=>c.key!=='todos');
+
+  // Valor de cada ponto = pontuação daquela fase ISOLADA (não acumulada). Assim, quem foi
+  // melhor numa fase específica aparece mais alto ali, mesmo que o total geral seja menor.
   const series = rows.map((r,idx)=>{
-    let acc = 0;
-    const points = categories.map(cat=>{ acc += cat.val(r); return acc; });
+    const points = chartCategories.map(cat=>cat.val(r));
     return {
       uid: r.prof.id, name: r.prof.display_name, isAdmin: !!r.prof.is_admin,
       color: PALETTE[idx % PALETTE.length],
@@ -2638,10 +2640,10 @@ function renderEvolutionChart(container, rows, categories){
   });
 
   const maxY = Math.max(1, ...series.map(s=>Math.max(...s.points)));
-  const N = categories.length;
+  const N = chartCategories.length;
 
   const W = Math.max(320, N*90);
-  const H = 220;
+  const H = 320;
   const PAD_L = 36, PAD_R = 12, PAD_T = 14, PAD_B = 34;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -2679,7 +2681,7 @@ function renderEvolutionChart(container, rows, categories){
   }
 
   // Labels do eixo X (categorias)
-  categories.forEach((cat,i)=>{
+  chartCategories.forEach((cat,i)=>{
     const x = xFor(i);
     const label = document.createElementNS(svgNS,'text');
     label.setAttribute('x', x); label.setAttribute('y', H-PAD_B+16);
