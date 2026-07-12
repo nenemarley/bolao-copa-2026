@@ -2506,7 +2506,9 @@ function renderDashboard(main){
     t.appendChild(tbody);
     tableWrap.appendChild(t);
     card.appendChild(tableWrap);
-    main.appendChild(card);
+    // Ranking Geral ocultado a pedido — os dados de 'rows' continuam sendo usados
+    // pelas seções de Rankings por Categoria e Evolução da Pontuação abaixo.
+    // main.appendChild(card);
 
     // ── Rankings por Categoria (Top 8 de cada tipo de palpite) ──────────────
     const catCard = el('div',{class:'card'});
@@ -2515,7 +2517,7 @@ function renderDashboard(main){
       'Quem se destacou em cada tipo de palpite, não só no total geral.'));
 
     const categories = [
-      {key:'todos', icon:'🏅', label:'Todos', val:r=>r.j1+r.je+r.g+r.t3+r.fk+r.fc+r.s, show:true},
+      {key:'todos', icon:'🏅', label:'Todas', val:r=>r.j1+r.je+r.g+r.t3+r.fk+r.fc+r.s, show:true},
       {key:'j1', icon:'⚽', label:'Placar 1ª Fase',   val:r=>r.j1,       show:_mode!=='classificados'},
       {key:'g',  icon:'📊', label:'Classificação de Grupos', val:r=>r.g, show:_mode!=='placares'},
       {key:'t3', icon:'🥉', label:'Melhores 3ºs',      val:r=>r.t3,      show:_mode!=='placares'},
@@ -2643,7 +2645,7 @@ function renderEvolutionChart(container, rows, categories){
   const N = chartCategories.length;
 
   const W = Math.max(320, N*90);
-  const H = 320;
+  const H = 420;
   const PAD_L = 36, PAD_R = 12, PAD_T = 14, PAD_B = 34;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
