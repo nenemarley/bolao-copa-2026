@@ -2629,7 +2629,12 @@ function renderEvolutionChart(container, rows, categories){
   // Categorias do gráfico = todas as fases individuais + uma coluna extra "Total" no final
   // (equivalente ao ranking geral). Excluímos a categoria "todos" da lista original porque
   // ela já é recriada aqui como a última coluna, com ícone e posição corretos.
-  const phaseCategories = (categories||[]).filter(c=>c.key!=='todos');
+  // Também escondemos categorias cujo resultado ainda não aconteceu (ninguém pontuou nelas
+  // ainda) — hoje isso vale para Pódio (fc) e Artilheiro (s), que só se definem no fim da Copa.
+  // A ocultação é dinâmica: assim que alguém pontuar nessas categorias, elas reaparecem sozinhas.
+  const phaseCategories = (categories||[])
+    .filter(c=>c.key!=='todos')
+    .filter(c=>rows.some(r=>c.val(r)>0));
   const totalCategory = { key:'total', icon:'🏁', label:'Total', val:r=>r.j1+r.je+r.g+r.t3+r.fk+r.fc+r.s };
   const chartCategories = [...phaseCategories, totalCategory];
 
