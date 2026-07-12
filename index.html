@@ -2504,6 +2504,88 @@ function renderDashboard(main){
     card.appendChild(tableWrap);
     main.appendChild(card);
 
+    // ── Rankings por Categoria (Top 8 de cada tipo de palpite) ──────────────
+    const catCard = el('div',{class:'card'});
+    catCard.appendChild(el('div',{class:'ch'},'🎖️ Rankings por Categoria'));
+    catCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
+      'Quem se destacou em cada tipo de palpite, não só no total geral.'));
+
+    const categories = [
+      {key:'j1', icon:'⚽', label:'Placar 1ª Fase',   val:r=>r.j1,       show:_mode!=='classificados'},
+      {key:'g',  icon:'📊', label:'Classificação de Grupos', val:r=>r.g, show:_mode!=='placares'},
+      {key:'t3', icon:'🥉', label:'Melhores 3ºs',      val:r=>r.t3,      show:_mode!=='placares'},
+      {key:'je', icon:'🎯', label:'Placar Eliminatórias', val:r=>r.je,   show:_mode!=='classificados'},
+      {key:'fk', icon:'🔥', label:'Quem Passa de Fase', val:r=>r.fk,     show:_mode!=='placares'},
+      {key:'fc', icon:'🏆', label:'Pódio (Campeão/Vice/3º)', val:r=>r.fc, show:_mode!=='placares'},
+      {key:'s',  icon:'👟', label:'Artilheiro',        val:r=>r.s,       show:_mode!=='placares'},
+    ].filter(c=>c.show);
+
+    let activeCat = categories[0]?.key;
+
+    const pillsWrap = el('div',{style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'8px',marginBottom:'.75rem'}});
+    const catBodyWrap = el('div');
+
+    function renderCatBody(){
+      catBodyWrap.innerHTML='';
+      const cat = categories.find(c=>c.key===activeCat);
+      if(!cat) return;
+      const catRows = rows
+        .map(r=>({...r, catVal: cat.val(r)}))
+        .sort((a,b)=>b.catVal-a.catVal)
+        .slice(0,8);
+
+      const maxVal = catRows[0]?.catVal || 1;
+      const list = el('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}});
+      catRows.forEach((r,i)=>{
+        const isMe = r.prof.id===STATE.profile.id;
+        const barPct = maxVal>0 ? Math.max(4,(r.catVal/maxVal)*100) : 0;
+        const row = el('div',{style:{display:'flex',alignItems:'center',gap:'8px'}});
+        row.appendChild(el('div',{style:{width:'22px',textAlign:'center',fontSize:'.75rem',fontWeight:'700',color:'var(--muted)',flexShrink:'0'}},
+          em[i]||`${i+1}º`));
+        const barWrap = el('div',{style:{flex:'1',position:'relative',height:'26px',background:'var(--dk3)',borderRadius:'6px',overflow:'hidden'}});
+        barWrap.appendChild(el('div',{style:{position:'absolute',left:'0',top:'0',bottom:'0',width:barPct+'%',background:isMe?'rgba(255,215,0,.35)':'rgba(74,222,128,.2)',borderRadius:'6px'}}));
+        const barLabel = el('div',{style:{position:'relative',display:'flex',alignItems:'center',justifyContent:'space-between',height:'100%',padding:'0 8px',fontSize:'.76rem'}});
+        barLabel.appendChild(el('span',{style:{fontWeight:isMe?'700':'500',color:isMe?'var(--gold)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+          r.prof.display_name+(isMe?' 👤':'')));
+        barLabel.appendChild(el('span',{style:{fontWeight:'700',color:'var(--ok)',flexShrink:'0',marginLeft:'6px'}}, r.catVal+'pts'));
+        barWrap.appendChild(barLabel);
+        row.appendChild(barWrap);
+        list.appendChild(row);
+      });
+      if(catRows.length===0){
+        list.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'1rem',fontSize:'.8rem'}},'Sem dados ainda.'));
+      }
+      catBodyWrap.appendChild(list);
+    }
+
+    categories.forEach(cat=>{
+      const pill = el('button',{
+        class:'btn btn-sm',
+        style:{
+          flexShrink:'0', whiteSpace:'nowrap', fontSize:'.72rem',
+          background: cat.key===activeCat ? 'var(--gold)' : 'var(--dk3)',
+          color: cat.key===activeCat ? '#000' : 'var(--txt)',
+          border: '1px solid ' + (cat.key===activeCat ? 'var(--gold)' : 'var(--bdr)'),
+        },
+        onclick: ()=>{
+          activeCat = cat.key;
+          pillsWrap.querySelectorAll('button').forEach((b,idx)=>{
+            const c = categories[idx];
+            b.style.background = c.key===activeCat ? 'var(--gold)' : 'var(--dk3)';
+            b.style.color = c.key===activeCat ? '#000' : 'var(--txt)';
+            b.style.borderColor = c.key===activeCat ? 'var(--gold)' : 'var(--bdr)';
+          });
+          renderCatBody();
+        }
+      }, cat.icon+' '+cat.label);
+      pillsWrap.appendChild(pill);
+    });
+
+    catCard.appendChild(pillsWrap);
+    catCard.appendChild(catBodyWrap);
+    renderCatBody();
+    main.appendChild(catCard);
+
     // ── Chaveamento Visual ─────────────────────────────────────────────────
     const bracketCard = el('div',{class:'card',style:{padding:'0',overflow:'hidden'}});
     bracketCard.appendChild(el('div',{class:'ch',style:{padding:'1rem 1rem .5rem'}},'⚔️ Chaveamento das Eliminatórias'));
