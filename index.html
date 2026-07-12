@@ -2668,7 +2668,6 @@ function renderEvolutionChart(container, rows, categories){
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
 
-  function xFor(i){ return PAD_L + (N===1 ? plotW/2 : (i/(N-1))*plotW); }
   // Eixo Y = posição no ranking. Posição 1 (melhor) fica no TOPO do gráfico.
   function yFor(pos){
     if(N_PART<=1) return PAD_T + plotH/2;
@@ -2677,34 +2676,56 @@ function renderEvolutionChart(container, rows, categories){
 
   let selectedUid = null; // null = mostrar todos
 
-  const wrap = el('div',{style:{overflowX:'auto', WebkitOverflowScrolling:'touch'}});
   const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS,'svg');
-  svg.setAttribute('width', W);
-  svg.setAttribute('height', H);
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.style.display='block';
 
-  // Linhas de grade horizontais + labels do eixo Y — uma linha por posição (1º a N_PART)
+  // Container flex: eixo Y FIXO à esquerda (não rola) + área do gráfico com scroll horizontal.
+  const outerWrap = el('div',{style:{display:'flex', alignItems:'flex-start'}});
+
+  // ── SVG fixo: só o eixo Y (labels de posição 1º..N_PART), largura = PAD_L ──
+  const yAxisSvg = document.createElementNS(svgNS,'svg');
+  yAxisSvg.setAttribute('width', PAD_L);
+  yAxisSvg.setAttribute('height', H);
+  yAxisSvg.setAttribute('viewBox', `0 0 ${PAD_L} ${H}`);
+  yAxisSvg.style.display='block';
+  yAxisSvg.style.flexShrink='0';
+  yAxisSvg.style.background='var(--dk2)'; // cobre o conteúdo do gráfico ao rolar por baixo
   for(let pos=1; pos<=N_PART; pos++){
     const y = yFor(pos);
-    const gridLine = document.createElementNS(svgNS,'line');
-    gridLine.setAttribute('x1', PAD_L); gridLine.setAttribute('x2', W-PAD_R);
-    gridLine.setAttribute('y1', y); gridLine.setAttribute('y2', y);
-    gridLine.setAttribute('stroke', 'rgba(255,255,255,.08)');
-    gridLine.setAttribute('stroke-width', '1');
-    svg.appendChild(gridLine);
     const label = document.createElementNS(svgNS,'text');
     label.setAttribute('x', PAD_L-6); label.setAttribute('y', y+3);
     label.setAttribute('text-anchor','end'); label.setAttribute('font-size','9');
     label.setAttribute('fill','var(--muted)');
     label.textContent = pos+'º';
-    svg.appendChild(label);
+    yAxisSvg.appendChild(label);
+  }
+  outerWrap.appendChild(yAxisSvg);
+
+  // ── Área com scroll horizontal: grade, linhas dos participantes, eixo X ──
+  const wrap = el('div',{style:{overflowX:'auto', WebkitOverflowScrolling:'touch', flex:'1'}});
+  const svg = document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width', W-PAD_L);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W-PAD_L} ${H}`);
+  svg.style.display='block';
+
+  // Como o SVG scrollável agora começa em x=0 (sem a área do eixo Y reservada nele),
+  // ajustamos xFor/yFor para este SVG específico: deslocamos PAD_L para fora do cálculo de x.
+  function xForScroll(i){ return (N===1 ? (W-PAD_L-PAD_R)/2 : (i/(N-1))*(W-PAD_L-PAD_R)) ; }
+
+  // Linhas de grade horizontais — uma por posição (1º a N_PART), sem os labels (já estão no SVG fixo)
+  for(let pos=1; pos<=N_PART; pos++){
+    const y = yFor(pos);
+    const gridLine = document.createElementNS(svgNS,'line');
+    gridLine.setAttribute('x1', 0); gridLine.setAttribute('x2', W-PAD_L-PAD_R);
+    gridLine.setAttribute('y1', y); gridLine.setAttribute('y2', y);
+    gridLine.setAttribute('stroke', 'rgba(255,255,255,.08)');
+    gridLine.setAttribute('stroke-width', '1');
+    svg.appendChild(gridLine);
   }
 
   // Labels do eixo X (categorias)
   chartCategories.forEach((cat,i)=>{
-    const x = xFor(i);
+    const x = xForScroll(i);
     const label = document.createElementNS(svgNS,'text');
     label.setAttribute('x', x); label.setAttribute('y', H-PAD_B+16);
     label.setAttribute('text-anchor','middle'); label.setAttribute('font-size','8');
@@ -2735,7 +2756,7 @@ function renderEvolutionChart(container, rows, categories){
 
     series.forEach(s=>{
       const isDimmed = selectedUid && selectedUid!==s.uid;
-      const pathD = s.points.map((v,i)=> (i===0?'M':'L') + xFor(i) + ',' + yFor(v)).join(' ');
+      const pathD = s.points.map((v,i)=> (i===0?'M':'L') + xForScroll(i) + ',' + yFor(v)).join(' ');
       const path = document.createElementNS(svgNS,'path');
       path.setAttribute('d', pathD);
       path.setAttribute('fill','none');
@@ -2749,7 +2770,7 @@ function renderEvolutionChart(container, rows, categories){
 
       const dots = s.points.map((v,i)=>{
         const c = document.createElementNS(svgNS,'circle');
-        c.setAttribute('cx', xFor(i)); c.setAttribute('cy', yFor(v));
+        c.setAttribute('cx', xForScroll(i)); c.setAttribute('cy', yFor(v));
         c.setAttribute('r', isDimmed ? '2' : '3');
         c.setAttribute('fill', s.color);
         c.setAttribute('opacity', isDimmed ? '0.15' : '1');
@@ -2766,7 +2787,8 @@ function renderEvolutionChart(container, rows, categories){
 
   drawSeries();
   wrap.appendChild(svg);
-  container.appendChild(wrap);
+  outerWrap.appendChild(wrap);
+  container.appendChild(outerWrap);
 
   // ── Legenda clicável ──────────────────────────────────────────────────
   const legend = el('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px',marginTop:'.75rem'}});
