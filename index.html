@@ -2515,6 +2515,7 @@ function renderDashboard(main){
       'Quem se destacou em cada tipo de palpite, não só no total geral.'));
 
     const categories = [
+      {key:'todos', icon:'🏅', label:'Todos', val:r=>r.j1+r.je+r.g+r.t3+r.fk+r.fc+r.s, show:true},
       {key:'j1', icon:'⚽', label:'Placar 1ª Fase',   val:r=>r.j1,       show:_mode!=='classificados'},
       {key:'g',  icon:'📊', label:'Classificação de Grupos', val:r=>r.g, show:_mode!=='placares'},
       {key:'t3', icon:'🥉', label:'Melhores 3ºs',      val:r=>r.t3,      show:_mode!=='placares'},
@@ -2524,7 +2525,7 @@ function renderDashboard(main){
       {key:'s',  icon:'👟', label:'Artilheiro',        val:r=>r.s,       show:_mode!=='placares'},
     ].filter(c=>c.show);
 
-    let activeCat = categories[0]?.key;
+    let activeCat = 'todos';
 
     const pillsWrap = el('div',{style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'8px',marginBottom:'.75rem'}});
     const catBodyWrap = el('div');
