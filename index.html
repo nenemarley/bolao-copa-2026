@@ -1170,7 +1170,7 @@ function calcPts(p1,p2,r1,r2){
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
-let STATE = { user:null, profile:null, profiles:[], page:'dashboard', loading:true, toast:null };
+let STATE = { user:null, profile:null, profiles:[], page:'dashboard', loading:true, toast:null, passwordRecoveryMode:false };
 let PAGE_VERSION = 0; // increments on every page change to cancel stale queries
 let CURRENT_BOLAO = null; // bolão atualmente selecionado
 let MY_BOLAOS = []; // bolões do usuário
@@ -1294,7 +1294,13 @@ async function init(){
     if(urlCode) localStorage.setItem('pending_invite',urlCode.toUpperCase());
     setState({loading:false});
   }
-  SB.auth.onAuthStateChange(async(_,sess)=>{
+  SB.auth.onAuthStateChange(async(event,sess)=>{
+    if(event==='PASSWORD_RECOVERY'){
+      // Usuário clicou no link de redefinição do e-mail — o Supabase já autenticou
+      // a sessão automaticamente. Mostramos a tela para ele definir a nova senha.
+      setState({loading:false, passwordRecoveryMode:true});
+      return;
+    }
     if(sess?.user) await loadProfile(sess.user);
     else setState({user:null,profile:null,loading:false});
   });
@@ -1439,6 +1445,14 @@ async function signIn(email,pw){
   const {error} = await SB.auth.signInWithPassword({email,password:pw});
   if(error) throw error;
 }
+async function resetPassword(email){
+  // Envia e-mail de redefinição de senha via Supabase Auth — ninguém (nem admin, nem
+  // este app) vê ou manuseia a senha em nenhum momento; o próprio Supabase gerencia
+  // o link seguro de redefinição.
+  const redirectTo = window.location.origin + window.location.pathname;
+  const {error} = await SB.auth.resetPasswordForEmail(email, { redirectTo });
+  if(error) throw error;
+}
 async function signUp(email,pw,username,displayName){
   const {data,error} = await SB.auth.signUp({email,password:pw});
   if(error) throw error;
@@ -1470,8 +1484,55 @@ function render(){
   const app = document.getElementById('app');
   app.innerHTML='';
   if(STATE.loading){ app.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'}))); return; }
+  if(STATE.passwordRecoveryMode){ app.appendChild(renderPasswordRecovery()); return; }
   if(!STATE.user||!STATE.profile){ app.appendChild(renderAuth()); return; }
   app.appendChild(renderApp());
+}
+
+// ── Password Recovery Screen (após clicar no link do e-mail) ───────────────
+function renderPasswordRecovery(){
+  let err='', ok='', busy=false;
+  const wrap = el('div',{class:'auth-wrap'});
+  const box = el('div',{class:'auth-box'});
+  wrap.appendChild(box);
+
+  function rebuild(){
+    box.innerHTML='';
+    box.appendChild(el('div',{class:'auth-logo'},'🔑 Nova Senha'));
+    box.appendChild(el('div',{class:'auth-sub'},'Defina uma nova senha para sua conta.'));
+    const card = el('div',{class:'card'});
+    if(err) card.appendChild(el('div',{class:'err-box'},err));
+    if(ok) card.appendChild(el('div',{class:'ok-box'},ok));
+
+    const pw1I = el('input',{class:'fi',type:'password',placeholder:'Nova senha (mín. 6 caracteres)'});
+    card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nova senha'),pw1I));
+    const pw2I = el('input',{class:'fi',type:'password',placeholder:'Confirme a nova senha'});
+    card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Confirmar senha'),pw2I));
+
+    const btn = el('button',{class:'btn btn-p btn-full', onclick: async()=>{
+      err=''; ok='';
+      if(!pw1I.value || pw1I.value.length<6){ err='A senha precisa ter pelo menos 6 caracteres.'; rebuild(); return; }
+      if(pw1I.value!==pw2I.value){ err='As senhas não coincidem.'; rebuild(); return; }
+      busy=true; rebuild();
+      try{
+        const {error} = await SB.auth.updateUser({password: pw1I.value});
+        if(error) throw error;
+        ok='✅ Senha atualizada! Redirecionando...';
+        rebuild();
+        setTimeout(()=>{
+          STATE.passwordRecoveryMode=false;
+          // Limpar parâmetros de recovery da URL antes de recarregar o fluxo normal
+          window.history.replaceState({}, '', window.location.pathname);
+          setState({loading:true});
+          init();
+        }, 1200);
+      }catch(e){ err=e.message; busy=false; rebuild(); }
+    }}, busy?'Aguarde...':'Salvar nova senha');
+    card.appendChild(btn);
+    box.appendChild(card);
+  }
+  rebuild();
+  return wrap;
 }
 
 // ── Auth Screen ────────────────────────────────────────────────────────────
@@ -1492,7 +1553,7 @@ function renderAuth(){
     const emailI = el('input',{class:'fi',type:'email',placeholder:'seu@email.com'});
     card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Email'),emailI));
 
-    let usernameI, nameI;
+    let usernameI, nameI, pwI;
     if(mode==='register'){
       usernameI = el('input',{class:'fi',placeholder:'apelido_no_bolao'});
       nameI = el('input',{class:'fi',placeholder:'Como quer aparecer no ranking'});
@@ -1500,28 +1561,49 @@ function renderAuth(){
       card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome de exibição'),nameI));
     }
 
-    const pwI = el('input',{class:'fi',type:'password',placeholder:'••••••••'});
-    card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Senha'),pwI));
+    if(mode!=='forgot'){
+      pwI = el('input',{class:'fi',type:'password',placeholder:'••••••••'});
+      card.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Senha'),pwI));
+    }
 
     const btn = el('button',{class:'btn btn-p btn-full', onclick: async()=>{
       err=''; ok=''; busy=true; rebuild();
       try{
         if(mode==='login'){
           await signIn(emailI.value, pwI.value);
+        } else if(mode==='forgot'){
+          if(!emailI.value){ throw new Error('Digite seu e-mail para receber o link de redefinição.'); }
+          await resetPassword(emailI.value);
+          ok='✅ Se esse e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira sua caixa de entrada (e spam).';
+          mode='login';
         } else {
           const d = await signUp(emailI.value, pwI.value, usernameI.value, nameI.value);
           if(!d.session) { ok='Conta criada! Faça login.'; mode='login'; }
         }
       }catch(e){ err=e.message; }
       busy=false; rebuild();
-    }}, busy?'Aguarde...':(mode==='login'?'Entrar':'Criar Conta'));
+    }}, busy?'Aguarde...':(mode==='login'?'Entrar':mode==='forgot'?'Enviar link de redefinição':'Criar Conta'));
     card.appendChild(btn);
 
+    if(mode==='login'){
+      const forgotLink = el('div',{style:{textAlign:'center',marginTop:'.6rem'}});
+      forgotLink.appendChild(el('button',{
+        style:{background:'none',border:'none',color:'var(--muted)',fontSize:'.8rem',textDecoration:'underline',cursor:'pointer'},
+        onclick:()=>{ mode='forgot'; err=''; ok=''; rebuild(); }
+      }, 'Esqueci minha senha'));
+      card.appendChild(forgotLink);
+    }
+
     const toggle = el('div',{class:'auth-toggle'});
-    const tb = el('button',{onclick:()=>{mode=mode==='login'?'register':'login';err='';ok='';rebuild();}},
-      mode==='login'?'Cadastrar':'Entrar');
-    toggle.appendChild(document.createTextNode(mode==='login'?'Não tem conta? ':'Já tem conta? '));
-    toggle.appendChild(tb);
+    if(mode==='forgot'){
+      const backBtn = el('button',{onclick:()=>{mode='login';err='';ok='';rebuild();}}, 'Voltar ao login');
+      toggle.appendChild(backBtn);
+    } else {
+      const tb = el('button',{onclick:()=>{mode=mode==='login'?'register':'login';err='';ok='';rebuild();}},
+        mode==='login'?'Cadastrar':'Entrar');
+      toggle.appendChild(document.createTextNode(mode==='login'?'Não tem conta? ':'Já tem conta? '));
+      toggle.appendChild(tb);
+    }
     card.appendChild(toggle);
     box.appendChild(card);
   }
