@@ -2638,9 +2638,7 @@ function renderDashboard(main){
     t.appendChild(tbody);
     tableWrap.appendChild(t);
     card.appendChild(tableWrap);
-    // Ranking Geral ocultado a pedido — os dados de 'rows' continuam sendo usados
-    // pelas seções de Rankings por Categoria e Evolução da Pontuação abaixo.
-    // main.appendChild(card);
+    main.appendChild(card);
 
     // ── Rankings por Categoria (Top 8 de cada tipo de palpite) ──────────────
     const catCard = el('div',{class:'card'});
