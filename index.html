@@ -1293,21 +1293,6 @@ async function init(){
   const hashAccessToken = hashParams.get('access_token');
   const hashRefreshToken = hashParams.get('refresh_token');
 
-  // DEBUG TEMPORÁRIO — remover depois de diagnosticar o fluxo de recovery.
-  // Mostra na tela o que realmente chegou na URL (hash + querystring), pois no
-  // celular não dá pra abrir o console do DevTools facilmente.
-  if(window.location.hash || window.location.search){
-    const dbg = document.createElement('div');
-    dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#111;color:#0f0;font-size:11px;padding:8px;word-break:break-all;border-bottom:2px solid #0f0;max-height:40vh;overflow:auto;';
-    dbg.innerHTML = '<b>[DEBUG URL]</b> href: '+window.location.href+
-      '<br><b>hash:</b> '+(window.location.hash||'(vazio)')+
-      '<br><b>search:</b> '+(window.location.search||'(vazio)')+
-      '<br><b>type parseado:</b> '+hashType+' | <b>access_token:</b> '+(hashAccessToken?hashAccessToken.substring(0,15)+'...':'(ausente)')+
-      '<br><button id="dbgClose" style="margin-top:6px;padding:4px 8px;">Fechar</button>';
-    document.body.appendChild(dbg);
-    dbg.querySelector('#dbgClose').onclick = ()=>dbg.remove();
-  }
-
   let recoveryHandledEarly = false;
 
   if(hashType==='recovery' && hashAccessToken && hashRefreshToken){
@@ -2638,9 +2623,9 @@ function renderDashboard(main){
     t.appendChild(tbody);
     tableWrap.appendChild(t);
     card.appendChild(tableWrap);
-    main.appendChild(card);
-
-    // ── Rankings por Categoria (Top 8 de cada tipo de palpite) ──────────────
+    // Ranking Geral ocultado a pedido — os dados de 'rows' continuam sendo usados
+    // pelas seções de Rankings por Categoria e Evolução da Pontuação abaixo.
+    // main.appendChild(card);
     const catCard = el('div',{class:'card'});
     catCard.appendChild(el('div',{class:'ch'},'🎖️ Rankings por Categoria'));
     catCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
