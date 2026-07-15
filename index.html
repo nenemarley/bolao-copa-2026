@@ -3572,7 +3572,8 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
   const champ = koRealData?.champion?.team_ids?.[0]||null;
   const vice = koRealData?.runner_up?.team_ids?.[0]||null;
   const thirdWTeam = koRealData?.third?.team_ids?.[0]||null;
-  const topScorer = koRealData?.top_scorer?.team_ids?.[0]||null;
+  const topScorerIds = koRealData?.top_scorer?.team_ids||[];
+  const topScorer = topScorerIds.length ? topScorerIds.join(' / ') : null;
 
   const podium = el('div',{style:{display:'flex',gap:'10px',justifyContent:'center',flexWrap:'wrap',marginTop:'1rem',paddingTop:'.75rem',borderTop:'1px solid var(--bdr)'}});
   function podiumBadge(icon,label,value,isFlag){
@@ -5521,12 +5522,12 @@ function buildKoUI(main){
   if(!koOpen) si.disabled=true;
   scard.appendChild(el('div',{class:'fg'},el('label',{class:'fl'},'Nome do artilheiro da Copa'),si));
   if(koReal['top_scorer']){
-    const realScorer=koReal['top_scorer'].team_ids?.[0]||'';
-    if(realScorer && realScorer!=='-'){
+    const realScorers=(koReal['top_scorer'].team_ids||[]).filter(n=>n && n!=='-');
+    if(realScorers.length){
       const scorerRow=el('div',{style:{fontSize:'.8rem',color:'var(--muted)',marginTop:'.4rem'}});
-      scorerRow.appendChild(document.createTextNode('Artilheiro real: '+realScorer));
+      scorerRow.appendChild(document.createTextNode('Artilheiro'+(realScorers.length>1?'s reais: ':' real: ')+realScorers.join(' / ')));
       if(koScorer){
-        const sPts=koScorer.trim().toLowerCase()===realScorer.trim().toLowerCase()?30:0;
+        const sPts=realScorers.some(rs=>rs.trim().toLowerCase()===koScorer.trim().toLowerCase())?30:0;
         scorerRow.appendChild(el('span',{class:'pp '+(sPts>0?'p10':'p0'),style:{marginLeft:'8px'}},sPts+'pts'));
       }
       scard.appendChild(scorerRow);
@@ -5595,7 +5596,8 @@ async function saveKo(){
       // Scorer: DELETE + INSERT garante que sempre atualiza corretamente
       if(koScorer.trim()){
         const rp=koReal['top_scorer'];
-        const pts=rp?.team_ids?.[0]?.trim().toLowerCase()===koScorer.trim().toLowerCase()?30:0;
+        const realScorersArr=(rp?.team_ids||[]).map(n=>(n||'').trim().toLowerCase());
+        const pts=realScorersArr.includes(koScorer.trim().toLowerCase())?30:0;
         // Deletar entrada anterior (se existir) e inserir nova
         await SB.from('scorer_predictions')
           .delete()
@@ -8184,7 +8186,7 @@ function buildAdminUI(main){
         const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
         const realSt={}; (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
         const realThirds=koMap['best_thirds']||[];
-        const realScorer=koMap['top_scorer']?.[0]||null;
+        const realScorers=(koMap['top_scorer']||[]).filter(Boolean);
         const profiles=STATE.profiles;
         body.innerHTML='';
 
@@ -8195,7 +8197,7 @@ function buildAdminUI(main){
         [['Campeão',koMap['champion']?.[0]||koMap['final']?.[0]||'-'],
          ['Vice',koMap['runner_up']?.[0]||'-'],
          ['3º Lugar',koMap['third']?.[0]||'-'],
-         ['Artilheiro',realScorer||'-'],
+         ['Artilheiro'+(realScorers.length>1?'s':''),realScorers.join(' / ')||'-'],
          ['Best 3ºs ('+realThirds.length+')',realThirds.join(', ')||'-'],
         ].forEach(([k,v])=>{
           realGrid.appendChild(el('span',{style:{color:'var(--muted)'}},k+':'));
@@ -8268,7 +8270,7 @@ function buildAdminUI(main){
           });
           sp.forEach(p=>{
             const ok=p.points>0;
-            const correct=realScorer&&p.player_name?.trim().toLowerCase()===realScorer.trim().toLowerCase();
+            const correct=realScorers.some(rs=>p.player_name?.trim().toLowerCase()===rs.trim().toLowerCase());
             finDiv.appendChild(el('div',{style:{color:ok?'var(--ok)':correct?'var(--err)':'var(--muted)',marginBottom:'2px'}},
               (ok?'✅':correct?'❌ (nome com espaço?)':'⬜')+' scorer: "'+p.player_name+'" = '+p.points+'pts'+(correct&&!ok?' ← DEVERIA SER 30pts!':'')));
           });
@@ -8287,7 +8289,7 @@ function buildAdminUI(main){
       try{
         const koRows=await dbQ('real_knockouts',{},'phase,team_ids');
         const koMap={}; (koRows||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
-        const realScorer=(koMap['top_scorer']?.[0]||'').trim();
+        const realScorersArr=(koMap['top_scorer']||[]).filter(Boolean).map(t=>t.trim().toLowerCase());
         const realChamp=([...(koMap['champion']||[]),...(koMap['final']||[])].map(t=>t.toLowerCase()));
         const realVice=(koMap['runner_up']||[]).map(t=>t.toLowerCase());
         const realThird=(koMap['third']||[]).map(t=>t.toLowerCase());
@@ -8314,7 +8316,7 @@ function buildAdminUI(main){
             console.log('[Fix] delete scorer:', delErr?.message||'OK');
             if(!delErr){
               const bestName=spRows[0].player_name?.trim()||'';
-              const pts=realScorer&&bestName.toLowerCase()===realScorer.toLowerCase()?30:0;
+              const pts=realScorersArr.includes(bestName.toLowerCase())?30:0;
               const {error:insErr}=await SB.from('scorer_predictions').insert({user_id:uid,player_name:bestName,points:pts,bolao_id:CURRENT_BOLAO?.id});
               console.log('[Fix] insert scorer:', insErr?.message||'OK ('+bestName+' = '+pts+'pts)');
               if(!insErr) fixes++; else errors.push('scorer dup: '+insErr.message);
@@ -8322,7 +8324,7 @@ function buildAdminUI(main){
           } else if(spRows.length===1){
             const p=spRows[0];
             const cleanName=p.player_name?.trim()||'';
-            const correctPts=realScorer&&cleanName.toLowerCase()===realScorer.toLowerCase()?30:0;
+            const correctPts=realScorersArr.includes(cleanName.toLowerCase())?30:0;
             if(p.player_name?.trim()!==p.player_name||p.points!==correctPts){
               // Tentar update direto
               const {error:upErr}=await SB.from('scorer_predictions')
@@ -8357,7 +8359,7 @@ function buildAdminUI(main){
           sqlModal.appendChild(el('div',{style:{color:'var(--gold)',fontWeight:'700',marginBottom:'8px'}},'📋 Execute este SQL no Supabase → SQL Editor:'));
           const sqlText=`-- Cole no Supabase SQL Editor e clique Run
 UPDATE scorer_predictions SET player_name=trim(player_name), points=30
-WHERE lower(trim(player_name))='${realScorer.toLowerCase()}' AND points!=30;
+WHERE lower(trim(player_name)) IN (${realScorersArr.map(t=>"'"+t+"'").join(',')}) AND points!=30;
 
 DELETE FROM scorer_predictions a USING scorer_predictions b
 WHERE a.user_id=b.user_id AND a.ctid<b.ctid;
@@ -8398,7 +8400,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
         const matchMap={}; (realMatches||[]).forEach(m=>matchMap[m.match_number]=m);
         const koMap={}; (realKos||[]).forEach(k=>koMap[k.phase]=k.team_ids||[]);
         const realThirds=koMap['best_thirds']||[];
-        const realScName=koMap['top_scorer']?.[0]||null;
+        const realScNames=(koMap['top_scorer']||[]).filter(Boolean).map(n=>n.trim().toLowerCase());
         const rsRows=await SB.from('real_group_standings').select('group_id,position,team_name');
         const realSt={}; (rsRows.data||[]).forEach(r=>{ if(!realSt[r.group_id])realSt[r.group_id]={}; realSt[r.group_id][r.position]=r.team_name; });
         const members=await dbQ('bolao_members',{bolao_id:CURRENT_BOLAO.id},'user_id');
@@ -8406,7 +8408,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
         
         // Log dos resultados reais carregados
         console.log('[Recalcular] koMap fases:', Object.keys(koMap).map(k=>k+':'+JSON.stringify(koMap[k])));
-        console.log('[Recalcular] realScName:', realScName);
+        console.log('[Recalcular] realScNames:', realScNames);
         console.log('[Recalcular] userIds:', userIds.length);
 
         for(const uid of userIds){
@@ -8446,8 +8448,8 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
           const sP=await SB.from('scorer_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO?.id);
           console.log('[Recalcular] uid='+uid+' scorer:', (sP.data||[]).map(p=>p.player_name+'='+p.points));
           for(const p of (sP.data||[])){
-            const pts=realScName&&p.player_name?.trim().toLowerCase()===realScName.trim().toLowerCase()?30:0;
-            console.log('[Recalcular] scorer "'+p.player_name+'" real="'+realScName+'" pts='+pts);
+            const pts=realScNames.includes(p.player_name?.trim().toLowerCase())?30:0;
+            console.log('[Recalcular] scorer "'+p.player_name+'" reais="'+realScNames.join(', ')+'" pts='+pts);
             // Atualizar por user_id (não por player_name pois pode ter espaço extra)
             const {error:sErr} = await SB.from('scorer_predictions').update({points:pts}).eq('user_id',uid).eq('bolao_id',p.bolao_id||CURRENT_BOLAO?.id);
             if(sErr) console.error('[Recalcular] scorer update error:', sErr);
@@ -8592,25 +8594,31 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
       showToast('🗑️ Artilheiro limpo!'); buildAdminUI(main);
     }},'🗑️ Limpar'));
     card.appendChild(scorerHdr);
-        const SCORER_LIST_ADM = SCORER_LIST_DYNAMIC.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
-    const currentScorer=adminKo['top_scorer']?.team_ids?.[0]||'';
-    const inp=el('select',{class:'ps',style:{marginBottom:'8px'}});
-    inp.appendChild(el('option',{value:''},'— Selecione o artilheiro real —'));
+    card.appendChild(el('div',{style:{fontSize:'.75rem',color:'var(--muted)',marginBottom:'.6rem'}},
+      'Pode marcar mais de um em caso de empate — quem palpitou qualquer um dos marcados pontua.'));
+    const SCORER_LIST_ADM = SCORER_LIST_DYNAMIC.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+    const currentScorers=new Set((adminKo['top_scorer']?.team_ids||[]).map(n=>(n||'').trim()));
+    const checksWrap=el('div',{style:{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'320px',overflowY:'auto',marginBottom:'10px',border:'1px solid var(--bdr)',borderRadius:'8px',padding:'8px'}});
+    const checkboxRefs=[];
     SCORER_LIST_ADM.forEach(({name,flag})=>{
-      const o=el('option',{value:name},flag+' '+name);
-      if(currentScorer===name) o.selected=true;
-      inp.appendChild(o);
+      const cb=el('input',{type:'checkbox',value:name});
+      cb.checked=currentScorers.has(name);
+      checkboxRefs.push(cb);
+      const lbl=el('label',{style:{display:'flex',alignItems:'center',gap:'8px',fontSize:'.85rem',cursor:'pointer'}},
+        cb, flag+' '+name);
+      checksWrap.appendChild(lbl);
     });
     const savB=el('button',{class:'btn btn-s',style:{marginTop:'8px'},onclick:async()=>{
       savB.textContent='⏳...'; savB.disabled=true;
       try{
-        const name=inp.value.trim();
-        // Salvar artilheiro real (pode ser vazio para limpar)
-        await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:name?[name]:[]});
+        const names=checkboxRefs.filter(cb=>cb.checked).map(cb=>cb.value.trim());
+        const namesLower=names.map(n=>n.toLowerCase());
+        // Salvar artilheiro(s) real(is) (pode ser vazio para limpar)
+        await dbUpsert('real_knockouts',{phase:'top_scorer',team_ids:names});
         // Atualizar pontos dos palpites via UPDATE (evita RLS do INSERT)
         const preds=await dbQ('scorer_predictions');
         for(const p of preds){
-          const pts = name && p.player_name?.toLowerCase()===name.toLowerCase() ? 30 : 0;
+          const pts = namesLower.length && namesLower.includes((p.player_name||'').toLowerCase()) ? 30 : 0;
           if(p.points !== pts){
             await SB.from('scorer_predictions')
               .update({points:pts})
@@ -8618,12 +8626,12 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
               .eq('bolao_id',p.bolao_id);
           }
         }
-        adminKo['top_scorer']={phase:'top_scorer',team_ids:name?[name]:[]};
-        showToast(name?'✅ Artilheiro salvo!':'✅ Artilheiro limpo!');
+        adminKo['top_scorer']={phase:'top_scorer',team_ids:names};
+        showToast(names.length?'✅ Artilheiro(s) salvo(s)!':'✅ Artilheiro limpo!');
       }catch(e){ showToast(e.message,'err'); }
       savB.textContent='Salvar'; savB.disabled=false;
     }},'Salvar');
-    card.appendChild(inp); card.appendChild(savB); main.appendChild(card);
+    card.appendChild(checksWrap); card.appendChild(savB); main.appendChild(card);
   }
 
   if(adminTab==='test'){
@@ -9044,7 +9052,7 @@ async function runTest(main) {
 
   // STEP 5: Recalcular pontuações usando resultados reais do banco
   tlog('\n🔢 PASSO 5: Recalculando pontuações com resultados reais do banco...', 'bold');
-  const realScorer = realKoMap['top_scorer']?.[0]||'';
+  const realScorers = realKoMap['top_scorer']||[];
 
   for(const u of signedUsers) {
     try {
@@ -9118,7 +9126,7 @@ async function runTest(main) {
       }
 
       // Artilheiro
-      const spts = realScorer && userPreds[u.id].scorer===realScorer ? 30 : 0;
+      const spts = realScorers.includes(userPreds[u.id].scorer) ? 30 : 0;
       await db5.from('scorer_predictions').delete().eq('user_id',u.id);
       const {error:sErr} = await db5.from('scorer_predictions').insert({user_id:u.id, player_name:userPreds[u.id].scorer, points:spts});
       if(sErr) tlog(`  ⚠️ ${u.name} scorer: ${sErr.message}`, 'warn');
@@ -9165,7 +9173,7 @@ async function runTest(main) {
       teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10); });
     });
     // Artilheiro
-    expS = realScorer && userPreds[u.id].scorer===realScorer ? 30 : 0;
+    expS = realScorers.includes(userPreds[u.id].scorer) ? 30 : 0;
     const expT = expM+expG+expK+expS;
 
     const [mp,gp,kp,sp] = await Promise.all([
@@ -9198,14 +9206,14 @@ async function runTest(main) {
         }).join(' ');
         tlog(`     🔍 KO detail: ${koDetail}`, 'warn');
       }
-      if(expS!==actS) tlog(`     🔍 Artilheiro: ${u.name} palpitou="${userPreds[u.id].scorer}" real="${realScorer}" banco=${actS}pts`, 'warn');
+      if(expS!==actS) tlog(`     🔍 Artilheiro: ${u.name} palpitou="${userPreds[u.id].scorer}" reais="${realScorers.join(', ')}" banco=${actS}pts`, 'warn');
     }
   }
 
   tlog('\n═══════════════════════════════════════', 'info');
   tlog(allPassed?'🎉 TODOS OS TESTES PASSARAM!':'⚠️ ATENÇÃO: FALHAS ENCONTRADAS', allPassed?'ok':'err');
   tlog('═══════════════════════════════════════', 'info');
-  if(realScorer) tlog('Artilheiro real no banco: '+realScorer, 'info');
+  if(realScorers.length) tlog('Artilheiro(s) real(is) no banco: '+realScorers.join(', '), 'info');
   tlog('Campeão real no banco: '+(realKoMap['final']?.[0]||realKoMap['champion']?.[0]||'?'), 'info');
   tlog('\nAgora vá para 🏆 Ranking para ver as pontuações!', 'warn');
   tlog('Use 🗑 Limpar Tudo quando quiser remover os dados de teste.', 'warn');
