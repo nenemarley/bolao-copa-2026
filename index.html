@@ -2682,10 +2682,14 @@ function renderDashboard(main){
         const row = el('div',{style:{display:'flex',alignItems:'center',gap:'8px'}});
         row.appendChild(el('div',{style:{width:'22px',textAlign:'center',fontSize:'.75rem',fontWeight:'700',color:'var(--muted)',flexShrink:'0'}},
           em[i]||`${i+1}º`));
-        const barWrap = el('div',{style:{flex:'1',position:'relative',height:'26px',background:'var(--dk3)',borderRadius:'6px',overflow:'hidden'}});
+        const barWrap = el('div',{style:{flex:'1',position:'relative',height:'26px',background:'var(--dk3)',borderRadius:'6px',overflow:'hidden',cursor:'pointer'},
+          onclick: ()=>showUserPalpites(r.prof.id, r.prof.display_name, isMe)});
         barWrap.appendChild(el('div',{style:{position:'absolute',left:'0',top:'0',bottom:'0',width:barPct+'%',background:isMe?'rgba(255,215,0,.35)':'rgba(74,222,128,.2)',borderRadius:'6px'}}));
         const barLabel = el('div',{style:{position:'relative',display:'flex',alignItems:'center',justifyContent:'space-between',height:'100%',padding:'0 8px',fontSize:'.76rem'}});
-        barLabel.appendChild(el('span',{style:{fontWeight:isMe?'700':'500',color:isMe?'var(--gold)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+        barLabel.appendChild(el('span',{
+          style:{fontWeight:isMe?'700':'500',color:isMe?'var(--gold)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer',textDecoration:'underline dotted'},
+          onclick: (ev)=>{ ev.stopPropagation(); showUserPalpites(r.prof.id, r.prof.display_name, isMe); }
+        },
           r.prof.display_name+(isMe?' 👤':'')));
         barLabel.appendChild(el('span',{style:{fontWeight:'700',color:'var(--ok)',flexShrink:'0',marginLeft:'6px'}}, r.catVal+'pts'));
         barWrap.appendChild(barLabel);
