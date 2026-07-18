@@ -3658,7 +3658,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
   // Legenda das 2 colunas — fundamental para tirar a dúvida dos participantes
   const legendRow = el('div',{style:{display:'flex',gap:'12px',marginTop:'8px',fontSize:'.68rem',color:'var(--muted)'}});
   legendRow.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'4px'}},el('span',{},'🎯'),el('span',{},'Placar do jogo'))); 
-  legendRow.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'4px'}},el('span',{},'🔥'),el('span',{},'Quem passa de fase')));
+  legendRow.appendChild(el('div',{style:{display:'flex',alignItems:'center',gap:'4px'}},el('span',{},'🔥'),el('span',{},phaseKey==='third'?'Quem é 3º colocado':phaseKey==='final'?'Quem será campeão e vice':'Quem passa de fase')));
   hdr.appendChild(legendRow);
 
   modal.appendChild(hdr);
@@ -3705,7 +3705,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       if(lastSpan) lastSpan.style.color = classifWinner===t2 ? 'var(--gold)' : 'inherit';
     }
     const classifWinnerLineEl = document.getElementById('ko-unified-classifwinner');
-    if(classifWinnerLineEl && classifWinner) classifWinnerLineEl.textContent = '🏆 Classificado: '+classifWinner;
+    if(classifWinnerLineEl && classifWinner) classifWinnerLineEl.textContent = (phaseKey==='third'?'🥉 3º colocado: ':phaseKey==='final'?'🏆 Campeão: ':'🏆 Classificado: ')+classifWinner;
 
     const allRealKnockoutDecidedTeams = new Set();
     (phaseRealMatches||[]).forEach(m=>{
@@ -3870,7 +3870,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
 
       // Coluna classificação
       const classifCol = el('div',{style:{flex:'1',background:'rgba(255,255,255,.03)',borderRadius:'7px',padding:'.45rem .55rem'}});
-      classifCol.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--muted)',marginBottom:'2px'}},'🔥 Passa de fase'));
+      classifCol.appendChild(el('div',{style:{fontSize:'.6rem',color:'var(--muted)',marginBottom:'2px'}},phaseKey==='third'?'🔥 3º colocado':phaseKey==='final'?'🔥 Campeão/Vice':'🔥 Passa de fase'));
       if(row.classifPick && row.userT1 && row.userT2){
         // Mostrar o confronto completo que esse participante montou no bracket dele,
         // com o time escolhido em destaque — igual ao popup antigo
