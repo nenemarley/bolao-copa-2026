@@ -3576,18 +3576,29 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
   const topScorer = topScorerIds.length ? topScorerIds.join(' / ') : null;
 
   const podium = el('div',{style:{display:'flex',gap:'10px',justifyContent:'center',flexWrap:'wrap',marginTop:'1rem',paddingTop:'.75rem',borderTop:'1px solid var(--bdr)'}});
-  function podiumBadge(icon,label,value,isFlag){
-    const b = el('div',{style:{textAlign:'center',minWidth:'80px'}});
+  function podiumBadge(icon,label,value,isFlag,onclick){
+    const b = el('div',{style:{textAlign:'center',minWidth:'80px',cursor:onclick?'pointer':'default'}});
+    if(onclick) b.onclick = onclick;
     b.appendChild(el('div',{style:{fontSize:'1.3rem'}}, icon));
     b.appendChild(el('div',{style:{fontSize:'.62rem',color:'var(--muted)'}}, label));
-    b.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'700',color:value?'var(--gold)':'var(--muted)'}},
+    b.appendChild(el('div',{style:{fontSize:'.78rem',fontWeight:'700',color:value?'var(--gold)':'var(--muted)',textDecoration:onclick?'underline dotted':'none'}},
       value ? (isFlag?(FLAGS[value]||'')+' ':'⚽ ')+value : 'a definir'));
     return b;
   }
-  podium.appendChild(podiumBadge('🏆','Campeão',champ,true));
-  podium.appendChild(podiumBadge('🥈','Vice',vice,true));
-  podium.appendChild(podiumBadge('🥉','3º Lugar',thirdWTeam,true));
-  podium.appendChild(podiumBadge('👟','Artilheiro',topScorer,false));
+  const openFinalPopup = ()=>{
+    const {t1,t2} = getMatchTeams(104);
+    const real = getRealScoreInfo(104);
+    showKoUnifiedPopup(104,'Final',t1||champ||vice,t2||vice||champ,real,50);
+  };
+  const openThirdPopup = ()=>{
+    const {t1,t2} = getMatchTeams(103);
+    const real = getRealScoreInfo(103);
+    showKoUnifiedPopup(103,'3º Lugar',t1||thirdWTeam,t2||thirdWTeam,real,15);
+  };
+  podium.appendChild(podiumBadge('🏆','Campeão',champ,true,openFinalPopup));
+  podium.appendChild(podiumBadge('🥈','Vice',vice,true,openFinalPopup));
+  podium.appendChild(podiumBadge('🥉','3º Lugar',thirdWTeam,true,openThirdPopup));
+  podium.appendChild(podiumBadge('👟','Artilheiro',topScorer,false,()=>showScorerPalpitesPopup(topScorerIds)));
   container.appendChild(podium);
 }
 
@@ -4938,6 +4949,114 @@ async function showThirdsPalpitesPopup(realThirds) {
         });
         card.appendChild(teamsDiv);
       }
+      body.appendChild(card);
+    });
+
+  } catch(e){
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{color:'var(--err)',padding:'1rem',fontSize:'.85rem'}},'Erro: '+e.message));
+  }
+}
+
+async function showScorerPalpitesPopup(realScorers) {
+  document.getElementById('scorer-palpites-popup')?.remove();
+
+  const realList = (realScorers||[]).filter(Boolean);
+  const hasReal = realList.length > 0;
+  const realLower = realList.map(n=>n.trim().toLowerCase());
+
+  const overlay = el('div',{id:'scorer-palpites-popup',style:{
+    position:'fixed',top:'0',left:'0',right:'0',bottom:'0',
+    background:'rgba(0,0,0,.78)',zIndex:'9999',
+    display:'flex',alignItems:'flex-end',justifyContent:'center'
+  }});
+  overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+
+  const modal = el('div',{style:{
+    background:'var(--dk2)',borderRadius:'16px 16px 0 0',
+    width:'100%',maxWidth:'600px',maxHeight:'88vh',
+    display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'
+  }});
+
+  const hdr = el('div',{style:{padding:'1rem 2.5rem 1rem 1rem',borderBottom:'1px solid var(--bdr)',flexShrink:'0'}});
+  hdr.appendChild(el('div',{style:{fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.3rem'}},'👥 Palpites — Artilheiro'));
+  if(hasReal){
+    hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'var(--muted)'}},'Real'+(realList.length>1?'is: ':': ')+'⚽ '+realList.join(' / ')));
+  } else {
+    hdr.appendChild(el('div',{style:{fontSize:'.72rem',color:'#FCD34D',fontWeight:'700'}},'⏳ Ainda não definido'));
+  }
+
+  modal.appendChild(hdr);
+  modal.appendChild(el('button',{class:'btn btn-sm btn-o',style:{position:'absolute',top:'1rem',right:'1rem'},onclick:()=>overlay.remove()},'✕'));
+
+  const body = el('div',{style:{overflowY:'auto',flex:'1',padding:'.75rem 1rem 1.5rem'}});
+  body.appendChild(el('div',{class:'spin-wrap'},el('div',{class:'sp'})));
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  try {
+    const bolaoId = CURRENT_BOLAO?.id;
+    const [members, scorerRaw] = await Promise.all([
+      dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+      SB.from('scorer_predictions').select('user_id,player_name,points').eq('bolao_id', bolaoId).then(r=>r.data||[])
+    ]);
+
+    const memberIds = new Set((members||[]).map(m=>m.user_id));
+    const byUser = {};
+    scorerRaw.filter(p=>memberIds.has(p.user_id)).forEach(p=>{ byUser[p.user_id]=p.player_name||''; });
+
+    const rows = [];
+    memberIds.forEach(uid=>{
+      const prof = STATE.profiles.find(p=>p.id===uid);
+      if(!prof) return;
+      const pick = byUser[uid]||'';
+      const hasPred = !!pick.trim();
+      const isAcerto = hasPred && hasReal && realLower.includes(pick.trim().toLowerCase());
+      const pts = isAcerto?30:0;
+      rows.push({uid, name:prof.display_name, pick, hasPred, isAcerto, pts, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin});
+    });
+
+    rows.sort((a,b)=>{
+      if(!a.hasPred&&!b.hasPred) return a.name.localeCompare(b.name);
+      if(!a.hasPred) return 1; if(!b.hasPred) return -1;
+      if(hasReal){
+        if(b.pts!==a.pts) return b.pts-a.pts;
+        if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
+        return a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    body.innerHTML='';
+    body.appendChild(el('div',{style:{fontSize:'.65rem',color:'var(--muted)',marginBottom:'.75rem'}},'Acertar o artilheiro real = 30pts'));
+
+    rows.forEach((row,i)=>{
+      const medal = hasReal?(i===0&&row.hasPred?'🥇':i===1&&row.hasPred?'🥈':i===2&&row.hasPred?'🥉':null):null;
+
+      const card = el('div',{style:{
+        padding:'.6rem .75rem',
+        background:row.isMe?'rgba(255,215,0,.08)':i%2===0?'var(--dk3)':'transparent',
+        border:row.isMe?'1px solid rgba(255,215,0,.3)':'1px solid transparent',
+        borderRadius:'8px',marginBottom:'4px'
+      }});
+
+      const top = el('div',{style:{display:'flex',alignItems:'center',gap:'8px'}});
+      top.appendChild(el('div',{style:{width:'24px',textAlign:'center',flexShrink:'0',fontWeight:'700',fontSize:'.75rem',color:'var(--muted)'}},medal||(i+1)+'º'));
+      const nameS=el('div',{style:{flex:'1',fontWeight:row.isMe?'700':'500',color:row.isMe?'var(--gold)':'var(--txt)',fontSize:'.85rem'}},row.name+(row.isMe?' 👤':''));
+      top.appendChild(nameS);
+      if(row.hasPred){
+        top.appendChild(el('span',{style:{
+          fontSize:'.78rem',padding:'2px 8px',borderRadius:'4px',
+          background:row.isAcerto?'rgba(34,197,94,.15)':'rgba(255,255,255,.05)',
+          color:row.isAcerto?'#4ADE80':'#94A3B8',
+          border:'1px solid '+(row.isAcerto?'rgba(34,197,94,.3)':'rgba(255,255,255,.08)')
+        }},'⚽ '+row.pick+(row.isAcerto?' ✓':'')));
+        if(hasReal) top.appendChild(el('span',{class:'pp '+(row.pts>0?'p10':'p0'),style:{fontSize:'.72rem'}},row.pts+'pts'));
+      } else {
+        top.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'sem palpite'));
+      }
+      card.appendChild(top);
       body.appendChild(card);
     });
 
