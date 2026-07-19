@@ -3715,7 +3715,16 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       if(lastSpan) lastSpan.style.color = classifWinner===t2 ? 'var(--gold)' : 'inherit';
     }
     const classifWinnerLineEl = document.getElementById('ko-unified-classifwinner');
-    if(classifWinnerLineEl && classifWinner) classifWinnerLineEl.textContent = (phaseKey==='third'?'🥉 3º colocado: ':phaseKey==='final'?'🏆 Campeão: ':'🏆 Classificado: ')+classifWinner;
+    if(classifWinnerLineEl && classifWinner){
+      if(phaseKey==='semi'){
+        const realLoserThisMatch = classifWinner===t1 ? t2 : t1;
+        classifWinnerLineEl.innerHTML = '<span style="color:var(--ok)">🏆 Finalista: '+classifWinner+'</span>'+
+          '<span style="color:var(--muted)">&nbsp;&nbsp;·&nbsp;&nbsp;</span>'+
+          '<span style="color:#60A5FA">🥉 Disputa de 3º: '+realLoserThisMatch+'</span>';
+      } else {
+        classifWinnerLineEl.textContent = (phaseKey==='third'?'🥉 3º colocado: ':phaseKey==='final'?'🏆 Campeão: ':'🏆 Classificado: ')+classifWinner;
+      }
+    }
 
     const allRealKnockoutDecidedTeams = new Set();
     (phaseRealMatches||[]).forEach(m=>{
@@ -3900,11 +3909,18 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
         cMatch.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.62rem'}},'×'));
         cMatch.appendChild(mk(row.userT2,!isT1));
         classifCol.appendChild(cMatch);
-        const ptsRow = el('div',{style:{textAlign:'right'}});
+        const ptsRow = el('div',{style:{textAlign:'right',display:'flex',gap:'4px',justifyContent:'flex-end',flexWrap:'wrap'}});
         if(row.classifPickDecided){
-          const cPts = (row.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(row.semiLoserBonus||0);
-          const cCls = cPts>0?'p10':'p0';
-          ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},cPts+'pts'));
+          if(phaseKey==='semi'){
+            const winPts = row.classifCorrect ? 10 : 0;
+            ptsRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem'}},winPts+'pts'));
+            if(row.semiLoserBonus>0){
+              ptsRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700'}},'+10 3º'));
+            }
+          } else {
+            const cCls = row.classifCorrect?'p10':'p0';
+            ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},(row.classifCorrect?phasePts:0)+'pts'));
+          }
         } else {
           ptsRow.appendChild(el('span',{style:{fontSize:'.6rem',color:'var(--muted)'}},'—'));
         }
@@ -3914,9 +3930,16 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
         const color = row.classifPickDecided ? (row.classifCorrect?'#4ADE80':'#F87171') : 'var(--gold)';
         cRow.appendChild(el('span',{style:{fontSize:'.74rem',fontWeight:'700',color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(FLAGS[row.classifPick]||'')+' '+row.classifPick));
         if(row.classifPickDecided){
-          const cPts = (row.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(row.semiLoserBonus||0);
-          const cCls = cPts>0?'p10':'p0';
-          cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},cPts+'pts'));
+          if(phaseKey==='semi'){
+            const winPts = row.classifCorrect ? 10 : 0;
+            cRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem',flexShrink:'0'}},winPts+'pts'));
+            if(row.semiLoserBonus>0){
+              cRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700',flexShrink:'0'}},'+10 3º'));
+            }
+          } else {
+            const cCls = row.classifCorrect?'p10':'p0';
+            cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},(row.classifCorrect?phasePts:0)+'pts'));
+          }
         } else {
           cRow.appendChild(el('span',{style:{fontSize:'.6rem',color:'var(--muted)',flexShrink:'0'}},'—'));
         }
@@ -4193,11 +4216,19 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       }
       card.appendChild(nameDiv);
       // Pontuação
-      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px'}});
+      const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'2px'}});
       if(row.pick && row.pickDecided){
-        const pts = (row.correct ? phasePts - (phaseKeyForWinner==='semi'?10:0) : 0) + (row.semiLoserBonus||0);
-        const ptsCls = pts>0?'p10':'p0';
-        ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},pts+'pts'));
+        if(phaseKeyForWinner==='semi'){
+          const winPts = row.correct ? 10 : 0;
+          ptsDiv.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.72rem'}},winPts+'pts'));
+          if(row.semiLoserBonus>0){
+            ptsDiv.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700',whiteSpace:'nowrap'}},'+10 3º'));
+          }
+        } else {
+          const pts = row.correct ? phasePts : 0;
+          const ptsCls = pts>0?'p10':'p0';
+          ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},pts+'pts'));
+        }
       } else {
         ptsDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'—'));
       }
