@@ -2375,7 +2375,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
       const bracketByPhase={round32:ROUND32_BRACKET,round16:ROUND16_BRACKET,quarter:QUARTER_BRACKET,semi:SEMI_BRACKET,final:FINAL_BRACKET};
       const phaseOrder=['round32','round16','quarter','semi','final','runner_up','third'];
 
-      function renderMatchRow(t1,t2,winner,pts){
+      function renderMatchRow(t1,t2,winner,pts,semiLoserBonus){
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'6px 0',fontSize:'.8rem'}});
         const mk=(t,isW)=>el('span',{style:{
           flex:'1',padding:'4px 8px',borderRadius:'6px',textAlign:'center',
@@ -2388,8 +2388,16 @@ async function showUserPalpites(userId, userName, isMe=false) {
         row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',flexShrink:'0'}},'×'));
         row.appendChild(mk(t2,winner&&t2===winner));
         if(pts!==null){
-          const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
-          row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem',flexShrink:'0',marginLeft:'4px'}},pts+'pts'));
+          if(semiLoserBonus){
+            const winPts = Math.max(0,pts-(semiLoserBonus||0));
+            const ptsWrap=el('div',{style:{display:'flex',gap:'3px',flexShrink:'0',marginLeft:'4px'}});
+            ptsWrap.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.65rem'}},winPts+'pts'));
+            if(semiLoserBonus>0) ptsWrap.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700',whiteSpace:'nowrap'}},'+10 3º'));
+            row.appendChild(ptsWrap);
+          } else {
+            const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
+            row.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.65rem',flexShrink:'0',marginLeft:'4px'}},pts+'pts'));
+          }
         }
         return row;
       }
@@ -2438,11 +2446,17 @@ async function showUserPalpites(userId, userName, isMe=false) {
           }
         } else {
           const bracket=bracketByPhase[ph];
+          const realSemiLosersRecap = ph==='semi' ? (koMap['quarter']||[]).filter(t=>!(koMap['semi']||[]).includes(t)) : [];
           bracket.forEach(m=>{
             const mw=userMatchWinners[m.id];
             if(!mw) return;
             const pts=mw.winner?(ptsByPhaseTeam[ph+'|'+mw.winner]??null):null;
-            phDiv.appendChild(renderMatchRow(mw.t1,mw.t2,mw.winner,pts));
+            let semiLoserBonus=0;
+            if(ph==='semi' && mw.winner && pts!==null){
+              const otherTeam = mw.winner===mw.t1 ? mw.t2 : mw.t1;
+              semiLoserBonus = (otherTeam && realSemiLosersRecap.includes(otherTeam)) ? 10 : 0;
+            }
+            phDiv.appendChild(renderMatchRow(mw.t1,mw.t2,mw.winner,pts,semiLoserBonus));
           });
         }
         body.appendChild(phDiv);
@@ -5555,23 +5569,33 @@ function buildKoUI(main){
         const rpHasResult = !!(thisMatchReal?.is_finished && thisMatchReal.real_score1!=null);
         const cls1 = sel1&&real1?'btn-s':sel1&&rpHasResult&&!real1?'btn-d':sel1?'btn-p':'btn-o';
         const semiLoserBonus1 = isSemiPhase && sel1 && t2 && realSemiLosersPreview.includes(t2) ? 10 : 0;
-        const pts1 = rpHasResult
-          ? (isSemiPhase && sel1
-              ? ' ·'+((real1?10:0)+semiLoserBonus1)+'p'
-              : (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')))
-          : '';
         const lbl1txt = l1 ? ' ('+l1+')' : '';
-        const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
+        const b1TextPart = (t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt;
+        const b1Children = [b1TextPart];
+        if(rpHasResult && sel1){
+          if(isSemiPhase){
+            b1Children.push(el('span',{class:'pp '+(real1?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real1?10:0)+'pts'));
+            if(semiLoserBonus1>0) b1Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700'}},'+10 3º'));
+          } else {
+            b1Children.push(' ·'+(real1?ph.pts+'p':'0p'));
+          }
+        }
+        const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},...b1Children);
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
         const cls2 = sel2&&real2?'btn-s':sel2&&rpHasResult&&!real2?'btn-d':sel2?'btn-p':'btn-o';
         const semiLoserBonus2 = isSemiPhase && sel2 && t1 && realSemiLosersPreview.includes(t1) ? 10 : 0;
-        const pts2 = rpHasResult
-          ? (isSemiPhase && sel2
-              ? ' ·'+((real2?10:0)+semiLoserBonus2)+'p'
-              : (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')))
-          : '';
         const lbl2txt = l2 ? ' ('+l2+')' : '';
-        const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
+        const b2TextPart = (t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt;
+        const b2Children = [b2TextPart];
+        if(rpHasResult && sel2){
+          if(isSemiPhase){
+            b2Children.push(el('span',{class:'pp '+(real2?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real2?10:0)+'pts'));
+            if(semiLoserBonus2>0) b2Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700'}},'+10 3º'));
+          } else {
+            b2Children.push(' ·'+(real2?ph.pts+'p':'0p'));
+          }
+        }
+        const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},...b2Children);
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
         wrap.appendChild(row);
 
