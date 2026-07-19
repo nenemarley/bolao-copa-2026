@@ -2394,10 +2394,10 @@ async function showUserPalpites(userId, userName, isMe=false) {
             ptsWrap.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.65rem'}},winPts+'pts'));
             const bonusOn = semiLoserBonus>0;
             ptsWrap.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
-              background:bonusOn?'rgba(96,165,250,.2)':'rgba(255,255,255,.05)',
-              color:bonusOn?'#93C5FD':'var(--muted)',
-              border:'1px solid '+(bonusOn?'rgba(96,165,250,.4)':'rgba(255,255,255,.1)'),
-              fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'0')+' 3º'));
+              background:bonusOn?'rgba(96,165,250,.2)':'rgba(248,113,113,.15)',
+              color:bonusOn?'#93C5FD':'#F87171',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.4)':'rgba(248,113,113,.35)'),
+              fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'+0')+'pts 3º'));
             row.appendChild(ptsWrap);
           } else {
             const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
@@ -3935,10 +3935,10 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
             ptsRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem'}},winPts+'pts'));
             const bonusOn = row.semiLoserBonus>0;
             ptsRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',
-              background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
-              color:bonusOn?'#60A5FA':'var(--muted)',
-              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
-              fontWeight:'700'}},(bonusOn?'+10':'0')+' 3º'));
+              background:bonusOn?'rgba(96,165,250,.18)':'rgba(248,113,113,.15)',
+              color:bonusOn?'#60A5FA':'#F87171',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(248,113,113,.35)'),
+              fontWeight:'700'}},(bonusOn?'+10':'+0')+'pts 3º'));
           } else {
             const cCls = row.classifCorrect?'p10':'p0';
             ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},(row.classifCorrect?phasePts:0)+'pts'));
@@ -3957,10 +3957,10 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
             cRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem',flexShrink:'0'}},winPts+'pts'));
             const bonusOn = row.semiLoserBonus>0;
             cRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',
-              background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
-              color:bonusOn?'#60A5FA':'var(--muted)',
-              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
-              fontWeight:'700',flexShrink:'0'}},(bonusOn?'+10':'0')+' 3º'));
+              background:bonusOn?'rgba(96,165,250,.18)':'rgba(248,113,113,.15)',
+              color:bonusOn?'#60A5FA':'#F87171',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(248,113,113,.35)'),
+              fontWeight:'700',flexShrink:'0'}},(bonusOn?'+10':'+0')+'pts 3º'));
           } else {
             const cCls = row.classifCorrect?'p10':'p0';
             cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},(row.classifCorrect?phasePts:0)+'pts'));
@@ -4248,10 +4248,10 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
           ptsDiv.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.72rem'}},winPts+'pts'));
           const bonusOn = row.semiLoserBonus>0;
           ptsDiv.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 6px',borderRadius:'999px',
-            background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
-            color:bonusOn?'#60A5FA':'var(--muted)',
-            border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
-            fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'0')+' 3º'));
+            background:bonusOn?'rgba(96,165,250,.18)':'rgba(248,113,113,.15)',
+            color:bonusOn?'#60A5FA':'#F87171',
+            border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(248,113,113,.35)'),
+            fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'+0')+'pts 3º'));
         } else {
           const pts = row.correct ? phasePts : 0;
           const ptsCls = pts>0?'p10':'p0';
@@ -5591,10 +5591,10 @@ function buildKoUI(main){
             b1Children.push(el('span',{class:'pp '+(real1?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real1?10:0)+'pts'));
             const bonusOn1 = semiLoserBonus1>0;
             b1Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
-              background:bonusOn1?'rgba(96,165,250,.2)':'rgba(255,255,255,.08)',
-              color:bonusOn1?'#93C5FD':'var(--muted)',
-              border:'1px solid '+(bonusOn1?'rgba(96,165,250,.4)':'rgba(255,255,255,.15)'),
-              fontWeight:'700'}},(bonusOn1?'+10':'0')+' 3º'));
+              background:bonusOn1?'rgba(96,165,250,.2)':'rgba(0,0,0,.25)',
+              color:bonusOn1?'#93C5FD':'#FCA5A5',
+              border:'1px solid '+(bonusOn1?'rgba(96,165,250,.4)':'rgba(255,255,255,.3)'),
+              fontWeight:'700'}},(bonusOn1?'+10':'+0')+'pts 3º'));
           } else {
             b1Children.push(' ·'+(real1?ph.pts+'p':'0p'));
           }
@@ -5611,10 +5611,10 @@ function buildKoUI(main){
             b2Children.push(el('span',{class:'pp '+(real2?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real2?10:0)+'pts'));
             const bonusOn2 = semiLoserBonus2>0;
             b2Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
-              background:bonusOn2?'rgba(96,165,250,.2)':'rgba(255,255,255,.08)',
-              color:bonusOn2?'#93C5FD':'var(--muted)',
-              border:'1px solid '+(bonusOn2?'rgba(96,165,250,.4)':'rgba(255,255,255,.15)'),
-              fontWeight:'700'}},(bonusOn2?'+10':'0')+' 3º'));
+              background:bonusOn2?'rgba(96,165,250,.2)':'rgba(0,0,0,.25)',
+              color:bonusOn2?'#93C5FD':'#FCA5A5',
+              border:'1px solid '+(bonusOn2?'rgba(96,165,250,.4)':'rgba(255,255,255,.3)'),
+              fontWeight:'700'}},(bonusOn2?'+10':'+0')+'pts 3º'));
           } else {
             b2Children.push(' ·'+(real2?ph.pts+'p':'0p'));
           }
