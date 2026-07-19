@@ -200,11 +200,11 @@ const PHASES = [
   {key:"round32",  label:"Rodada de 32",     count:16, pts:10},
   {key:"round16",  label:"Oitavas de Final",  count:8,  pts:10},
   {key:"quarter",  label:"Quartas de Final",  count:4,  pts:10},
-  {key:"semi",     label:"Semifinal",         count:2,  pts:10},
+  {key:"semi",     label:"Semifinal",         count:2,  pts:20},
   {key:"final",    label:"Final (Campeão)",     count:1,  pts:50},
   {key:"third",    label:"3º/4º Lugar",       count:1,  pts:10},
 ];
-// final = 1 time (campeão, 20pts) | third = 1 time (3º lugar, 10pts) | runner_up = automático do semi
+// final = 1 time (campeão, 50pts) | third = 1 time (3º lugar, 15pts) | semi = 20pts (avança à final + define quem vai à disputa de 3º) | runner_up = automático do semi
 
 // ── Modalidades de bolão ──────────────────────────────────────────────────────
 // full:          todas as abas e colunas
@@ -3424,7 +3424,7 @@ function renderBracketView(container, koMatchRealData, koRealData, grpStandingsD
   const finalw   = new Set(koRealData?.final?.team_ids||[]);
 
   const phaseLabels = {round32:'Rodada de 32', round16:'Oitavas', quarter:'Quartas', semi:'Semifinal', final:'Final'};
-  const phasePtsMap = {round32:10, round16:10, quarter:10, semi:10, final:50};
+  const phasePtsMap = {round32:10, round16:10, quarter:10, semi:20, final:50};
   const winnersByPhase = {round32:round32w, round16:round16w, quarter:quarterw, semi:semiw, final:finalw};
 
   // Colunas da esquerda (R32, 16 jogos) para a direita (Final, 1 jogo)
@@ -3692,6 +3692,16 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
     if(phaseKey){ if(!koReal) koReal={}; koReal[phaseKey] = {phase:phaseKey, team_ids:realKnockoutsFresh}; }
 
     const classifiedTeams = realKnockoutsFresh || [];
+
+    // Semifinal: bônus de +10pts se o OUTRO time do confronto pessoal do usuário (o não
+    // escolhido, "perdedor" implícito) realmente foi um dos 2 times que caíram na semifinal.
+    let realSemiLosersUnified = [];
+    if(phaseKey==='semi'){
+      try{
+        const { data:qRows } = await SB.from('real_knockouts').select('team_ids').eq('phase','quarter');
+        realSemiLosersUnified = (qRows?.[0]?.team_ids||[]).filter(t=>!classifiedTeams.includes(t));
+      }catch(e){}
+    }
     let classifWinner = null;
     if(classifiedTeams.includes(t1) && !classifiedTeams.includes(t2)) classifWinner = t1;
     else if(classifiedTeams.includes(t2) && !classifiedTeams.includes(t1)) classifWinner = t2;
@@ -3796,6 +3806,9 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       let sawDifferentMatch = !classifPick && userPhasePicks.length>0;
       const classifCorrect = classifPick && classifiedTeams.includes(classifPick);
       const classifPickDecided = classifPick ? (classifiedTeams.includes(classifPick) || allRealKnockoutDecidedTeams.has(classifPick)) : false;
+      const classifOtherTeam = classifPick===userMatch.t1 ? userMatch.t2 : (classifPick===userMatch.t2 ? userMatch.t1 : null);
+      const semiLoserBonus = phaseKey==='semi' && classifOtherTeam && realSemiLosersUnified.includes(classifOtherTeam) ? 10 : 0;
+      const classifPickDecidedFull = classifPickDecided || (phaseKey==='semi' && classifOtherTeam && allRealKnockoutDecidedTeams.has(classifOtherTeam));
 
       // Coluna 🎯 Placar do jogo
       const placarPred = placarByUser[uid];
@@ -3805,7 +3818,7 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
       rows.push({
         uid, name:prof.display_name, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin,
         userT1:userMatch.t1, userT2:userMatch.t2,
-        classifPick, classifCorrect, classifPickDecided, sawDifferentMatch,
+        classifPick, classifCorrect, classifPickDecided:classifPickDecidedFull, sawDifferentMatch, semiLoserBonus,
         placarS1:placarPred?.predicted_score1, placarS2:placarPred?.predicted_score2, hasPlacarPred, placarPts,
       });
     });
@@ -3815,8 +3828,10 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
     rows.sort((a,b)=>{
       const aPlacarPts = placarLocked ? (a.placarPts||0) : 0;
       const bPlacarPts = placarLocked ? (b.placarPts||0) : 0;
-      const aTotal = (a.classifPickDecided&&a.classifCorrect?phasePts:0) + aPlacarPts;
-      const bTotal = (b.classifPickDecided&&b.classifCorrect?phasePts:0) + bPlacarPts;
+      const aClassifPts = (a.classifPickDecided&&a.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(a.semiLoserBonus||0);
+      const bClassifPts = (b.classifPickDecided&&b.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(b.semiLoserBonus||0);
+      const aTotal = aClassifPts + aPlacarPts;
+      const bTotal = bClassifPts + bPlacarPts;
       if(aTotal!==bTotal) return bTotal-aTotal;
       if(a.isAdmin!==b.isAdmin) return b.isAdmin?1:-1;
       return a.name.localeCompare(b.name);
@@ -3887,8 +3902,9 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
         classifCol.appendChild(cMatch);
         const ptsRow = el('div',{style:{textAlign:'right'}});
         if(row.classifPickDecided){
-          const cCls = row.classifCorrect?'p10':'p0';
-          ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},(row.classifCorrect?phasePts:0)+'pts'));
+          const cPts = (row.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(row.semiLoserBonus||0);
+          const cCls = cPts>0?'p10':'p0';
+          ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},cPts+'pts'));
         } else {
           ptsRow.appendChild(el('span',{style:{fontSize:'.6rem',color:'var(--muted)'}},'—'));
         }
@@ -3898,8 +3914,9 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
         const color = row.classifPickDecided ? (row.classifCorrect?'#4ADE80':'#F87171') : 'var(--gold)';
         cRow.appendChild(el('span',{style:{fontSize:'.74rem',fontWeight:'700',color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(FLAGS[row.classifPick]||'')+' '+row.classifPick));
         if(row.classifPickDecided){
-          const cCls = row.classifCorrect?'p10':'p0';
-          cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},(row.classifCorrect?phasePts:0)+'pts'));
+          const cPts = (row.classifCorrect?(phasePts-(phaseKey==='semi'?10:0)):0)+(row.semiLoserBonus||0);
+          const cCls = cPts>0?'p10':'p0';
+          cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},cPts+'pts'));
         } else {
           cRow.appendChild(el('span',{style:{fontSize:'.6rem',color:'var(--muted)',flexShrink:'0'}},'—'));
         }
@@ -4022,6 +4039,16 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
 
     const memberIds = new Set((members||[]).map(m=>m.user_id));
 
+    // Semifinal: bônus de +10pts se o OUTRO time do confronto pessoal do usuário (o não
+    // escolhido, "perdedor" implícito) realmente foi um dos 2 times que caíram na semifinal.
+    let realSemiLosers = [];
+    if(phaseKeyForWinner==='semi'){
+      try{
+        const { data:qData } = await SB.from('real_knockouts').select('team_ids').eq('phase','quarter').single();
+        realSemiLosers = (qData?.team_ids||[]).filter(t=>!classifiedTeams.includes(t));
+      }catch(e){}
+    }
+
     // Agrupar palpites de grupo e de eliminatórias por usuário
     const grpByUser = {};
     allGroupPreds.filter(p=>memberIds.has(p.user_id)).forEach(p=>{
@@ -4114,8 +4141,10 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       // (o que implica que o time do usuário foi eliminado). Mostramos a pontuação
       // assim que isso for verdade, mesmo que o confronto real ESPECÍFICO sendo
       // visualizado aqui (#83, #87...) ainda não tenha sido decidido.
-      const pickDecided = pick ? (classifiedTeams.includes(pick) || allRealKnockoutDecidedTeams.has(pick)) : false;
-      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin, userT1:userMatch.t1, userT2:userMatch.t2, sawDifferentMatch, pickDecided});
+      const otherTeam = pick===userMatch.t1 ? userMatch.t2 : (pick===userMatch.t2 ? userMatch.t1 : null);
+      const pickDecided = pick ? (classifiedTeams.includes(pick) || allRealKnockoutDecidedTeams.has(pick) || (phaseKeyForWinner==='semi' && otherTeam && allRealKnockoutDecidedTeams.has(otherTeam))) : false;
+      const semiLoserBonus = phaseKeyForWinner==='semi' && otherTeam && realSemiLosers.includes(otherTeam) ? 10 : 0;
+      rows.push({uid, name:prof.display_name, pick, correct, isMe:uid===STATE.profile.id, isAdmin:!!prof.is_admin, userT1:userMatch.t1, userT2:userMatch.t2, sawDifferentMatch, pickDecided, semiLoserBonus});
     });
 
     rows.sort((a,b)=>{
@@ -4166,8 +4195,8 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
       // Pontuação
       const ptsDiv=el('div',{style:{flexShrink:'0',minWidth:'42px',textAlign:'right',marginLeft:'8px'}});
       if(row.pick && row.pickDecided){
-        const pts = row.correct ? phasePts : 0;
-        const ptsCls = row.correct?'p10':'p0';
+        const pts = (row.correct ? phasePts - (phaseKeyForWinner==='semi'?10:0) : 0) + (row.semiLoserBonus||0);
+        const ptsCls = pts>0?'p10':'p0';
         ptsDiv.appendChild(el('span',{class:'pp '+ptsCls,style:{fontSize:'.72rem'}},pts+'pts'));
       } else {
         ptsDiv.appendChild(el('span',{style:{fontSize:'.65rem',color:'var(--muted)'}},'—'));
@@ -5473,6 +5502,13 @@ function buildKoUI(main){
         const sel2=sel.find(x=>x.team===t2);
         const real1=rp?.team_ids?.includes(t1);
         const real2=rp?.team_ids?.includes(t2);
+        // Semifinal: o "outro" time do confronto pessoal (o não-selecionado) representa o
+        // perdedor implícito, que vai pra disputa de 3º — vale +10pts extra se bater com um
+        // dos times que realmente caíram na semifinal (perdedor real).
+        const isSemiPhase = ph.key==='semi';
+        const realSemiLosersPreview = isSemiPhase
+          ? (koReal['quarter']?.team_ids||[]).filter(t=>!(rp?.team_ids||[]).includes(t))
+          : [];
         const t1Known=t1&&!t1.startsWith('Venc.')&&!t1.startsWith('1º')&&!t1.startsWith('2º')&&!t1.startsWith('3º(')&&t1!=='?'&&t1!==null;
         const t2Known=t2&&!t2.startsWith('Venc.')&&!t2.startsWith('1º')&&!t2.startsWith('2º')&&!t2.startsWith('3º(')&&t2!==null&&t2!=='?';
         // Label do jogo: usar ID do jogo (não índice do array, pois bracket foi reordenado)
@@ -5487,12 +5523,22 @@ function buildKoUI(main){
         const thisMatchReal = koMatchReal[m.id];
         const rpHasResult = !!(thisMatchReal?.is_finished && thisMatchReal.real_score1!=null);
         const cls1 = sel1&&real1?'btn-s':sel1&&rpHasResult&&!real1?'btn-d':sel1?'btn-p':'btn-o';
-        const pts1 = rpHasResult ? (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')) : '';
+        const semiLoserBonus1 = isSemiPhase && sel1 && t2 && realSemiLosersPreview.includes(t2) ? 10 : 0;
+        const pts1 = rpHasResult
+          ? (isSemiPhase && sel1
+              ? ' ·'+((real1?10:0)+semiLoserBonus1)+'p'
+              : (real1 ? ' ·'+ph.pts+'p' : (sel1 ? ' ·0p' : '')))
+          : '';
         const lbl1txt = l1 ? ' ('+l1+')' : '';
         const b1=el('button',{class:`btn btn-sm ${cls1}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t1Known?'1':'0.5'},disabled:!t1Known,onclick:()=>pickTeam(t1||'',t2||'')},(t1Known?(FLAGS[t1]||'')+' '+t1:l1||'?')+lbl1txt+(sel1?pts1:''));
         const vs=el('span',{style:{color:'var(--muted)',fontSize:'.7rem',fontWeight:'700',flexShrink:0}},'×');
         const cls2 = sel2&&real2?'btn-s':sel2&&rpHasResult&&!real2?'btn-d':sel2?'btn-p':'btn-o';
-        const pts2 = rpHasResult ? (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')) : '';
+        const semiLoserBonus2 = isSemiPhase && sel2 && t1 && realSemiLosersPreview.includes(t1) ? 10 : 0;
+        const pts2 = rpHasResult
+          ? (isSemiPhase && sel2
+              ? ' ·'+((real2?10:0)+semiLoserBonus2)+'p'
+              : (real2 ? ' ·'+ph.pts+'p' : (sel2 ? ' ·0p' : '')))
+          : '';
         const lbl2txt = l2 ? ' ('+l2+')' : '';
         const b2=el('button',{class:`btn btn-sm ${cls2}`,style:{flex:'1',textAlign:'center',fontSize:'.72rem',opacity:t2Known?'1':'0.5'},disabled:!t2Known,onclick:()=>pickTeam(t2||'',t1||'')},(t2Known?(FLAGS[t2]||'')+' '+t2:l2||'?')+lbl2txt+(sel2?pts2:''));
         row.appendChild(b1); row.appendChild(vs); row.appendChild(b2);
@@ -6790,6 +6836,7 @@ async function applyAIResults(data, log) {
     }
     for(const [phase, teams] of Object.entries(koClass)) {
       if(!teams||teams.length===0) continue;
+      if(phase==='semi') continue; // tratado à parte por recalcSemiPts (considera os 2 times do confronto)
       const normTeams = norm(teams);
       // final no banco salva o campeão; o participante usa 'final' para os 2 finalistas
       // mas para cálculo de pontos usamos champion(50pts) e runner_up(30pts)
@@ -6798,6 +6845,11 @@ async function applyAIResults(data, log) {
       const preds = await dbQ('knockout_predictions',{phase});
       if(preds.length>0) await dbUpsert('knockout_predictions',preds.map(p=>({...p,points:normTeams.includes(p.team_name)?pts:0})));
       log('✅ '+phase+': '+normTeams.join(', '), '#10B981');
+    }
+    if(koClass.semi && koClass.semi.length>0){
+      await dbUpsert('real_knockouts',{phase:'semi',team_ids:norm(koClass.semi)});
+      await recalcSemiPts();
+      log('✅ semi: '+norm(koClass.semi).join(', ')+' (bônus vencedor+perdedor recalculado)', '#10B981');
     }
   }
 
@@ -6870,14 +6922,98 @@ async function recalcGroupPts(groupId, position, realStandings, realThirds) {
 
 // Recalcula pontos de knockout_predictions para uma fase (todos os bolões)
 async function recalcKnockoutPts(phase, realTeamIds) {
+  if(phase==='semi'){ await recalcSemiPts(); return; }
   const preds = await dbQ('knockout_predictions',{phase:phase});
-  const pts_map = {final:50,champion:50,runner_up:30,third:15};
+  const pts_map = {final:50,champion:50,runner_up:30,third:15,semi:20};
   const basePts = pts_map[phase]||10;
   for(const p of preds){
     const newPts = (realTeamIds||[]).includes(p.team_name) ? basePts : 0;
     if(p.points!==newPts)
       await SB.from('knockout_predictions').update({points:newPts})
         .eq('user_id',p.user_id).eq('phase',phase).eq('team_name',p.team_name).eq('bolao_id',p.bolao_id);
+  }
+}
+
+// Semifinal: cada slot vale até 20pts, avaliados de forma INDEPENDENTE —
+// +10 se o time escolhido como vencedor (vai à Final) realmente é um dos 2 finalistas reais
+// +10 se o OUTRO time do confronto pessoal do participante (o "perdedor" implícito, que vai
+//     pra disputa de 3º) realmente é um dos 2 times que caíram na semifinal de verdade
+// Isso cobre corretamente o caso em que o participante monta o confronto errado (ex: colocou
+// Portugal x Inglaterra quando o real era Argentina x Inglaterra) — nesse caso ele erra o
+// vencedor (Portugal, 0pts) mas pode acertar o outro time do seu confronto (Inglaterra, 10pts).
+async function recalcSemiPts() {
+  const bolaoId = CURRENT_BOLAO?.id;
+  const [allGroupPreds, allKnockoutPreds, members, freshRealKo] = await Promise.all([
+    dbQ('group_predictions',{bolao_id:bolaoId}),
+    dbQ('knockout_predictions',{bolao_id:bolaoId}),
+    dbQ('bolao_members',{bolao_id:bolaoId},'user_id'),
+    dbQ('real_knockouts',{},'phase,team_ids')
+  ]);
+  const memberIds = [...new Set((members||[]).map(m=>m.user_id))];
+  const realKoMap = {};
+  (freshRealKo||[]).forEach(r=>{ realKoMap[r.phase]=r.team_ids||[]; });
+
+  const grpByUser={}, thirdsByUser={}, koByUser={};
+  (allGroupPreds||[]).forEach(p=>{
+    if(!grpByUser[p.user_id]) grpByUser[p.user_id]={};
+    if(p.group_id==='_thirds'){ (thirdsByUser[p.user_id]=thirdsByUser[p.user_id]||[]).push(p.team_name); return; }
+    if(!grpByUser[p.user_id][p.group_id]) grpByUser[p.user_id][p.group_id]={};
+    grpByUser[p.user_id][p.group_id][p.position]=p.team_name;
+  });
+  (allKnockoutPreds||[]).forEach(p=>{
+    if(!koByUser[p.user_id]) koByUser[p.user_id]={};
+    if(!koByUser[p.user_id][p.phase]) koByUser[p.user_id][p.phase]=[];
+    koByUser[p.user_id][p.phase].push(p.team_name);
+  });
+
+  const realFinalists = realKoMap['semi']||[];
+  const realQuarterWinners = realKoMap['quarter']||[];
+  const realSemiLosers = realQuarterWinners.filter(t=>!realFinalists.includes(t));
+
+  for(const uid of memberIds){
+    const userSt = grpByUser[uid]||{};
+    const userThirdsRaw = thirdsByUser[uid]||[];
+    const userTop2=new Set();
+    Object.values(userSt).forEach(pos=>{ if(pos[1]) userTop2.add(pos[1]); if(pos[2]) userTop2.add(pos[2]); });
+    const validThirdsOfGroups=new Set(Object.values(userSt).map(p=>p[3]).filter(Boolean));
+    const validUserThirds=userThirdsRaw.filter(t=>!userTop2.has(t)&&validThirdsOfGroups.has(t));
+    const thirdsForSlots=validUserThirds.slice(0,8);
+    const thirdAssignment=buildThirdAssignment(thirdsForSlots,userSt);
+
+    const mw={};
+    const r32picks=koByUser[uid]?.['round32']||[];
+    ROUND32_BRACKET.forEach(m=>{
+      const i1=resolveSlotInfo(m.slot1,userSt,thirdsForSlots,thirdAssignment,m.id);
+      const i2=resolveSlotInfo(m.slot2,userSt,thirdsForSlots,thirdAssignment,m.id);
+      const tt1=i1.team||i1.label, tt2=i2.team||i2.label;
+      mw[m.id]={t1:tt1,t2:tt2,winner:r32picks.find(t=>t===tt1||t===tt2)||null};
+    });
+    const r16picks=koByUser[uid]?.['round16']||[];
+    ROUND16_BRACKET.forEach(m=>{
+      const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+      mw[m.id]={t1:tt1,t2:tt2,winner:r16picks.find(t=>t===tt1||t===tt2)||null};
+    });
+    const qpicks=koByUser[uid]?.['quarter']||[];
+    QUARTER_BRACKET.forEach(m=>{
+      const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+      mw[m.id]={t1:tt1,t2:tt2,winner:qpicks.find(t=>t===tt1||t===tt2)||null};
+    });
+    const spicks=koByUser[uid]?.['semi']||[];
+    SEMI_BRACKET.forEach(m=>{
+      const tt1=mw[m.slot1.matchId]?.winner||null, tt2=mw[m.slot2.matchId]?.winner||null;
+      mw[m.id]={t1:tt1,t2:tt2,winner:spicks.find(t=>t===tt1||t===tt2)||null};
+    });
+
+    for(const m of SEMI_BRACKET){
+      const slot=mw[m.id];
+      if(!slot || !slot.winner) continue;
+      const loser = slot.winner===slot.t1 ? slot.t2 : slot.t1;
+      let pts=0;
+      if(realFinalists.includes(slot.winner)) pts+=10;
+      if(loser && realSemiLosers.includes(loser)) pts+=10;
+      await SB.from('knockout_predictions').update({points:pts})
+        .eq('user_id',uid).eq('phase','semi').eq('team_name',slot.winner).eq('bolao_id',bolaoId);
+    }
   }
 }
 
@@ -7845,6 +7981,10 @@ function buildAdminUI(main){
             await recalcKnockoutPts('champion', adminKo['champion']?.team_ids||[]);
             await recalcKnockoutPts('runner_up', adminKo['runner_up']?.team_ids||[]);
           }
+          // O bônus da semifinal (vencedor + perdedor do confronto pessoal) depende também
+          // de 'quarter' (define quem são os 4 semifinalistas reais) — recalcular sempre que
+          // Quartas mudar, mesmo que a fase editada agora tenha sido 'quarter' e não 'semi'.
+          if(ph.key==='quarter') await recalcSemiPts();
           buildAdminUI(main); // rerender sem toast (troca é imediata)
           propagateKoMatchTeams(); // atualizar group_matches em background (fire & forget)
         }catch(e){ showToast(e.message,'err'); }
@@ -8023,7 +8163,7 @@ function buildAdminUI(main){
       onclick:async()=>{
         saveKoBtn.disabled=true; saveKoBtn.textContent='⏳ Salvando...';
         try{
-          const phasesToCalc=['round32','round16','quarter','semi','final','third','champion','runner_up'];
+          const phasesToCalc=['round32','round16','quarter','final','third','champion','runner_up'];
           let totalUpdated=0;
           for(const phase of phasesToCalc){
             const teamIds=adminKo[phase]?.team_ids||[];
@@ -8042,6 +8182,7 @@ function buildAdminUI(main){
               }
             }
           }
+          await recalcSemiPts(); // semifinal: bônus vencedor+perdedor do confronto pessoal
           showToast('✅ Pontuações recalculadas! ('+totalUpdated+' atualizações)');
         }catch(e){ showToast('Erro: '+e.message,'err'); }
         saveKoBtn.disabled=false; saveKoBtn.textContent='💾 Salvar e Recalcular Pontuações';
@@ -8456,6 +8597,7 @@ function buildAdminUI(main){
           // KO pts
           const kpAll=await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
           for(const p of (kpAll.data||[])){
+            if(p.phase==='semi') continue; // tratado à parte por recalcSemiPts (considera os 2 times do confronto)
             const tn=p.team_name.toLowerCase();
             const acertou=(p.phase==='final'||p.phase==='champion')?realChamp.includes(tn)
               :p.phase==='runner_up'?realVice.includes(tn)
@@ -8470,6 +8612,7 @@ function buildAdminUI(main){
             }
           }
         }
+        await recalcSemiPts(); // semifinal: bônus vencedor+perdedor do confronto pessoal
 
         if(errors.length>0){
           showToast('⚠️ '+fixes+' OK, '+errors.length+' erros de RLS. Execute o SQL no Supabase!','err');
@@ -8548,6 +8691,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
           const kP=await SB.from('knockout_predictions').select('*').eq('user_id',uid).eq('bolao_id',CURRENT_BOLAO.id);
           console.log('[Recalcular] uid='+uid+' KO rows:', (kP.data||[]).map(p=>p.phase+':'+p.team_name));
           for(const p of (kP.data||[])){
+            if(p.phase==='semi') continue; // tratado à parte por recalcSemiPts (considera os 2 times do confronto)
             // Verificar em todas as fases incluindo aliases (final=champion)
             const realTeams = (koMap[p.phase]||[]).concat(
               p.phase==='final' ? (koMap['champion']||[]) : [],
@@ -8575,6 +8719,7 @@ WHERE phase='third' AND lower(team_name) IN (${realThird.map(t=>"'"+t+"'").join(
             total++;
           }
         }
+        await recalcSemiPts(); // semifinal: bônus vencedor+perdedor do confronto pessoal
         showToast('✅ Recalculado! '+total+' atualizações em '+userIds.length+' participantes. Veja console para detalhes.');
       }catch(e){ showToast('Erro: '+e.message,'err'); console.error(e); }
       recalcBtn.disabled=false; recalcBtn.textContent='🔄 Recalcular Tudo Agora';
@@ -9228,7 +9373,11 @@ async function runTest(main) {
       Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
         teams.forEach(team=>{
           const isReal = realKoMap[phase]?.includes(team);
-          const pts = isReal ? (phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10) : 0;
+          // NOTA: aproximação simplificada — assume que se o vencedor da semi está certo, o
+          // "perdedor" implícito também está (verdade para os dados sintéticos deste teste,
+          // que sempre montam o confronto certo). Produção usa recalcSemiPts() com checagem
+          // independente dos 2 times via cascata completa do bracket pessoal de cada usuário.
+          const pts = isReal ? (phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:phase==='semi'?20:10) : 0;
           kRows.push({user_id:u.id, phase, team_name:team, points:pts, bolao_id:testBolao?.id});
         });
       });
@@ -9289,7 +9438,7 @@ async function runTest(main) {
     });
     // Fases KO
     Object.entries(userPreds[u.id].knockout).forEach(([phase,teams])=>{
-      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:10); });
+      teams.forEach(team=>{ if(realKoMap[phase]?.includes(team)) expK+=(phase==='final'||phase==='champion'?50:phase==='runner_up'?30:phase==='third'?15:phase==='semi'?20:10); });
     });
     // Artilheiro
     expS = realScorers.includes(userPreds[u.id].scorer) ? 30 : 0;
