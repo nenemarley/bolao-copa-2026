@@ -2375,7 +2375,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
       const bracketByPhase={round32:ROUND32_BRACKET,round16:ROUND16_BRACKET,quarter:QUARTER_BRACKET,semi:SEMI_BRACKET,final:FINAL_BRACKET};
       const phaseOrder=['round32','round16','quarter','semi','final','runner_up','third'];
 
-      function renderMatchRow(t1,t2,winner,pts,semiLoserBonus){
+      function renderMatchRow(t1,t2,winner,pts,isSemi,semiLoserBonus){
         const row=el('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'6px 0',fontSize:'.8rem'}});
         const mk=(t,isW)=>el('span',{style:{
           flex:'1',padding:'4px 8px',borderRadius:'6px',textAlign:'center',
@@ -2388,11 +2388,16 @@ async function showUserPalpites(userId, userName, isMe=false) {
         row.appendChild(el('span',{style:{color:'var(--muted)',fontSize:'.7rem',flexShrink:'0'}},'×'));
         row.appendChild(mk(t2,winner&&t2===winner));
         if(pts!==null){
-          if(semiLoserBonus){
+          if(isSemi){
             const winPts = Math.max(0,pts-(semiLoserBonus||0));
             const ptsWrap=el('div',{style:{display:'flex',gap:'3px',flexShrink:'0',marginLeft:'4px'}});
             ptsWrap.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.65rem'}},winPts+'pts'));
-            if(semiLoserBonus>0) ptsWrap.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700',whiteSpace:'nowrap'}},'+10 3º'));
+            const bonusOn = semiLoserBonus>0;
+            ptsWrap.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
+              background:bonusOn?'rgba(96,165,250,.2)':'rgba(255,255,255,.05)',
+              color:bonusOn?'#93C5FD':'var(--muted)',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.4)':'rgba(255,255,255,.1)'),
+              fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'0')+' 3º'));
             row.appendChild(ptsWrap);
           } else {
             const ptsCls=pts>=30?'p10':pts>=10?'p7':pts>0?'p5':'p0';
@@ -2456,7 +2461,7 @@ async function showUserPalpites(userId, userName, isMe=false) {
               const otherTeam = mw.winner===mw.t1 ? mw.t2 : mw.t1;
               semiLoserBonus = (otherTeam && realSemiLosersRecap.includes(otherTeam)) ? 10 : 0;
             }
-            phDiv.appendChild(renderMatchRow(mw.t1,mw.t2,mw.winner,pts,semiLoserBonus));
+            phDiv.appendChild(renderMatchRow(mw.t1,mw.t2,mw.winner,pts,ph==='semi',semiLoserBonus));
           });
         }
         body.appendChild(phDiv);
@@ -3928,9 +3933,12 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
           if(phaseKey==='semi'){
             const winPts = row.classifCorrect ? 10 : 0;
             ptsRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem'}},winPts+'pts'));
-            if(row.semiLoserBonus>0){
-              ptsRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700'}},'+10 3º'));
-            }
+            const bonusOn = row.semiLoserBonus>0;
+            ptsRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',
+              background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
+              color:bonusOn?'#60A5FA':'var(--muted)',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
+              fontWeight:'700'}},(bonusOn?'+10':'0')+' 3º'));
           } else {
             const cCls = row.classifCorrect?'p10':'p0';
             ptsRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem'}},(row.classifCorrect?phasePts:0)+'pts'));
@@ -3947,9 +3955,12 @@ async function showKoUnifiedPopup(matchId, phaseLabel, t1, t2, matchReal, phaseP
           if(phaseKey==='semi'){
             const winPts = row.classifCorrect ? 10 : 0;
             cRow.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.62rem',flexShrink:'0'}},winPts+'pts'));
-            if(row.semiLoserBonus>0){
-              cRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700',flexShrink:'0'}},'+10 3º'));
-            }
+            const bonusOn = row.semiLoserBonus>0;
+            cRow.appendChild(el('span',{style:{fontSize:'.62rem',padding:'1px 6px',borderRadius:'999px',
+              background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
+              color:bonusOn?'#60A5FA':'var(--muted)',
+              border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
+              fontWeight:'700',flexShrink:'0'}},(bonusOn?'+10':'0')+' 3º'));
           } else {
             const cCls = row.classifCorrect?'p10':'p0';
             cRow.appendChild(el('span',{class:'pp '+cCls,style:{fontSize:'.62rem',flexShrink:'0'}},(row.classifCorrect?phasePts:0)+'pts'));
@@ -4235,9 +4246,12 @@ async function showKoTeamPicksPopup(matchId, phaseLabel, t1, t2, matchReal, phas
         if(phaseKeyForWinner==='semi'){
           const winPts = row.correct ? 10 : 0;
           ptsDiv.appendChild(el('span',{class:'pp '+(winPts>0?'p10':'p0'),style:{fontSize:'.72rem'}},winPts+'pts'));
-          if(row.semiLoserBonus>0){
-            ptsDiv.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 6px',borderRadius:'999px',background:'rgba(96,165,250,.18)',color:'#60A5FA',border:'1px solid rgba(96,165,250,.35)',fontWeight:'700',whiteSpace:'nowrap'}},'+10 3º'));
-          }
+          const bonusOn = row.semiLoserBonus>0;
+          ptsDiv.appendChild(el('span',{style:{fontSize:'.6rem',padding:'1px 6px',borderRadius:'999px',
+            background:bonusOn?'rgba(96,165,250,.18)':'rgba(255,255,255,.05)',
+            color:bonusOn?'#60A5FA':'var(--muted)',
+            border:'1px solid '+(bonusOn?'rgba(96,165,250,.35)':'rgba(255,255,255,.1)'),
+            fontWeight:'700',whiteSpace:'nowrap'}},(bonusOn?'+10':'0')+' 3º'));
         } else {
           const pts = row.correct ? phasePts : 0;
           const ptsCls = pts>0?'p10':'p0';
@@ -5575,7 +5589,12 @@ function buildKoUI(main){
         if(rpHasResult && sel1){
           if(isSemiPhase){
             b1Children.push(el('span',{class:'pp '+(real1?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real1?10:0)+'pts'));
-            if(semiLoserBonus1>0) b1Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700'}},'+10 3º'));
+            const bonusOn1 = semiLoserBonus1>0;
+            b1Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
+              background:bonusOn1?'rgba(96,165,250,.2)':'rgba(255,255,255,.08)',
+              color:bonusOn1?'#93C5FD':'var(--muted)',
+              border:'1px solid '+(bonusOn1?'rgba(96,165,250,.4)':'rgba(255,255,255,.15)'),
+              fontWeight:'700'}},(bonusOn1?'+10':'0')+' 3º'));
           } else {
             b1Children.push(' ·'+(real1?ph.pts+'p':'0p'));
           }
@@ -5590,7 +5609,12 @@ function buildKoUI(main){
         if(rpHasResult && sel2){
           if(isSemiPhase){
             b2Children.push(el('span',{class:'pp '+(real2?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real2?10:0)+'pts'));
-            if(semiLoserBonus2>0) b2Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',background:'rgba(96,165,250,.2)',color:'#93C5FD',border:'1px solid rgba(96,165,250,.4)',fontWeight:'700'}},'+10 3º'));
+            const bonusOn2 = semiLoserBonus2>0;
+            b2Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
+              background:bonusOn2?'rgba(96,165,250,.2)':'rgba(255,255,255,.08)',
+              color:bonusOn2?'#93C5FD':'var(--muted)',
+              border:'1px solid '+(bonusOn2?'rgba(96,165,250,.4)':'rgba(255,255,255,.15)'),
+              fontWeight:'700'}},(bonusOn2?'+10':'0')+' 3º'));
           } else {
             b2Children.push(' ·'+(real2?ph.pts+'p':'0p'));
           }
