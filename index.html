@@ -2806,8 +2806,13 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
   (gp||[]).forEach(p=>add(p.user_id, lastGroupStageMatch, p.points||0));
   (sp||[]).forEach(p=>add(p.user_id, PHASE_LAST_MATCH.final, p.points||0));
 
-  // Frames = 1 por jogo já encerrado, na ordem real (match_number cronológico)
+  // Frames = 1 por jogo já encerrado, na ordem real (match_number cronológico),
+  // prefixado por um frame inicial "zero" (ninguém pontuou ainda)
+  finished.unshift(null);
   const frames = finished.map((matchNum, idx)=>{
+    if(matchNum===null){
+      return rows.map(r=>({ uid:r.prof.id, name:r.prof.display_name, isAdmin:!!r.prof.is_admin, isMe:r.prof.id===STATE.profile.id, val:0 }));
+    }
     const cutoffKey = chronoKey(matchNum);
     return rows.map(r=>{
       const uid=r.prof.id;
@@ -2844,6 +2849,7 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
   container.appendChild(wrap);
 
   function matchLabel(matchNum){
+    if(matchNum===null) return '🏁 Início da Copa — 0pts';
     if(matchNum<73) return 'Jogo #'+matchNum+' — Fase de Grupos';
     let ph = matchNum<=88?'Rodada de 32':matchNum<=96?'Oitavas':matchNum<=100?'Quartas':matchNum<=102?'Semifinal':matchNum===103?'Disputa de 3º':'Final';
     const iso = KO_MATCH_DATES[matchNum];
@@ -2895,7 +2901,8 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
           position:'relative',height:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
           padding:'0 8px',fontSize:'.76rem'
         }});
-        label.appendChild(el('span',{class:'race-name',style:{fontWeight:d.isMe?'700':'600',color:d.isMe?'var(--gold)':'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}, d.name+(d.isMe?' 👤':'')));
+        label.appendChild(el('span',{class:'race-pos',style:{fontWeight:'800',color:'#fff',flexShrink:'0',marginRight:'6px',minWidth:'22px'}}, (pos+1)+'º'));
+        label.appendChild(el('span',{class:'race-name',style:{fontWeight:d.isMe?'700':'600',color:d.isMe?'var(--gold)':'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:'1'}}, d.name+(d.isMe?' 👤':'')));
         label.appendChild(el('span',{class:'race-val',style:{fontWeight:'700',color:'#fff',flexShrink:'0',marginLeft:'6px'}}, d.val+'pts'));
         track.appendChild(fill); track.appendChild(label);
         barEl.appendChild(track);
@@ -2909,6 +2916,7 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
       fillEl.style.transition = animate ? 'width .6s ease' : 'none';
       fillEl.style.width = pct+'%';
       barEl.querySelector('.race-val').textContent = d.val+'pts';
+      barEl.querySelector('.race-pos').textContent = (pos+1)+'º';
     });
 
     // Remover barras de participantes que saíram do Top 8 neste frame
@@ -2930,7 +2938,7 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
       frameIdx++;
       if(frameIdx>=frames.length){ stopPlay(); frameIdx=frames.length-1; return; }
       renderFrame(frameIdx, true);
-    }, 1800);
+    }, 1000);
   }
 
   playBtn.onclick = ()=>{ playing ? stopPlay() : startPlay(); };
