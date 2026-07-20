@@ -5588,12 +5588,12 @@ function buildKoUI(main){
         const b1Children = [b1TextPart];
         if(rpHasResult && sel1){
           if(isSemiPhase){
-            b1Children.push(el('span',{class:'pp '+(real1?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real1?10:0)+'pts'));
+            b1Children.push(el('span',{class:'pp '+(real1?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem',color:'#fff',background:real1?'rgba(0,0,0,.2)':'rgba(0,0,0,.25)'}},(real1?10:0)+'pts'));
             const bonusOn1 = semiLoserBonus1>0;
             b1Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
-              background:bonusOn1?'rgba(96,165,250,.2)':'rgba(0,0,0,.25)',
-              color:bonusOn1?'#93C5FD':'#FCA5A5',
-              border:'1px solid '+(bonusOn1?'rgba(96,165,250,.4)':'rgba(255,255,255,.3)'),
+              background:bonusOn1?'rgba(37,99,235,.55)':'rgba(0,0,0,.25)',
+              color:'#fff',
+              border:'1px solid '+(bonusOn1?'rgba(147,197,253,.6)':'rgba(255,255,255,.3)'),
               fontWeight:'700'}},(bonusOn1?'+10':'+0')+'pts 3º'));
           } else {
             b1Children.push(' ·'+(real1?ph.pts+'p':'0p'));
@@ -5608,12 +5608,12 @@ function buildKoUI(main){
         const b2Children = [b2TextPart];
         if(rpHasResult && sel2){
           if(isSemiPhase){
-            b2Children.push(el('span',{class:'pp '+(real2?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem'}},(real2?10:0)+'pts'));
+            b2Children.push(el('span',{class:'pp '+(real2?'p10':'p0'),style:{marginLeft:'5px',fontSize:'.66rem',color:'#fff',background:real2?'rgba(0,0,0,.2)':'rgba(0,0,0,.25)'}},(real2?10:0)+'pts'));
             const bonusOn2 = semiLoserBonus2>0;
             b2Children.push(el('span',{style:{marginLeft:'4px',fontSize:'.6rem',padding:'1px 5px',borderRadius:'999px',
-              background:bonusOn2?'rgba(96,165,250,.2)':'rgba(0,0,0,.25)',
-              color:bonusOn2?'#93C5FD':'#FCA5A5',
-              border:'1px solid '+(bonusOn2?'rgba(96,165,250,.4)':'rgba(255,255,255,.3)'),
+              background:bonusOn2?'rgba(37,99,235,.55)':'rgba(0,0,0,.25)',
+              color:'#fff',
+              border:'1px solid '+(bonusOn2?'rgba(147,197,253,.6)':'rgba(255,255,255,.3)'),
               fontWeight:'700'}},(bonusOn2?'+10':'+0')+'pts 3º'));
           } else {
             b2Children.push(' ·'+(real2?ph.pts+'p':'0p'));
