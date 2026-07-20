@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Bolão Copa 2026</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -2767,7 +2770,17 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
     return;
   }
 
-  const finished = (matches||[]).filter(m=>m.is_finished).map(m=>m.match_number).sort((a,b)=>a-b);
+  // Ordena pela data/hora REAL do jogo quando disponível (jogos eliminatórios,
+  // via KO_MATCH_DATES — a ordem de match_number nem sempre bate com a ordem
+  // cronológica real de transmissão). Jogos de grupo (sem data cadastrada no
+  // app) mantêm a ordem por match_number como aproximação.
+  function chronoKey(matchNum){
+    const iso = KO_MATCH_DATES[matchNum];
+    if(iso) return new Date(iso+':00-03:00').getTime();
+    return -1e15 + matchNum; // fase de grupos: sempre antes de qualquer KO, ordenado por número
+  }
+  const finished = (matches||[]).filter(m=>m.is_finished).map(m=>m.match_number)
+    .sort((a,b)=>chronoKey(a)-chronoKey(b));
   if(finished.length===0){
     container.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'1.5rem'}},'Nenhum jogo encerrado ainda — a corrida começa assim que o primeiro resultado for definido.'));
     return;
@@ -2794,15 +2807,16 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
   (sp||[]).forEach(p=>add(p.user_id, PHASE_LAST_MATCH.final, p.points||0));
 
   // Frames = 1 por jogo já encerrado, na ordem real (match_number cronológico)
-  const frames = finished.map(matchNum=>
-    rows.map(r=>{
+  const frames = finished.map((matchNum, idx)=>{
+    const cutoffKey = chronoKey(matchNum);
+    return rows.map(r=>{
       const uid=r.prof.id;
       let val=0;
       const ub=bucket[uid]||{};
-      for(const mn in ub){ if(Number(mn)<=matchNum) val+=ub[mn]; }
+      for(const mn in ub){ if(chronoKey(Number(mn))<=cutoffKey) val+=ub[mn]; }
       return { uid, name:r.prof.display_name, isAdmin:!!r.prof.is_admin, isMe:uid===STATE.profile.id, val };
-    })
-  );
+    });
+  });
 
   const PALETTE = ['#4ADE80','#60A5FA','#FBBF24','#F87171','#C084FC','#2DD4BF','#FB923C','#F472B6','#A3E635','#818CF8','#FCD34D','#34D399'];
   const colorByUid = {};
@@ -2830,9 +2844,15 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
   container.appendChild(wrap);
 
   function matchLabel(matchNum){
-    if(matchNum<73) return 'Jogo #'+matchNum+' (fase de grupos)';
-    const names = {73:'Rodada de 32',89:'Oitavas',97:'Quartas',101:'Semifinal',103:'Disputa 3º',104:'Final'};
+    if(matchNum<73) return 'Jogo #'+matchNum+' — Fase de Grupos';
     let ph = matchNum<=88?'Rodada de 32':matchNum<=96?'Oitavas':matchNum<=100?'Quartas':matchNum<=102?'Semifinal':matchNum===103?'Disputa de 3º':'Final';
+    const iso = KO_MATCH_DATES[matchNum];
+    if(iso){
+      const d = new Date(iso+':00-03:00');
+      const dataFmt = d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'});
+      const horaFmt = d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});
+      return ph+' — '+dataFmt+' às '+horaFmt;
+    }
     return 'Jogo #'+matchNum+' — '+ph;
   }
 
