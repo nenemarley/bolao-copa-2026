@@ -2648,6 +2648,17 @@ function renderDashboard(main){
     // Ranking Geral ocultado a pedido — os dados de 'rows' continuam sendo usados
     // pelas seções de Rankings por Categoria e Evolução da Pontuação abaixo.
     // main.appendChild(card);
+
+    // ── Corrida de Pontos (bar chart race) ───────────────────────────────
+    const raceCard = el('div',{class:'card'});
+    raceCard.appendChild(el('div',{class:'ch'},'🏁 Corrida de Pontos'));
+    raceCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
+      'Pontuação total acumulada, jogo por jogo, na ordem real do campeonato. Aperte ▶ pra assistir.'));
+    const raceBody = el('div');
+    raceCard.appendChild(raceBody);
+    main.appendChild(raceCard);
+    renderBarChartRace(raceBody, rows, mp, gp, kp, sp, freshKoMatches);
+
     const catCard = el('div',{class:'card'});
     catCard.appendChild(el('div',{class:'ch'},'🎖️ Rankings por Categoria'));
     catCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
@@ -2744,16 +2755,6 @@ function renderDashboard(main){
     bracketCard.appendChild(bracketBody);
     main.appendChild(bracketCard);
     renderBracketView(bracketBody, koMatchReal, bracketKoReal, bracketGrpStandings);
-
-    // ── Corrida de Pontos (bar chart race) ───────────────────────────────
-    const raceCard = el('div',{class:'card'});
-    raceCard.appendChild(el('div',{class:'ch'},'🏁 Corrida de Pontos'));
-    raceCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
-      'Pontuação total acumulada, jogo por jogo, na ordem real do campeonato. Aperte ▶ pra assistir.'));
-    const raceBody = el('div');
-    raceCard.appendChild(raceBody);
-    main.appendChild(raceCard);
-    renderBarChartRace(raceBody, rows, mp, gp, kp, sp, freshKoMatches);
   });
 }
 
@@ -2884,7 +2885,7 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
           style:{
             position:'absolute', left:'0', right:'0', height:BAR_H+'px',
             top:(pos*ROW_H)+'px',
-            transition: animate ? 'top .6s ease, width .6s ease' : 'none',
+            transition: animate ? 'top .45s ease, width .45s ease' : 'none',
             display:'flex', alignItems:'center'
           }
         });
@@ -2895,25 +2896,25 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
           background:colorByUid[d.uid],
           opacity:d.isMe?'0.9':'0.55',
           border:d.isMe?'1px solid var(--gold)':'none',
-          transition: animate ? 'width .6s ease' : 'none'
+          transition: animate ? 'width .45s ease' : 'none'
         }});
         const label = el('div',{class:'race-label',style:{
           position:'relative',height:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
           padding:'0 8px',fontSize:'.76rem'
         }});
         label.appendChild(el('span',{class:'race-pos',style:{fontWeight:'800',color:'#fff',flexShrink:'0',marginRight:'6px',minWidth:'22px'}}, (pos+1)+'º'));
-        label.appendChild(el('span',{class:'race-name',style:{fontWeight:d.isMe?'700':'600',color:d.isMe?'var(--gold)':'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:'1'}}, d.name+(d.isMe?' 👤':'')));
+        label.appendChild(el('span',{class:'race-name',style:{fontWeight:d.isMe?'800':'600',color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:'1'}}, d.name+(d.isMe?' 👤':'')));
         label.appendChild(el('span',{class:'race-val',style:{fontWeight:'700',color:'#fff',flexShrink:'0',marginLeft:'6px'}}, d.val+'pts'));
         track.appendChild(fill); track.appendChild(label);
         barEl.appendChild(track);
         chartArea.appendChild(barEl);
       } else {
-        barEl.style.transition = animate ? 'top .6s ease, width .6s ease' : 'none';
+        barEl.style.transition = animate ? 'top .45s ease, width .45s ease' : 'none';
         barEl.style.top = (pos*ROW_H)+'px';
       }
       const fillEl = barEl.querySelector('.race-fill');
       const pct = Math.max(2,(d.val/maxVal)*100);
-      fillEl.style.transition = animate ? 'width .6s ease' : 'none';
+      fillEl.style.transition = animate ? 'width .45s ease' : 'none';
       fillEl.style.width = pct+'%';
       barEl.querySelector('.race-val').textContent = d.val+'pts';
       barEl.querySelector('.race-pos').textContent = (pos+1)+'º';
@@ -2938,7 +2939,7 @@ function renderBarChartRace(container, rows, mp, gp, kp, sp, matches){
       frameIdx++;
       if(frameIdx>=frames.length){ stopPlay(); frameIdx=frames.length-1; return; }
       renderFrame(frameIdx, true);
-    }, 1000);
+    }, 600);
   }
 
   playBtn.onclick = ()=>{ playing ? stopPlay() : startPlay(); };
