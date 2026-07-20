@@ -2751,7 +2751,158 @@ function renderDashboard(main){
     evoCard.appendChild(evoBody);
     main.appendChild(evoCard);
     renderEvolutionChart(evoBody, rows, categories);
+
+    // ── Corrida de Pontos (bar chart race) ───────────────────────────────
+    const raceCard = el('div',{class:'card'});
+    raceCard.appendChild(el('div',{class:'ch'},'🏁 Corrida de Pontos'));
+    raceCard.appendChild(el('div',{style:{fontSize:'.76rem',color:'var(--muted)',marginBottom:'.75rem'}},
+      'Veja a pontuação total acumulada crescer categoria por categoria, na ordem em que o campeonato acontece. Aperte ▶ pra assistir.'));
+    const raceBody = el('div');
+    raceCard.appendChild(raceBody);
+    main.appendChild(raceCard);
+    renderBarChartRace(raceBody, rows, categories);
   });
+}
+
+// ── Gráfico de corrida de barras: pontuação acumulada, categoria por categoria ──
+function renderBarChartRace(container, rows, categories){
+  if(!rows || rows.length===0){
+    container.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'1.5rem'}},'Sem dados suficientes ainda.'));
+    return;
+  }
+
+  const PALETTE = ['#4ADE80','#60A5FA','#FBBF24','#F87171','#C084FC','#2DD4BF','#FB923C','#F472B6','#A3E635','#818CF8','#FCD34D','#34D399'];
+
+  // Ordem cronológica das categorias no campeonato (exclui "Todos", que é o total final).
+  // Só entram categorias em que alguém já pontuou (mesma regra do gráfico de evolução).
+  const raceCategories = (categories||[])
+    .filter(c=>c.key!=='todos')
+    .filter(c=>rows.some(r=>c.val(r)>0));
+
+  if(raceCategories.length===0){
+    container.appendChild(el('div',{style:{textAlign:'center',color:'var(--muted)',padding:'1.5rem'}},'Sem dados suficientes ainda.'));
+    return;
+  }
+
+  // Frames = soma acumulada até cada categoria (frame 0 = só a 1ª categoria,
+  // último frame = soma de tudo = total geral)
+  const frames = raceCategories.map((cat,i)=>{
+    const upTo = raceCategories.slice(0,i+1);
+    return rows.map(r=>({
+      uid:r.prof.id, name:r.prof.display_name, isAdmin:!!r.prof.is_admin,
+      isMe:r.prof.id===STATE.profile.id,
+      val: upTo.reduce((s,c)=>s+c.val(r),0)
+    }));
+  });
+
+  const colorByUid = {};
+  rows.forEach((r,idx)=>{ colorByUid[r.prof.id] = PALETTE[idx % PALETTE.length]; });
+
+  const N_SHOW = Math.min(8, rows.length);
+  const BAR_H = 34, GAP = 6, ROW_H = BAR_H+GAP;
+
+  const wrap = el('div',{style:{position:'relative'}});
+
+  // Cabeçalho: nome da categoria atual + índice
+  const frameLabel = el('div',{style:{textAlign:'center',fontFamily:"'Bebas Neue',cursive",color:'var(--gold)',fontSize:'1.1rem',marginBottom:'.5rem',letterSpacing:'.5px'}});
+  wrap.appendChild(frameLabel);
+
+  const chartArea = el('div',{style:{position:'relative',height:(N_SHOW*ROW_H)+'px'}});
+  wrap.appendChild(chartArea);
+
+  // Controles: play/pause + slider de progresso
+  const controls = el('div',{style:{display:'flex',alignItems:'center',gap:'10px',marginTop:'.75rem'}});
+  const playBtn = el('button',{class:'btn btn-sm btn-p',style:{flexShrink:'0',minWidth:'44px'}},'▶');
+  const slider = el('input',{type:'range',min:'0',max:String(frames.length-1),value:'0',style:{flex:'1',accentColor:'var(--gold)'}});
+  controls.appendChild(playBtn); controls.appendChild(slider);
+  wrap.appendChild(controls);
+
+  container.appendChild(wrap);
+
+  let frameIdx = 0;
+  let playing = false;
+  let timer = null;
+
+  function renderFrame(idx, animate){
+    const data = frames[idx].slice().sort((a,b)=>{
+      if(b.val!==a.val) return b.val-a.val;
+      return (b.isAdmin?1:0)-(a.isAdmin?1:0);
+    }).slice(0,N_SHOW);
+    const maxVal = Math.max(1, data[0]?.val||1);
+
+    frameLabel.textContent = raceCategories[idx].icon+' '+raceCategories[idx].label;
+    slider.value = String(idx);
+
+    data.forEach((d,pos)=>{
+      let barEl = chartArea.querySelector(`[data-uid="${d.uid}"]`);
+      if(!barEl){
+        barEl = el('div',{
+          'data-uid':d.uid,
+          style:{
+            position:'absolute', left:'0', right:'0', height:BAR_H+'px',
+            top:(pos*ROW_H)+'px',
+            transition: animate ? 'top .6s ease, width .6s ease' : 'none',
+            display:'flex', alignItems:'center'
+          }
+        });
+        const track = el('div',{style:{position:'relative',flex:'1',height:'100%'}});
+        const fill = el('div',{class:'race-fill',style:{
+          position:'absolute',left:'0',top:'0',bottom:'0',
+          width:'0%',borderRadius:'6px',
+          background:colorByUid[d.uid],
+          opacity:d.isMe?'0.9':'0.55',
+          border:d.isMe?'1px solid var(--gold)':'none',
+          transition: animate ? 'width .6s ease' : 'none'
+        }});
+        const label = el('div',{class:'race-label',style:{
+          position:'relative',height:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+          padding:'0 8px',fontSize:'.76rem'
+        }});
+        label.appendChild(el('span',{class:'race-name',style:{fontWeight:d.isMe?'700':'600',color:d.isMe?'var(--gold)':'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}, d.name+(d.isMe?' 👤':'')));
+        label.appendChild(el('span',{class:'race-val',style:{fontWeight:'700',color:'#fff',flexShrink:'0',marginLeft:'6px'}}, d.val+'pts'));
+        track.appendChild(fill); track.appendChild(label);
+        barEl.appendChild(track);
+        chartArea.appendChild(barEl);
+      } else {
+        barEl.style.transition = animate ? 'top .6s ease, width .6s ease' : 'none';
+        barEl.style.top = (pos*ROW_H)+'px';
+      }
+      const fillEl = barEl.querySelector('.race-fill');
+      const pct = Math.max(2,(d.val/maxVal)*100);
+      fillEl.style.transition = animate ? 'width .6s ease' : 'none';
+      fillEl.style.width = pct+'%';
+      barEl.querySelector('.race-val').textContent = d.val+'pts';
+    });
+
+    // Remover barras de participantes que saíram do Top 8 neste frame
+    const shownUids = new Set(data.map(d=>d.uid));
+    chartArea.querySelectorAll('[data-uid]').forEach(el2=>{
+      if(!shownUids.has(el2.getAttribute('data-uid'))) el2.remove();
+    });
+  }
+
+  function stopPlay(){
+    playing=false; playBtn.textContent='▶';
+    if(timer){ clearInterval(timer); timer=null; }
+  }
+  function startPlay(){
+    if(frameIdx>=frames.length-1) frameIdx=0; // reinicia do começo se já tiver acabado
+    playing=true; playBtn.textContent='⏸';
+    timer = setInterval(()=>{
+      frameIdx++;
+      if(frameIdx>=frames.length){ stopPlay(); frameIdx=frames.length-1; return; }
+      renderFrame(frameIdx, true);
+    }, 1400);
+  }
+
+  playBtn.onclick = ()=>{ playing ? stopPlay() : startPlay(); };
+  slider.oninput = ()=>{
+    stopPlay();
+    frameIdx = parseInt(slider.value,10);
+    renderFrame(frameIdx, false);
+  };
+
+  renderFrame(0, false);
 }
 
 // ── Gráfico de linha: evolução acumulada de pontos por categoria/fase ──────
